@@ -26,10 +26,14 @@ export async function proxy(request: NextRequest) {
   const publicPrefixes = [
     '/login',
     '/api/auth/login',
+    '/api/auth/refresh',
+    '/auth/sso/callback',
     '/brand',
     '/_next',
     '/api/health/live',
     '/api/health/ready',
+    '/api/notifications/worker',
+    '/api/integrations/',
   ];
 
   // Allow unauthenticated GET access to public VAPID key ONLY (RFC 8292 Application Server Key).

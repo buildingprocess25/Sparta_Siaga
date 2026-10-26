@@ -66,6 +66,7 @@ async function runTest() {
   console.log("\n==============================================================");
   console.log("🛡️ ALL DATABASE SAFETY GUARDS VERIFIED 100%!");
   console.log("==============================================================");
+  process.exit(0);
 }
 
 runTest().catch((err) => {

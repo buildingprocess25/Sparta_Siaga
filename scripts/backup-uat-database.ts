@@ -24,24 +24,10 @@ export async function createUatBackup(): Promise<string> {
 
   console.log(`[Backup] Initialized backup directory: ${backupDirPath}`);
 
-  const tablesToBackup = [
-    "users",
-    "incidents",
-    "report_milestones",
-    "report_completion_approvals",
-    "report_completion_approval_history",
-    "incident_confirmation_decisions",
-    "incident_inspection_submissions",
-    "incident_evidence",
-    "report_progress_photos",
-    "report_progress_updates",
-    "report_estimation_routes",
-    "report_instructions",
-    "report_distributions",
-    "incident_repair_links",
-    "notification_logs",
-    "facilities",
-  ];
+  const tablesRes = await pool.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
+  );
+  const tablesToBackup = tablesRes.rows.map((r: any) => r.table_name as string);
 
   const tableRecordCounts: Record<string, number> = {};
 

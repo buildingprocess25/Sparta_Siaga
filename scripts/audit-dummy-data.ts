@@ -30,6 +30,20 @@ async function runAudit() {
   console.log(`====================================================\n`);
 
   const pool = getDbPool();
+
+  // Safety guard: block destructive operations on non-isolated databases
+  if (isApply) {
+    const dbNameRes = await pool.query("SELECT current_database() AS db_name");
+    const currentDb = dbNameRes.rows[0]?.db_name;
+    const ALLOWED_DATABASES = ["sparta_siaga_isolated", "sparta_siaga_dev", "sparta_siaga_uat"];
+    if (!ALLOWED_DATABASES.includes(currentDb)) {
+      console.error(`FATAL: Refusing destructive --apply on database "${currentDb}".`);
+      console.error(`Allowed databases for deletion: ${ALLOWED_DATABASES.join(", ")}`);
+      process.exit(1);
+    }
+    console.log(`Database guard passed: connected to "${currentDb}" (allowed for cleanup)\n`);
+  }
+
   const findings: AuditFinding[] = [];
 
   try {

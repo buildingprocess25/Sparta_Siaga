@@ -4,8 +4,10 @@ import { fetchDisasterFeed } from '@/lib/disaster-service';
 import { Store } from '@/types/store';
 import { NotificationLog } from '@/types/notification';
 import { recordNotificationLog } from '@/lib/notification-service';
-import { processEarthquakeAlertsAndReports } from '@/lib/server-daemon';
+import { getDbPool } from '@/lib/db';
+import { processEarthquakeAlertsAndReports, getDisasterCycleHealth } from '@/lib/server-daemon';
 import { getOrLoadMasterStores } from '@/lib/store-master-loader';
+import { getSessionUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +63,14 @@ export async function POST(request: Request) {
       allowBackfill = !!body.allowBackfill;
     } catch {
       // no body or non-json
+    }
+
+    if (process.env.NODE_ENV === 'production' && forceSimulation) {
+      console.warn('[SPARTA SIAGA][Worker] Rejected forceSimulation request in production environment');
+      return NextResponse.json({
+        success: false,
+        error: 'Forbidden: Synthetic alert generation and forceSimulation are strictly denied in production.'
+      }, { status: 403 });
     }
 
     // 1. Fetch stores from DB or Master CSV (21,550 stores)
@@ -140,3 +150,100 @@ export async function POST(request: Request) {
     isWorkerRunning = false;
   }
 }
+
+export async function GET(request: Request) {
+  try {
+    // Access control: strictly require internal worker secret or ADMIN session
+    const secret = process.env.SPARTA_INTERNAL_WORKER_SECRET;
+    const isInternal = secret ? validateInternalWorkerSecret(request, secret) : false;
+
+    if (!isInternal) {
+      const sessionUser = await getSessionUser(request);
+      if (!sessionUser || sessionUser.systemRole !== 'ADMIN') {
+        return NextResponse.json(
+          { error: 'Unauthorized: Access restricted to administrators or internal worker daemon.' },
+          { status: 401 }
+        );
+      }
+    }
+
+    const pool = getDbPool();
+
+    // 1. Check latest successful BMKG/USGS earthquake polling in persistent store
+    const eqPollRes = await pool.query(`
+      SELECT 
+        MAX(last_seen_at) as last_polled_at,
+        count(*)::int as total_active_events
+      FROM earthquake_events;
+    `);
+    const lastPolledAt = eqPollRes.rows[0]?.last_polled_at || null;
+    const totalEvents = Number(eqPollRes.rows[0]?.total_active_events || 0);
+
+    // 2. Notification delivery metrics and failure monitoring
+    const notifRes = await pool.query(`
+      SELECT 
+        count(*)::int as total_notifications,
+        count(*) FILTER (WHERE delivery_status = 'failed')::int as failed_notifications,
+        count(*) FILTER (WHERE delivery_status = 'sent' OR delivery_status = 'delivered')::int as successful_notifications
+      FROM notification_logs;
+    `);
+
+    // 3. Web Push event delivery metrics
+    const pushRes = await pool.query(`
+      SELECT 
+        count(*)::int as total_push_deliveries,
+        count(*) FILTER (WHERE status = 'delivered')::int as delivered_push,
+        count(*) FILTER (WHERE status = 'failed')::int as failed_push,
+        count(*) FILTER (WHERE status = 'expired_cleaned')::int as expired_cleaned_push
+      FROM push_event_deliveries;
+    `);
+
+    // 4. In-process daemon health (if running in this process)
+    const inProcessDaemon = getDisasterCycleHealth();
+
+    // 5. Evaluate heartbeat freshness
+    // If last_polled_at exists and is older than 5 minutes (300,000ms), flag potential stall
+    let heartbeatStatus: 'HEALTHY' | 'STALE' | 'INITIALIZING' = 'INITIALIZING';
+    let minutesSinceLastPoll: number | null = null;
+    if (lastPolledAt) {
+      minutesSinceLastPoll = Math.round((Date.now() - new Date(lastPolledAt).getTime()) / (1000 * 60) * 10) / 10;
+      heartbeatStatus = minutesSinceLastPoll <= 5 ? 'HEALTHY' : 'STALE';
+    }
+
+    return NextResponse.json({
+      status: heartbeatStatus === 'HEALTHY' ? 'healthy' : 'degraded',
+      heartbeat: {
+        status: heartbeatStatus,
+        lastSuccessfulPolling: lastPolledAt,
+        minutesSinceLastPoll,
+        activeEventsTracked: totalEvents,
+      },
+      notifications: {
+        total: Number(notifRes.rows[0]?.total_notifications || 0),
+        successful: Number(notifRes.rows[0]?.successful_notifications || 0),
+        failed: Number(notifRes.rows[0]?.failed_notifications || 0),
+      },
+      webPush: {
+        totalDeliveries: Number(pushRes.rows[0]?.total_push_deliveries || 0),
+        delivered: Number(pushRes.rows[0]?.delivered_push || 0),
+        failed: Number(pushRes.rows[0]?.failed_push || 0),
+        expiredCleaned: Number(pushRes.rows[0]?.expired_cleaned_push || 0),
+      },
+      inProcessDaemon,
+      timestamp: new Date().toISOString(),
+    }, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    });
+  } catch (err: any) {
+    console.error('[Worker Health GET Error]:', err);
+    return NextResponse.json({
+      status: 'error',
+      error: 'Failed to retrieve worker health status',
+      detail: err?.message || String(err),
+    }, { status: 500 });
+  }
+}
+

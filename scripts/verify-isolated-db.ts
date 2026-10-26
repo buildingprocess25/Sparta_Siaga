@@ -80,9 +80,11 @@ async function verify() {
       console.log(` - ${idx.indexname}: ${idx.indexdef}`);
     }
 
-    await client.query("DELETE FROM incidents WHERE id LIKE 'INC-TEST-%';");
+    const testCountRes = await client.query("SELECT COUNT(*) FROM incidents WHERE id LIKE 'INC-TEST-%';");
+    console.log("Test incidents (INC-TEST-*) found:", testCountRes.rows[0].count);
+
     const countRes = await client.query("SELECT COUNT(*) FROM incidents;");
-    console.log("Total incidents remaining in isolated DB:", countRes.rows[0].count);
+    console.log("Total incidents in isolated DB:", countRes.rows[0].count);
 
     client.release();
   } catch (err) {

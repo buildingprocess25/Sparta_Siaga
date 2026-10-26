@@ -32,8 +32,9 @@ if (!fs.existsSync(subRoutePath)) {
 }
 
 const subRouteContent = fs.readFileSync(subRoutePath, "utf-8");
-if (!subRouteContent.includes("user_push_subscriptions")) {
-  console.error("FAIL: user_push_subscriptions table not referenced in subscribe route");
+const webPushServiceContent = fs.readFileSync(path.join(process.cwd(), "lib/web-push-service.ts"), "utf-8");
+if (!subRouteContent.includes("user_push_subscriptions") && !webPushServiceContent.includes("user_push_subscriptions")) {
+  console.error("FAIL: user_push_subscriptions table not referenced in subscribe route or web-push-service");
   process.exit(1);
 }
 

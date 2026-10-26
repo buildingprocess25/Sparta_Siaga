@@ -2,6 +2,7 @@
 (globalThis as Record<string, unknown>).__sparta_server_daemon_module_loaded = true;
 
 import crypto from 'crypto';
+import type { PoolClient } from 'pg';
 import { getDbPool } from './db';
 import { fetchDisasterFeed } from './disaster-service';
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
@@ -39,6 +40,35 @@ export const AUTO_EARTHQUAKE_MAX_AGE_MINUTES = AUTO_EARTHQUAKE_ALERT_MAX_AGE_MIN
 export const MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES = parseInt(process.env.MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES || '120', 10);
 export const STORE_SYNC_INTERVAL_HOURS = parseInt(process.env.STORE_SYNC_INTERVAL_HOURS || '24', 10);
 export const STORE_SYNC_INTERVAL_MS = STORE_SYNC_INTERVAL_HOURS * 60 * 60 * 1000;
+export const WORKER_DISASTER_ADVISORY_LOCK_ID = 7421840;
+
+export interface DisasterCycleHealth {
+  lastCycleStart: string | null;
+  lastCycleFinished: string | null;
+  lastCycleDurationMs: number;
+  lastDisasterCount: number;
+  lastBranchesCount: number;
+  lastDispatchedEarthquakeAlerts: number;
+  lastDispatchedRainAlerts: number;
+  lastStatus: 'healthy' | 'running' | 'idle' | 'error';
+  lastError: string | null;
+}
+
+let lastCycleHealth: DisasterCycleHealth = {
+  lastCycleStart: null,
+  lastCycleFinished: null,
+  lastCycleDurationMs: 0,
+  lastDisasterCount: 0,
+  lastBranchesCount: 0,
+  lastDispatchedEarthquakeAlerts: 0,
+  lastDispatchedRainAlerts: 0,
+  lastStatus: 'idle',
+  lastError: null,
+};
+
+export function getDisasterCycleHealth(): DisasterCycleHealth {
+  return { ...lastCycleHealth };
+}
 
 let isCycleRunning = false;
 let initialTimer: NodeJS.Timeout | null = null;
@@ -104,9 +134,38 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
 
   isCycleRunning = true;
   const cycleStart = Date.now();
+  let lockClient: PoolClient | null = null;
+  let lockAcquired = false;
 
   try {
     const pool = getDbPool();
+
+    // DB-backed concurrency control: acquire advisory lock on a dedicated client session
+    // to guarantee mutual exclusion and prevent lock leakage across connection pool reuse
+    try {
+      lockClient = await pool.connect();
+      const lockRes = await lockClient.query('SELECT pg_try_advisory_lock($1) AS acquired', [WORKER_DISASTER_ADVISORY_LOCK_ID]);
+      lockAcquired = Boolean(lockRes.rows[0]?.acquired);
+    } catch (lockErr) {
+      console.warn('[Autonomous Daemon] Advisory lock check warning:', lockErr);
+      if (lockClient) {
+        lockClient.release();
+        lockClient = null;
+      }
+      lockAcquired = false;
+    }
+
+    if (!lockAcquired) {
+      if (lockClient) {
+        lockClient.release();
+        lockClient = null;
+      }
+      console.log('[Autonomous Daemon] Another worker holds the advisory lock (cycle active). Skipping concurrent cycle.');
+      return;
+    }
+
+    lastCycleHealth.lastStatus = 'running';
+    lastCycleHealth.lastCycleStart = new Date(cycleStart).toISOString();
 
     // 1. Fetch live earthquakes from BMKG & USGS
     const disasterFeed = await fetchDisasterFeed(true);
@@ -216,13 +275,39 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
     }
 
     const elapsed = Date.now() - cycleStart;
+    lastCycleHealth.lastCycleFinished = new Date().toISOString();
+    lastCycleHealth.lastCycleDurationMs = elapsed;
+    lastCycleHealth.lastDisasterCount = earthquakes.length;
+    lastCycleHealth.lastBranchesCount = branches.length;
+    lastCycleHealth.lastDispatchedEarthquakeAlerts = dispatchedEarthquakeAlerts;
+    lastCycleHealth.lastDispatchedRainAlerts = dispatchedRainAlerts;
+    lastCycleHealth.lastStatus = 'healthy';
+    lastCycleHealth.lastError = null;
+
     console.log(
       `[Autonomous Daemon] Cycle finished in ${elapsed}ms | Quakes evaluated: ${earthquakes.length} | Branches checked: ${branches.length} | Dispatches: ${dispatchedEarthquakeAlerts} EQ, ${dispatchedRainAlerts} Flood`
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Autonomous Daemon] Fatal error during cycle:', error);
+    lastCycleHealth.lastStatus = 'error';
+    lastCycleHealth.lastError = error?.message || String(error);
   } finally {
+    if (lockClient) {
+      if (lockAcquired) {
+        try {
+          await lockClient.query('SELECT pg_advisory_unlock($1)', [WORKER_DISASTER_ADVISORY_LOCK_ID]);
+        } catch (unlockErr) {
+          console.warn('[Autonomous Daemon] Advisory unlock warning:', unlockErr);
+        }
+      }
+      try {
+        lockClient.release();
+      } catch {
+        // ignore client release error
+      }
+      lockClient = null;
+    }
     isCycleRunning = false;
   }
 }
@@ -721,7 +806,7 @@ export async function processEarthquakeAlertsAndReports(
         }];
 
         try {
-          await dbCreateIncident({
+          const createdIncident = await dbCreateIncident({
             id: reportId,
             date: todayStr,
             disasterType: 'earthquake',
@@ -772,8 +857,12 @@ export async function processEarthquakeAlertsAndReports(
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
-          createdReports++;
-          console.log(`[Autonomous Daemon] Auto-report created: ${reportId} for store ${store.kode_toko}${isBackfill ? ' (Downtime Recovery Backfill)' : ''}`);
+          if (createdIncident.id === reportId) {
+            createdReports++;
+            console.log(`[Autonomous Daemon] Auto-report created: ${reportId} for store ${store.kode_toko}${isBackfill ? ' (Downtime Recovery Backfill)' : ''}`);
+          } else {
+            console.log(`[Autonomous Daemon] Existing report found on race condition for store ${store.kode_toko} / event ${eq.id}: ${createdIncident.id}`);
+          }
         } catch (err: unknown) {
           const pgError = err as { code?: string };
           if (pgError?.code === '23505') {

@@ -1,6 +1,11 @@
 import { dbCreateIncident, dbFindAutoEarthquakeReport } from "../lib/incident-db";
+import { getDbPool } from "../lib/db";
+import { assertIsolatedDatabase } from "../lib/database-safety";
 
 async function main() {
+  const pool = getDbPool();
+  await assertIsolatedDatabase(pool);
+
   const inc: any = {
     id: "INC-TEST-" + Date.now(),
     date: new Date().toISOString(),
@@ -28,16 +33,16 @@ async function main() {
     const res2 = await dbCreateIncident(inc2);
     console.log("Success 2 (caught and returned existing):", res2.id);
     
-    // They should have the same ID because the second one returned the existing record
     if (res1.id === res2.id) {
       console.log("Test passed: Graceful duplicate handling works.");
+      process.exit(0);
     } else {
       console.error("Test failed: IDs are different");
+      process.exit(1);
     }
   } catch (error) {
     console.error("Test failed with error:", error);
-  } finally {
-    process.exit(0);
+    process.exit(1);
   }
 }
 main();

@@ -8,7 +8,7 @@ on:
       release_version:
         description: 'Semantic Version or Release Tag (e.g. v1.0.0)'
         required: false
-        default: 'latest'
+        default: ''
       trigger_deploy:
         description: 'Trigger Dokploy deployment webhook to cutover production?'
         type: boolean
@@ -110,8 +110,8 @@ jobs:
   deploy-dokploy:
     name: Dokploy Production Cutover
     needs: build-and-push
-    # Protected release approval gate: requires production environment approval
-    if: ${{ github.event_name == 'release' || inputs.trigger_deploy == true }}
+    # Protected release approval gate: strictly requires explicit manual trigger AND production environment approval
+    if: ${{ inputs.trigger_deploy == true }}
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -123,6 +123,8 @@ jobs:
             echo "::error::DOKPLOY_WEBHOOK secret is not configured in GitHub repository secrets."
             exit 1
           fi
+          echo "Target Image Reference: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Deploying exact source revision: ${{ github.sha }}"
           echo "Triggering Dokploy production deployment webhook..."
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.DOKPLOY_WEBHOOK }}")
           echo "Dokploy Webhook HTTP Response: $HTTP_STATUS"

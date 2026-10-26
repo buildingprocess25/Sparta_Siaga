@@ -19,6 +19,7 @@ export async function setupSimulation1(): Promise<void> {
   await pool.query("DELETE FROM report_milestones WHERE report_id = $1", [reportId]);
   await pool.query("DELETE FROM report_estimation_routes WHERE report_id = $1", [reportId]);
   await pool.query("DELETE FROM report_distributions WHERE report_id = $1", [reportId]);
+  await pool.query("DELETE FROM incident_pic_history WHERE incident_id = $1", [reportId]);
   await pool.query("DELETE FROM incidents WHERE id = $1", [reportId]);
 
   const nowIso = new Date().toISOString();

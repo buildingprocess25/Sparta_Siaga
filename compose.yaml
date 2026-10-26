@@ -6,10 +6,7 @@
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${SPARTA_IMAGE:-ghcr.io/buildingprocess25/sparta_siaga:latest}
+    image: ${SPARTA_IMAGE:?SPARTA_IMAGE environment variable must be specified with an immutable image tag (e.g. ghcr.io/buildingprocess25/sparta_siaga:<commit-sha>). Mutable latest fallback is disabled for production safety.}
     container_name: sparta-siaga-app
     restart: unless-stopped
     ports:
@@ -63,7 +60,7 @@ services:
       start_period: 15s
 
   worker:
-    image: ${SPARTA_IMAGE:-ghcr.io/buildingprocess25/sparta_siaga:latest}
+    image: ${SPARTA_IMAGE:?SPARTA_IMAGE environment variable must be specified with an immutable image tag (e.g. ghcr.io/buildingprocess25/sparta_siaga:<commit-sha>). Mutable latest fallback is disabled for production safety.}
     container_name: sparta-siaga-worker
     restart: unless-stopped
     command: ["node", "node_modules/tsx/dist/cli.mjs", "scripts/worker-daemon.ts"]
