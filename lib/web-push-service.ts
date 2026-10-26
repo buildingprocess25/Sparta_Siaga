@@ -129,10 +129,11 @@ export async function savePushSubscription(params: {
 }): Promise<string> {
   await ensurePushSubscriptionTable();
   const pool = getDbPool();
-  const subId = `sub_${params.userId}_${Buffer.from(params.endpoint).toString("base64url").slice(0, 16)}`;
+  const endpointHash = crypto.createHash("sha256").update(params.endpoint).digest("hex").slice(0, 24);
+  const subId = `sub_${endpointHash}`;
   const deviceType = detectDeviceType(params.userAgent || null);
 
-  await pool.query(
+  const res = await pool.query<{ id: string }>(
     `INSERT INTO user_push_subscriptions (
       id, user_id, endpoint, p256dh, auth, user_agent, branch, device_type, failure_count, updated_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, NOW())
@@ -144,7 +145,8 @@ export async function savePushSubscription(params: {
       branch = EXCLUDED.branch,
       device_type = EXCLUDED.device_type,
       failure_count = 0,
-      updated_at = NOW()`,
+      updated_at = NOW()
+    RETURNING id`,
     [
       subId,
       params.userId,
@@ -157,7 +159,7 @@ export async function savePushSubscription(params: {
     ]
   );
 
-  return subId;
+  return res.rows[0]?.id || subId;
 }
 
 /**

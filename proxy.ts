@@ -32,7 +32,12 @@ export async function proxy(request: NextRequest) {
     '/api/health/ready',
   ];
 
-  if (isPwaOrStatic || publicPrefixes.some((p) => pathname.startsWith(p))) {
+  // Allow unauthenticated GET access to public VAPID key ONLY (RFC 8292 Application Server Key).
+  // POST (subscription registration) and DELETE (unsubscription) remain strictly protected by session authentication.
+  const isPublicVapidKeyRequest =
+    pathname === '/api/notifications/push/subscribe' && request.method === 'GET';
+
+  if (isPwaOrStatic || isPublicVapidKeyRequest || publicPrefixes.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 

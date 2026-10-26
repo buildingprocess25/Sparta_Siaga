@@ -59,8 +59,15 @@ export async function getCurrentPushSubscription(): Promise<PushSubscription | n
   }
 }
 
+let inFlightRegistrationPromise: Promise<{
+  success: boolean;
+  subscription?: PushSubscription;
+  error?: string;
+}> | null = null;
+
 /**
  * Subscribes the current device/browser to Web Push and syncs subscription with the server.
+ * Implements single-flight deduplication to avoid redundant concurrent requests.
  */
 export async function registerPushSubscription(): Promise<{
   success: boolean;
@@ -71,60 +78,110 @@ export async function registerPushSubscription(): Promise<{
     return { success: false, error: "Web Push tidak didukung pada browser ini." };
   }
 
+  if (inFlightRegistrationPromise) {
+    return inFlightRegistrationPromise;
+  }
+
+  inFlightRegistrationPromise = (async () => {
+    try {
+      // 1. Request notification permission if not yet granted
+      const permission = Notification.permission === 'granted' 
+        ? 'granted' 
+        : await Notification.requestPermission();
+      if (permission !== 'granted') {
+        return { success: false, error: "Izin notifikasi ditolak oleh pengguna." };
+      }
+
+      // 2. Fetch VAPID public key from backend with retry
+      let keyRes: Response | null = null;
+      let keyData: { success?: boolean; publicKey?: string; error?: string } | null = null;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          keyRes = await fetch('/api/notifications/push/subscribe');
+          if (keyRes.ok) {
+            keyData = await keyRes.json();
+            if (keyData?.publicKey) break;
+          }
+        } catch {
+          // Retry on network glitch
+        }
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 500 * attempt));
+        }
+      }
+
+      if (!keyRes || !keyRes.ok || !keyData?.publicKey) {
+        const statusSuffix = keyRes ? ` (HTTP ${keyRes.status})` : "";
+        throw new Error(`Gagal mengambil kunci publik VAPID dari server${statusSuffix}.`);
+      }
+      const vapidPublicKey = keyData.publicKey;
+
+      // 3. Register with PushManager
+      const reg = await navigator.serviceWorker.ready;
+      let subscription = await reg.pushManager.getSubscription();
+
+      if (!subscription) {
+        const convertedKey = urlBase64ToUint8Array(vapidPublicKey);
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedKey as unknown as BufferSource,
+        });
+      }
+
+      // 4. Send subscription details to server with safe retry
+      const subJson = subscription.toJSON();
+      let saveRes: Response | null = null;
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          saveRes = await fetch('/api/notifications/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              endpoint: subscription.endpoint,
+              keys: {
+                p256dh: subJson.keys?.p256dh,
+                auth: subJson.keys?.auth,
+              },
+            }),
+          });
+          if (saveRes.ok) break;
+          // Do not retry 401 Unauthorized or 400 Bad Request
+          if (saveRes.status === 401 || saveRes.status === 400) break;
+        } catch {
+          // Retry on network glitch
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 600));
+        }
+      }
+
+      if (!saveRes || !saveRes.ok) {
+        if (saveRes?.status === 401) {
+          // User is not authenticated yet; subscription is stored in PushManager and will be synced upon login
+          return {
+            success: false,
+            subscription,
+            error: "Sesi belum terautentikasi. Push subscription akan disinkronkan otomatis setelah login.",
+          };
+        }
+        const errBody = saveRes ? await saveRes.json().catch(() => ({})) : {};
+        throw new Error(errBody.error || `Gagal menyimpan subscription ke server (HTTP ${saveRes?.status || "network"}).`);
+      }
+
+      return { success: true, subscription };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Terjadi kesalahan saat mendaftarkan push notification.";
+      console.error("[PWA Push Client] Registration error:", message);
+      return { success: false, error: message };
+    }
+  })();
+
   try {
-    // 1. Request notification permission if not yet granted
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      return { success: false, error: "Izin notifikasi ditolak oleh pengguna." };
-    }
-
-    // 2. Fetch VAPID public key from backend
-    const keyRes = await fetch('/api/notifications/push/subscribe');
-    if (!keyRes.ok) {
-      throw new Error("Gagal mengambil kunci publik VAPID dari server.");
-    }
-    const keyData = await keyRes.json();
-    const vapidPublicKey = keyData.publicKey;
-    if (!vapidPublicKey) {
-      throw new Error("Kunci publik VAPID kosong dari server.");
-    }
-
-    // 3. Register with PushManager
-    const reg = await navigator.serviceWorker.ready;
-    let subscription = await reg.pushManager.getSubscription();
-
-    if (!subscription) {
-      const convertedKey = urlBase64ToUint8Array(vapidPublicKey);
-      subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: convertedKey as unknown as BufferSource,
-      });
-    }
-
-    // 4. Send subscription details to server
-    const subJson = subscription.toJSON();
-    const saveRes = await fetch('/api/notifications/push/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: subJson.keys?.p256dh,
-          auth: subJson.keys?.auth,
-        },
-      }),
-    });
-
-    if (!saveRes.ok) {
-      const errBody = await saveRes.json().catch(() => ({}));
-      throw new Error(errBody.error || "Gagal menyimpan subscription ke server.");
-    }
-
-    return { success: true, subscription };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Terjadi kesalahan saat mendaftarkan push notification.";
-    console.error("[PWA Push Client] Registration error:", err);
-    return { success: false, error: message };
+    return await inFlightRegistrationPromise;
+  } finally {
+    inFlightRegistrationPromise = null;
   }
 }
 

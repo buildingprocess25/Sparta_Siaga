@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: unknown) {
-    console.error("[POST /api/notifications/push/subscribe]", err);
+    console.error("[POST /api/notifications/push/subscribe]", err instanceof Error ? err.message : "Internal Error");
     return NextResponse.json({ error: "Gagal menyimpan subscription push." }, { status: 500 });
   }
 }
@@ -145,7 +145,7 @@ export async function DELETE(request: Request) {
         : "Subscription tidak ditemukan atau telah dihapus sebelumnya.",
     });
   } catch (err: unknown) {
-    console.error("[DELETE /api/notifications/push/subscribe]", err);
+    console.error("[DELETE /api/notifications/push/subscribe]", err instanceof Error ? err.message : "Internal Error");
     return NextResponse.json({ error: "Gagal menghapus subscription push." }, { status: 500 });
   }
 }

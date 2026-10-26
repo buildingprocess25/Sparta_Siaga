@@ -109,6 +109,11 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         checkAndRenewSession();
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          import("@/lib/pwa-push-client").then(({ registerPushSubscription }) => {
+            registerPushSubscription().catch(() => {});
+          });
+        }
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -292,7 +297,13 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
       setPermissionState(perm);
       setMonitoredBranch(getUserMonitoredBranch());
 
-      if (perm === "default" && !hasUserDismissedPermissionPrompt()) {
+      if (perm === "granted") {
+        import("@/lib/pwa-push-client").then(({ registerPushSubscription }) => {
+          registerPushSubscription().catch((e) => {
+            console.warn("[Layout] Initial push registration sync skipped:", e);
+          });
+        });
+      } else if (perm === "default" && !hasUserDismissedPermissionPrompt()) {
         const timer = setTimeout(() => {
           setIsPermissionDialogOpen(true);
         }, 1200);

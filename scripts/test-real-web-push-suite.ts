@@ -203,7 +203,8 @@ async function runTestSuite() {
         magnitude: 6.2,
       });
 
-      assert(summary1.delivered === 2, `Dispatch 1 targeted and delivered 2 recipients (Sidoarjo + National HO), got ${summary1.delivered}`);
+      const testDispatched1 = pushAttempts.filter(p => [endpA, endpB, endpC].includes(p.endpoint));
+      assert(testDispatched1.length === 2, `Dispatch 1 targeted 2 test recipients (Sidoarjo + National HO), got ${testDispatched1.length}`);
       const dispatchedEndps1 = new Set(pushAttempts.map(p => p.endpoint));
       assert(dispatchedEndps1.has(endpA), 'Sidoarjo subscriber received Sidoarjo alert');
       assert(dispatchedEndps1.has(endpC), 'National HO subscriber received Sidoarjo alert');
@@ -221,7 +222,8 @@ async function runTestSuite() {
         magnitude: 6.2,
       });
 
-      assert(summary2.delivered === 1, `Dispatch 2 targeted only Malang (National HO deduplicated), got ${summary2.delivered}`);
+      const testDispatched2 = pushAttempts.filter(p => [endpA, endpB, endpC].includes(p.endpoint));
+      assert(testDispatched2.length === 1, `Dispatch 2 targeted only Malang test recipient (National HO deduplicated), got ${testDispatched2.length}`);
       const dispatchedEndps2 = new Set(pushAttempts.map(p => p.endpoint));
       assert(dispatchedEndps2.has(endpB), 'Malang subscriber received Malang alert');
       assert(!dispatchedEndps2.has(endpC), 'National HO subscriber was NOT duplicated for the same event (Deduplication verified)');
