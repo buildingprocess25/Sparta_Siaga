@@ -1,9 +1,12 @@
 // Explicit global marker tracking whether this module has been evaluated in the current Node process
 (globalThis as Record<string, unknown>).__sparta_server_daemon_module_loaded = true;
 
+import crypto from 'crypto';
 import { getDbPool } from './db';
 import { fetchDisasterFeed } from './disaster-service';
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
+import { dbUpsertEarthquakeEvent } from './earthquake-db';
+import { ensureEarthquakeReport } from './earthquake-report-service';
 import { 
   hasEventAlreadyBeenProcessed,
   isNotificationCooldownActive,
@@ -247,13 +250,13 @@ export async function runAutonomousStoreSyncCycle(force: boolean = false): Promi
   record?: StoreSyncHistoryRecord;
   error?: string;
 }> {
-  if (isStoreSyncRunning) {
-    return { success: false, status: "ALREADY_RUNNING", error: "Store sync cycle already in progress" };
+  if (isStoreSyncRunning || isDaemonStopped) {
+    return { success: false, status: "ALREADY_RUNNING", error: "Store sync cycle already in progress or daemon stopped" };
   }
 
   const due = force || (await isStoreSyncDue());
-  if (!due) {
-    return { success: true, status: "NOT_DUE" };
+  if (!due || isDaemonStopped) {
+    return { success: true, status: isDaemonStopped ? "STOPPED" : "NOT_DUE" };
   }
 
   isStoreSyncRunning = true;
@@ -406,8 +409,148 @@ export async function processEarthquakeAlertsAndReports(
     const isAlertEligible = isEligibleForAlert && (eventAgeMinutes <= AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES);
     const isBackfill = eventAgeMinutes > AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES;
 
+    // Guarantee canonical event recording in earthquake_events table
+    await dbUpsertEarthquakeEvent(eq);
+
     const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(eq.magnitude, eq.depthKm);
 
+    // 1. Evaluate Active Verified Facilities (DCs, Warehouses, Regional Offices)
+    let activeFacilities: Array<{
+      id: string;
+      code: string;
+      name: string;
+      facility_type: string;
+      branch_id: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      operational_status?: string;
+      auto_report_enabled?: boolean;
+      mapping_verified_at?: string | null;
+    }> = [];
+
+    try {
+      const pool = getDbPool();
+      const facRes = await pool.query(
+        `SELECT id::text, code, name, facility_type, branch_id, latitude, longitude,
+                operational_status, auto_report_enabled, mapping_verified_at
+           FROM facilities`
+      );
+      activeFacilities = facRes.rows || [];
+    } catch {
+      // In offline or non-DB testing
+    }
+
+    const affectedFacilitiesByBranch = new Map<string, AffectedStoreSummary[]>();
+
+    for (const facility of activeFacilities) {
+      if (
+        facility.latitude == null ||
+        facility.longitude == null ||
+        !Number.isFinite(Number(facility.latitude)) ||
+        !Number.isFinite(Number(facility.longitude))
+      ) {
+        continue;
+      }
+
+      const distanceKm = calculateHaversineDistance(
+        eq.latitude,
+        eq.longitude,
+        Number(facility.latitude),
+        Number(facility.longitude)
+      );
+
+      if (isNaN(distanceKm) || distanceKm > monitoringRadiusKm) continue;
+
+      const branchKey = facility.branch_id?.trim();
+      if (!branchKey) {
+        console.warn(`[Autonomous Daemon] Unmapped facility detected: ${facility.code} (${facility.name}) has no operational branch mapping. Flagging and excluding from branch-specific notification dispatch.`);
+        continue;
+      }
+
+      const isVerifiedActive =
+        facility.operational_status === 'ACTIVE' &&
+        facility.auto_report_enabled === true &&
+        Boolean(facility.mapping_verified_at);
+
+      if (!isVerifiedActive) continue;
+
+      const facilityStatus = distanceKm <= priorityRadiusKm ? 'PRIORITY_MONITOR' : 'MONITOR';
+      const facilitySummary: AffectedStoreSummary = {
+        kode_toko: facility.code,
+        nama_toko: facility.name,
+        cabang: branchKey,
+        distance_km: Math.round(distanceKm * 10) / 10,
+        status: facilityStatus,
+        fr_type: facility.facility_type,
+      };
+
+      if (!affectedFacilitiesByBranch.has(branchKey)) {
+        affectedFacilitiesByBranch.set(branchKey, []);
+      }
+      affectedFacilitiesByBranch.get(branchKey)!.push(facilitySummary);
+
+      if (distanceKm <= priorityRadiusKm) {
+        const reportHash = crypto
+          .createHash('sha256')
+          .update(`${eq.id}:FACILITY:${facility.id}`)
+          .digest('hex')
+          .slice(0, 16)
+          .toUpperCase();
+
+        try {
+          const res = await ensureEarthquakeReport({
+            reportId: `LAP-EQ-FAC-${reportHash}`,
+            canonicalEventId: eq.id,
+            eventOccurredAt: new Date(eventTimestamp),
+            source: eq.source || 'BMKG/USGS',
+            location: {
+              kind: 'FACILITY',
+              id: facility.id,
+              code: facility.code,
+              name: facility.name,
+              type: facility.facility_type,
+              branch: branchKey,
+              latitude: Number(facility.latitude),
+              longitude: Number(facility.longitude),
+            },
+          });
+          if (res.outcome === 'created') {
+            createdReports++;
+            console.log(`[Autonomous Daemon] Auto-report created: LAP-EQ-FAC-${reportHash} for facility ${facility.code} (${facility.name})`);
+          }
+        } catch (facReportErr) {
+          console.error(`[Autonomous Daemon] Error creating report for facility ${facility.code}:`, facReportErr);
+        }
+      }
+    }
+
+    if (isAlertEligible) {
+      for (const [branch, facilities] of affectedFacilitiesByBranch) {
+        facilities.sort((a, b) => a.distance_km - b.distance_km);
+        const priorityCount = facilities.filter((item) => item.status === 'PRIORITY_MONITOR').length;
+        if (priorityCount > 0) {
+          try {
+            await recordNotificationLog({
+              disasterId: eq.id,
+              canonicalEventId: eq.id,
+              disasterType: 'earthquake',
+              channel: 'pwa_only',
+              branch,
+              recipientGroup: 'BES',
+              category: 'ASSIGNMENT',
+              recipientContact: `in-app://bes/${branch.toLowerCase().replace(/\s+/g, '-')}`,
+              title: `Pemeriksaan fasilitas · Gempa M ${eq.magnitude}`,
+              message: `${facilities.length} fasilitas perlu diperiksa; ${priorityCount} berada di Zona Prioritas Pantau. Buka Shared Queue untuk mengambil PIC.`,
+              affectedStores: facilities,
+            });
+          } catch (besErr) {
+            console.warn('[Autonomous Daemon] Error recording BES notification log:', besErr);
+          }
+        }
+      }
+    }
+
+    // 2. Evaluate Stores (21,550 master stores)
     const branchStoresMap = new Map<string, AffectedStoreSummary[]>();
     const priorityStoresByBranch = new Map<string, AffectedStoreSummary[]>();
 
@@ -584,6 +727,15 @@ export async function processEarthquakeAlertsAndReports(
             disasterType: 'earthquake',
             reportOrigin: 'automatic_earthquake',
             earthquakeEventId: eq.id,
+            canonicalEventId: eq.id,
+            locationKind: 'STORE',
+            locationId: store.kode_toko,
+            locationCodeSnapshot: store.kode_toko,
+            locationNameSnapshot: store.nama_toko,
+            locationTypeSnapshot: store.fr_type || 'Reguler',
+            latitudeSnapshot: store.latitude,
+            longitudeSnapshot: store.longitude,
+            branchSnapshot: branch,
             earthquakeSource: eq.source || 'BMKG/USGS',
             earthquakeProvenance: isBackfill
               ? `Estimasi area dampak berdasarkan data gempa ${eq.source || 'BMKG/USGS'} dan perhitungan SPARTA (Pemulihan pasca-downtime, usia event: ${Math.round(eventAgeMinutes)}m).`

@@ -1,5 +1,7 @@
 # ============================================================================
-# SPARTA SIAGA — Dokploy / Docker Compose Deployment Contract
+# SPARTA SIAGA — Dokploy / Docker Compose Production Deployment Contract
+# Architecture: Single Image (GHCR), Web App + Autonomous Earthquake Worker
+# Domain: sparta-alfamart.web.id | Port: 3004 | Total CPU Limit: 2.0 CPUs
 # ============================================================================
 
 services:
@@ -7,7 +9,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sparta-siaga:production
+    image: ${SPARTA_IMAGE:-ghcr.io/buildingprocess25/sparta_siaga:latest}
     container_name: sparta-siaga-app
     restart: unless-stopped
     ports:
@@ -20,15 +22,39 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       SPARTA_INTERNAL_WORKER_SECRET: ${SPARTA_INTERNAL_WORKER_SECRET}
-      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-require}
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-disable}
       DATABASE_SSL_CA_BASE64: ${DATABASE_SSL_CA_BASE64:-}
-      APP_BASE_URL: ${APP_BASE_URL:-}
+      APP_BASE_URL: ${APP_BASE_URL:-https://sparta-alfamart.web.id}
       SPARTA_API_URL: ${SPARTA_API_URL:-}
       SPARTA_LOGIN_URL: ${SPARTA_LOGIN_URL:-}
     volumes:
       - sparta_private_storage:/app/storage
+    networks:
+      - sparta_network
     security_opt:
       - no-new-privileges:true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 2048M
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sparta-app.rule=Host(`sparta-alfamart.web.id`)"
+      - "traefik.http.routers.sparta-app.entrypoints=websecure"
+      - "traefik.http.routers.sparta-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.sparta-app.loadbalancer.server.port=3004"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3004/api/health/live').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
       interval: 30s
@@ -36,6 +62,53 @@ services:
       retries: 3
       start_period: 15s
 
+  worker:
+    image: ${SPARTA_IMAGE:-ghcr.io/buildingprocess25/sparta_siaga:latest}
+    container_name: sparta-siaga-worker
+    restart: unless-stopped
+    command: ["node", "node_modules/tsx/dist/cli.mjs", "scripts/worker-daemon.ts"]
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PRIVATE_STORAGE_ROOT: /app/storage
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      SPARTA_INTERNAL_WORKER_SECRET: ${SPARTA_INTERNAL_WORKER_SECRET}
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-disable}
+      DATABASE_SSL_CA_BASE64: ${DATABASE_SSL_CA_BASE64:-}
+      APP_BASE_URL: ${APP_BASE_URL:-https://sparta-alfamart.web.id}
+      SPARTA_API_URL: ${SPARTA_API_URL:-}
+      SPARTA_LOGIN_URL: ${SPARTA_LOGIN_URL:-}
+    volumes:
+      - sparta_private_storage:/app/storage
+    networks:
+      - sparta_network
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 1024M
+        reservations:
+          cpus: "0.10"
+          memory: 256M
+
 volumes:
   sparta_private_storage:
     name: sparta_private_storage
+
+networks:
+  sparta_network:
+    name: sparta_network
+    driver: bridge

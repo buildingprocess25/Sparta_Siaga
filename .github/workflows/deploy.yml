@@ -1,0 +1,134 @@
+name: Production Build & Deploy Pipeline
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Semantic Version or Release Tag (e.g. v1.0.0)'
+        required: false
+        default: 'latest'
+      trigger_deploy:
+        description: 'Trigger Dokploy deployment webhook to cutover production?'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: buildingprocess25/sparta_siaga
+
+jobs:
+  validate:
+    name: Code Validation & Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm 11
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11.28.3'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        run: pnpm typecheck
+
+      - name: Architecture Web/Worker separation test
+        run: node scripts/test-web-worker-separation.ts
+
+      - name: Production packaging artifact audit
+        run: pnpm exec tsx scripts/test-production-packaging-clean.ts
+
+      - name: Validate database migrations
+        run: node scripts/migrate-production.mjs --validate-only
+
+      - name: Validate Next.js production build
+        run: pnpm build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_ENV: production
+          JWT_SECRET: "ci_build_validation_jwt_secret_must_be_32_chars_long"
+          SPARTA_INTERNAL_WORKER_SECRET: "ci_build_validation_worker_secret_must_be_32_chars"
+          PRIVATE_STORAGE_ROOT: "/tmp/storage"
+          DATABASE_URL: "postgresql://ci_dummy:ci_dummy@localhost:5432/ci_dummy"
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: "BAh5v_2YEu78XM7VZoMKmUe0QNs2GiKb5B4fYtn14-ChYW1EpzbvbgORAat1Qux5cr2H_5lxya_UOEUdg7JcW7E"
+          VAPID_PRIVATE_KEY: "ci_validation_key_mock_for_build_step_only_32_chars"
+          VAPID_SUBJECT: "mailto:ci@alfamart.co.id"
+
+  build-and-push:
+    name: Build & Push GHCR Production Image
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.event_name == 'release' }}
+            type=raw,value=${{ inputs.release_version }},enable=${{ inputs.release_version != '' && inputs.release_version != 'latest' }}
+
+      - name: Build and push production image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-dokploy:
+    name: Dokploy Production Cutover
+    needs: build-and-push
+    # Protected release approval gate: requires production environment approval
+    if: ${{ github.event_name == 'release' || inputs.trigger_deploy == true }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://sparta-alfamart.web.id
+    steps:
+      - name: Trigger Dokploy Deployment Webhook
+        run: |
+          if [ -z "${{ secrets.DOKPLOY_WEBHOOK }}" ]; then
+            echo "::error::DOKPLOY_WEBHOOK secret is not configured in GitHub repository secrets."
+            exit 1
+          fi
+          echo "Triggering Dokploy production deployment webhook..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.DOKPLOY_WEBHOOK }}")
+          echo "Dokploy Webhook HTTP Response: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Production deployment webhook triggered successfully."
+          else
+            echo "::error::Failed to trigger Dokploy webhook. HTTP status: $HTTP_STATUS"
+            exit 1
+          fi

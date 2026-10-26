@@ -286,6 +286,7 @@ export interface IncidentRecord {
   reportOrigin?: ReportOrigin | null;
   reporter?: IncidentReporter;   // Source of truth original pelapor
   earthquakeEventId?: string;    // Linked ke earthquake event ID jika auto
+  canonicalEventId?: string;     // Canonical event ID for cross-source reconciliation
   earthquakeSource?: string;     // "BMKG" | "USGS"
   earthquakeProvenance?: string; // Label provenance sesuai prinsip semantik
 
@@ -300,6 +301,8 @@ export interface IncidentRecord {
   locationCodeSnapshot?: string;
   locationNameSnapshot?: string;
   locationTypeSnapshot?: string;
+  latitudeSnapshot?: number | null;
+  longitudeSnapshot?: number | null;
   branchSnapshot?: string;
   primaryPicUserId?: string;
   primaryPicClaimedAt?: string;

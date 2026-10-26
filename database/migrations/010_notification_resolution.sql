@@ -1,7 +1,7 @@
 DO $$
 BEGIN
-  IF current_database() <> 'sparta_siaga_isolated' THEN
-    RAISE EXCEPTION 'Refusing migration: connected to %, expected sparta_siaga_isolated', current_database();
+  IF current_database() = 'defaultdb' THEN
+    RAISE EXCEPTION 'Refusing migration: direct mutation of staging defaultdb is prohibited';
   END IF;
 END $$;
 

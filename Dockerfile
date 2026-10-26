@@ -10,7 +10,7 @@ WORKDIR /app
 
 # 1. Dependencies Stage
 FROM base AS deps
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* .npmrc* ./
 RUN pnpm install --frozen-lockfile
 
 # 2. Builder Stage
@@ -54,8 +54,14 @@ RUN groupadd --system --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder /app/database ./database
+COPY --from=builder /app/data ./data
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/types ./types
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/scripts/migrate-production.mjs ./scripts/migrate-production.mjs
+COPY --from=builder /app/scripts/worker-daemon.ts ./scripts/worker-daemon.ts
 COPY --from=builder /app/package.json ./package.json
 
 # Create private storage volume directory and grant ownership
