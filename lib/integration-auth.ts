@@ -12,21 +12,55 @@ export interface IntegrationClientContext {
 // In-memory rate-limiter: client key -> timestamps[]
 const rateLimitMap = new Map<string, number[]>();
 
-// Known default credentials for local & isolated environments
-export const KNOWN_INTEGRATION_KEYS = {
-  SPARTA_MAINTENANCE: {
-    appName: "sparta_maintenance",
-    apiKey: "key_sparta_maint_prod_2026",
-    secret: "sec_maint_9812470123",
-    scope: "TOKO_ONLY" as const,
-  },
-  ENGINEERING_SUPPORT: {
-    appName: "engineering_support",
-    apiKey: "key_sparta_eng_prod_2026",
-    secret: "sec_eng_5518293041",
-    scope: "DC_ONLY" as const,
-  },
-};
+export function getIntegrationCredentialsConfig() {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    SPARTA_MAINTENANCE: {
+      appName: "sparta_maintenance",
+      apiKey:
+        process.env.SPARTA_MAINTENANCE_API_KEY?.trim() ||
+        (isProd ? "" : "key_sparta_maint_dev_local"),
+      secret:
+        process.env.SPARTA_MAINTENANCE_API_SECRET?.trim() ||
+        (isProd ? "" : "sec_maint_dev_secret_local_only"),
+      scope: "TOKO_ONLY" as const,
+    },
+    ENGINEERING_SUPPORT: {
+      appName: "engineering_support",
+      apiKey:
+        process.env.ENGINEERING_SUPPORT_API_KEY?.trim() ||
+        (isProd ? "" : "key_sparta_eng_dev_local"),
+      secret:
+        process.env.ENGINEERING_SUPPORT_API_SECRET?.trim() ||
+        (isProd ? "" : "sec_eng_dev_secret_local_only"),
+      scope: "DC_ONLY" as const,
+    },
+  };
+}
+
+export const getKnownIntegrationKeys = getIntegrationCredentialsConfig;
+
+export const KNOWN_INTEGRATION_KEYS = new Proxy(
+  {} as ReturnType<typeof getIntegrationCredentialsConfig>,
+  {
+    get(_target, prop: keyof ReturnType<typeof getIntegrationCredentialsConfig>) {
+      return getIntegrationCredentialsConfig()[prop];
+    },
+    ownKeys() {
+      return Object.keys(getIntegrationCredentialsConfig());
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      return {
+        enumerable: true,
+        configurable: true,
+        value:
+          getIntegrationCredentialsConfig()[
+            prop as keyof ReturnType<typeof getIntegrationCredentialsConfig>
+          ],
+      };
+    },
+  }
+);
 
 let keysSeeded = false;
 
@@ -68,8 +102,9 @@ export async function ensureIntegrationSchemaAndSeed(): Promise<void> {
       ALTER TABLE incidents ADD COLUMN IF NOT EXISTS external_synced_at TIMESTAMPTZ;
     `);
 
-    // Seed default keys if not present
+    // Seed configured keys if not present
     for (const keyDef of Object.values(KNOWN_INTEGRATION_KEYS)) {
+      if (!keyDef.apiKey || !keyDef.secret) continue;
       const existing = await pool.query(
         "SELECT id FROM integration_api_keys WHERE api_key = $1",
         [keyDef.apiKey]
@@ -185,9 +220,18 @@ export async function authenticateIntegrationRequest(
     };
   } catch (err: any) {
     console.error("[IntegrationAuth] DB error:", err);
-    // In-memory fallback if database query temporarily fails
+    // In production, reject authentication immediately without in-memory fallback
+    if (process.env.NODE_ENV === "production") {
+      return {
+        success: false,
+        status: 500,
+        error: "Kesalahan internal otentikasi integrasi.",
+      };
+    }
+
+    // Non-production (dev/test) in-memory fallback if database query temporarily fails
     for (const keyDef of Object.values(KNOWN_INTEGRATION_KEYS)) {
-      if (keyDef.apiKey === apiKey && keyDef.secret === apiSecret) {
+      if (keyDef.apiKey && keyDef.secret && keyDef.apiKey === apiKey && keyDef.secret === apiSecret) {
         return {
           success: true,
           client: {

@@ -1,4 +1,5 @@
 import { SourceHealth } from "@/types/disaster";
+import { getExternalApiConfig } from "./runtime-config";
 
 export interface PetabencanaReport {
   id: string;
@@ -118,10 +119,12 @@ export async function fetchPetabencanaReports(): Promise<PetabencanaResult> {
   const now = new Date().toISOString();
   try {
     // Try 48-hour window first; if low count, fallback to 7 days for stable monitoring
+    const apiConfig = getExternalApiConfig();
+    const reportsBaseUrl = apiConfig.petaBencana.reportsUrl.replace(/\/$/, "");
     const urls = [
-      "https://data.petabencana.id/reports?timeperiod=172800",
-      "https://data.petabencana.id/reports?timeperiod=604800",
-      "https://data.petabencana.id/reports",
+      `${reportsBaseUrl}?timeperiod=172800`,
+      `${reportsBaseUrl}?timeperiod=604800`,
+      reportsBaseUrl,
     ];
 
     let items: any[] = [];

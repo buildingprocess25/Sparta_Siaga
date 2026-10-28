@@ -1,4 +1,5 @@
 import { WeatherResponse, CurrentWeather, DailyForecast } from "@/types/weather";
+import { getExternalApiConfig } from "./runtime-config";
 
 const weatherCache = new Map<string, { data: WeatherResponse; timestamp: number }>();
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
@@ -70,7 +71,8 @@ export async function fetchStoreWeather(
   };
 
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,uv_index_max&timezone=Asia%2FJakarta`;
+    const apiConfig = getExternalApiConfig();
+    const url = `${apiConfig.openMeteo.forecastUrl}?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,uv_index_max&timezone=Asia%2FJakarta`;
     const res = await fetch(url, { next: { revalidate: 600 } });
 
     if (!res.ok) {

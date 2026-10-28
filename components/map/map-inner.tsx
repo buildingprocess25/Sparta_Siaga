@@ -726,19 +726,34 @@ export default function MapInner({
   // 100% Watermark-Free Basemap Tile URLs
   const tileUrl = useMemo(() => {
     if (basemap === "esri-dark") {
-      return "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+      return (
+        process.env.NEXT_PUBLIC_MAP_TILE_ESRI_DARK_URL ||
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+      );
     }
     if (basemap === "esri-light") {
-      return "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+      return (
+        process.env.NEXT_PUBLIC_MAP_TILE_ESRI_LIGHT_URL ||
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+      );
     }
-    return "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    return (
+      process.env.NEXT_PUBLIC_MAP_TILE_OSM_URL ||
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    );
   }, [basemap]);
 
   const tileAttribution = useMemo(() => {
     if (basemap === "osm") {
-      return '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+      return (
+        process.env.NEXT_PUBLIC_MAP_TILE_OSM_ATTRIBUTION ||
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      );
     }
-    return 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ';
+    return (
+      process.env.NEXT_PUBLIC_MAP_TILE_ESRI_ATTRIBUTION ||
+      'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+    );
   }, [basemap]);
 
   const mapMaxZoom = basemap === "osm" ? 18 : 16;

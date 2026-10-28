@@ -1,4 +1,5 @@
 import { DataFreshness } from "@/types/disaster";
+import { getExternalApiConfig } from "./runtime-config";
 
 export interface StoreFloodInfo {
   riskLevel: "normal" | "waspada" | "siaga" | "bahaya" | "unknown";
@@ -24,7 +25,8 @@ export async function fetchStoreFloodRisk(lat: number, lng: number): Promise<Sto
 
   try {
     // Queries Open-Meteo Flood API (Copernicus GloFAS model)
-    const url = `https://flood-api.open-meteo.com/v1/flood?latitude=${lat}&longitude=${lng}&daily=river_discharge&forecast_days=3`;
+    const apiConfig = getExternalApiConfig();
+    const url = `${apiConfig.openMeteo.floodUrl}?latitude=${lat}&longitude=${lng}&daily=river_discharge&forecast_days=3`;
     const res = await fetch(url, { next: { revalidate: 900 } });
 
     if (!res.ok) {

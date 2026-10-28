@@ -1,6 +1,7 @@
 import { Earthquake, DisasterFeedResponse, SourceHealth, DataFreshness } from "@/types/disaster";
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from "./haversine";
 import { dbUpsertEarthquakeEvent, dbGetRecentEarthquakeEvents } from "./earthquake-db";
+import { getExternalApiConfig } from "./runtime-config";
 
 // Cache in-memory for 30 seconds
 let cachedDisasters: DisasterFeedResponse | null = null;
@@ -236,7 +237,9 @@ export function validateAndParseBmkgRecord(g: any): Earthquake | null {
     potensiText: g.Potensi || (hasTsunami ? "Berpotensi Tsunami" : undefined),
     feltArea: g.Dirasakan || undefined,
     felt: g.Dirasakan || undefined,
-    shakemapUrl: g.Shakemap ? `https://data.bmkg.go.id/DataMKG/TEWS/${g.Shakemap}` : undefined,
+    shakemapUrl: g.Shakemap
+      ? `${getExternalApiConfig().bmkg.shakemapBaseUrl.replace(/\/$/, "")}/${g.Shakemap}`
+      : undefined,
     isSignificant: mag >= 5.5,
     priorityRadiusKm,
     monitoringRadiusKm,
@@ -409,9 +412,11 @@ export async function fetchDisasterFeed(forceRefresh: boolean = false): Promise<
     }
   };
 
+  const apiConfig = getExternalApiConfig();
+
   // 1. Fetch BMKG AutoGempa (Gempa M5.0+ terbaru / berpotensi tsunami)
   try {
-    const bmkgAutoRes = await fetch("https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json", {
+    const bmkgAutoRes = await fetch(apiConfig.bmkg.autogempaUrl, {
       next: { revalidate: 30 },
       headers: { "User-Agent": "SpartaSiaga/1.0" },
     });
@@ -430,7 +435,7 @@ export async function fetchDisasterFeed(forceRefresh: boolean = false): Promise<
 
   // 2. Fetch BMKG 15 Gempa Terkini (M >= 5.0)
   try {
-    const bmkgListRes = await fetch("https://data.bmkg.go.id/DataMKG/TEWS/gempaterkini.json", {
+    const bmkgListRes = await fetch(apiConfig.bmkg.gempaterkiniUrl, {
       next: { revalidate: 60 },
       headers: { "User-Agent": "SpartaSiaga/1.0" },
     });
@@ -456,7 +461,7 @@ export async function fetchDisasterFeed(forceRefresh: boolean = false): Promise<
 
   // 3. Fetch BMKG 15 Gempa Dirasakan (Includes smaller felt earthquakes M < 5.0)
   try {
-    const bmkgFeltRes = await fetch("https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.json", {
+    const bmkgFeltRes = await fetch(apiConfig.bmkg.gempadirasakanUrl, {
       next: { revalidate: 60 },
       headers: { "User-Agent": "SpartaSiaga/1.0" },
     });
@@ -497,7 +502,7 @@ export async function fetchDisasterFeed(forceRefresh: boolean = false): Promise<
   // 4. Fetch USGS Real-time Feed (M4.5+ in the past 7 days to cover full 72h window)
   try {
     const usgsRes = await fetch(
-      "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson",
+      apiConfig.usgs.earthquakeFeedUrl,
       {
         next: { revalidate: 60 },
         headers: { "User-Agent": "SpartaSiaga/1.0" },

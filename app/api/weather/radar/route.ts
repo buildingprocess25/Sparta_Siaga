@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getExternalApiConfig } from "@/lib/runtime-config";
 
 let cachedRadar: {
   tileUrl: string;
@@ -16,7 +17,8 @@ export async function GET() {
   }
 
   try {
-    const res = await fetch("https://api.rainviewer.com/public/weather-maps.json", {
+    const apiConfig = getExternalApiConfig();
+    const res = await fetch(apiConfig.rainViewer.radarMapsUrl, {
       next: { revalidate: 300 },
       headers: { "User-Agent": "SpartaSiaga/1.0" },
     });
@@ -26,7 +28,7 @@ export async function GET() {
       const pastRadars = data?.radar?.past;
       if (Array.isArray(pastRadars) && pastRadars.length > 0) {
         const latest = pastRadars[pastRadars.length - 1];
-        const host = data.host || "https://tilecache.rainviewer.com";
+        const host = data.host || apiConfig.rainViewer.tileHostFallback;
         const tileUrl = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
 
         const date = new Date(latest.time * 1000);

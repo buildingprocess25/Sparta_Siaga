@@ -27,6 +27,7 @@ import { ReportAffectedStore } from '@/types/incident';
 import { Store } from '@/types/store';
 import { Earthquake } from '@/types/disaster';
 import { dispatchEarthquakePushNotifications } from './web-push-service';
+import { getExternalApiConfig } from './runtime-config';
 
 import { 
   syncStoresFromGoogleSheets, 
@@ -203,7 +204,7 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
         // Query Open-Meteo multi-coordinates for all branch centroids
         const lats = branches.map(b => b.lat).join(',');
         const lons = branches.map(b => b.lon).join(',');
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=precipitation,weather_code`;
+        const weatherUrl = `${getExternalApiConfig().openMeteo.forecastUrl}?latitude=${lats}&longitude=${lons}&current=precipitation,weather_code`;
 
         const weatherRes = await fetch(weatherUrl, {
           next: { revalidate: 300 },

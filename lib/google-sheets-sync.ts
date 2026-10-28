@@ -4,8 +4,11 @@ import crypto from "crypto";
 import { getDbPool } from "./db";
 import { Store } from "@/types/store";
 
-export const GOOGLE_SHEET_ID = "1wvweYqTkS4PA1WKXARRn-vubv7qn6lqISHiSdKSZKcg";
-export const GOOGLE_SHEET_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
+export const DEFAULT_GOOGLE_SHEET_ID = "1wvweYqTkS4PA1WKXARRn-vubv7qn6lqISHiSdKSZKcg";
+export const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID?.trim() || DEFAULT_GOOGLE_SHEET_ID;
+export const GOOGLE_SHEET_EXPORT_URL =
+  process.env.GOOGLE_SHEET_EXPORT_URL?.trim() ||
+  `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`;
 
 export interface StoreSyncHistoryRecord {
   id: string;
@@ -161,7 +164,11 @@ export async function fetchPrivateGoogleSheetsCSV(
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(GOOGLE_SHEET_EXPORT_URL, {
+    const targetExportUrl =
+      sheetId === GOOGLE_SHEET_ID
+        ? GOOGLE_SHEET_EXPORT_URL
+        : `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+    const res = await fetch(targetExportUrl, {
       signal: controller.signal,
       redirect: "follow",
       headers: { Accept: "text/csv, application/csv, text/plain" },
