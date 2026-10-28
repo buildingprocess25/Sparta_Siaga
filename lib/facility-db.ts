@@ -1,6 +1,8 @@
+
 import type { PoolClient } from "pg";
 
-import { assertIsolatedDatabase } from "./database-safety";
+import { ISOLATED_DATABASE_NAME } from "./database-safety";
+
 import type {
   FacilityImportRecord,
   FacilityParseResult,
@@ -40,13 +42,20 @@ function changedFields(
     ["latitude", incoming.latitude],
     ["longitude", incoming.longitude],
   ];
+
   return Object.fromEntries(
     pairs
       .filter(([key, value]) => existing[key] !== value)
-      .map(([key, value]) => [key, { from: existing[key], to: value }])
+      .map(([key, value]) => [
+        key,
+        { from: existing[key], to: value },
+      ])
   );
 }
 
+/**
+ * Preview facility import without modifying database records.
+ */
 export async function previewFacilityImport(
   client: Pick<PoolClient, "query">,
   source: FacilitySourceAdapter,
@@ -58,16 +67,27 @@ export async function previewFacilityImport(
       WHERE code = ANY($1::text[])`,
     [parsed.records.map((record) => record.code)]
   );
-  const existingByCode = new Map(rows.map((row) => [row.code, row]));
+
+  const existingByCode = new Map(
+    rows.map((row) => [row.code, row])
+  );
+
   let newCount = 0;
   let changedCount = 0;
   let unchangedCount = 0;
 
   for (const record of parsed.records) {
     const existing = existingByCode.get(record.code);
-    if (!existing) newCount += 1;
-    else if (Object.keys(changedFields(existing, record)).length > 0) changedCount += 1;
-    else unchangedCount += 1;
+
+    if (!existing) {
+      newCount += 1;
+    } else if (
+      Object.keys(changedFields(existing, record)).length > 0
+    ) {
+      changedCount += 1;
+    } else {
+      unchangedCount += 1;
+    }
   }
 
   return {
@@ -82,22 +102,70 @@ export async function previewFacilityImport(
   };
 }
 
+/**
+ * Apply facility import using a single database transaction.
+ *
+ * Allowed targets:
+ * - Production: siaga
+ * - Development/test: sparta_siaga_isolated
+ *
+ * All other databases are rejected.
+ */
 export async function applyFacilityImport(
   client: PoolClient,
   preview: FacilityImportPreview,
   actorUserId: string | null = null
 ): Promise<string> {
   await client.query("BEGIN");
+
   try {
-    await assertIsolatedDatabase(client);
-    if (preview.invalidCount > 0) {
-      throw new Error(`Import dibatalkan: ${preview.invalidCount} baris invalid.`);
+    // Verify the actual connected PostgreSQL database.
+    const databaseResult = await client.query<{
+      database_name: string;
+    }>(
+      "SELECT current_database() AS database_name"
+    );
+
+    const databaseName =
+      databaseResult.rows[0]?.database_name;
+
+    const isTestDatabase =
+      databaseName === ISOLATED_DATABASE_NAME &&
+      process.env.NODE_ENV !== "production";
+
+    const isProductionDatabase =
+      databaseName === "siaga" &&
+      process.env.NODE_ENV === "production";
+
+    if (!isTestDatabase && !isProductionDatabase) {
+      throw new Error(
+        `Facility import ditolak: database "${databaseName ?? "unknown"}" tidak diizinkan.`
+      );
     }
+
+    // Refuse import when source contains invalid records.
+    if (preview.invalidCount > 0) {
+      throw new Error(
+        `Import dibatalkan: ${preview.invalidCount} baris invalid.`
+      );
+    }
+
+    // Create import execution history.
     const runResult = await client.query<{ id: string }>(
       `INSERT INTO facility_import_runs (
-         source_name, mode, total_count, new_count, changed_count,
-         unchanged_count, invalid_count, invalid_rows, executed_by
-       ) VALUES ($1, 'APPLY', $2, $3, $4, $5, $6, $7::jsonb, $8)
+         source_name,
+         mode,
+         total_count,
+         new_count,
+         changed_count,
+         unchanged_count,
+         invalid_count,
+         invalid_rows,
+         executed_by
+       )
+       VALUES (
+         $1, 'APPLY', $2, $3, $4, $5, $6, $7::jsonb, $8
+       )
        RETURNING id`,
       [
         preview.sourceName,
@@ -110,23 +178,54 @@ export async function applyFacilityImport(
         actorUserId,
       ]
     );
+
     const importRunId = runResult.rows[0].id;
 
+    // Insert or update facility records.
     for (const record of preview.records) {
-      const existingResult = await client.query<ExistingFacility>(
-        `SELECT id, code, name, initials, facility_type, latitude, longitude
-           FROM facilities WHERE code = $1 FOR UPDATE`,
-        [record.code]
-      );
+      const existingResult =
+        await client.query<ExistingFacility>(
+          `SELECT
+             id,
+             code,
+             name,
+             initials,
+             facility_type,
+             latitude,
+             longitude
+           FROM facilities
+           WHERE code = $1
+           FOR UPDATE`,
+          [record.code]
+        );
+
       const existing = existingResult.rows[0];
-      const changes = existing ? changedFields(existing, record) : { created: { from: null, to: record.code } };
+
+      const changes = existing
+        ? changedFields(existing, record)
+        : {
+            created: {
+              from: null,
+              to: record.code,
+            },
+          };
 
       const upsert = await client.query<{ id: string }>(
         `INSERT INTO facilities (
-           code, name, initials, facility_type, latitude, longitude,
-           source_name, source_synced_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-         ON CONFLICT (code) DO UPDATE SET
+           code,
+           name,
+           initials,
+           facility_type,
+           latitude,
+           longitude,
+           source_name,
+           source_synced_at
+         )
+         VALUES (
+           $1, $2, $3, $4, $5, $6, $7, NOW()
+         )
+         ON CONFLICT (code)
+         DO UPDATE SET
            name = EXCLUDED.name,
            initials = EXCLUDED.initials,
            facility_type = EXCLUDED.facility_type,
@@ -147,15 +246,28 @@ export async function applyFacilityImport(
         ]
       );
 
-      if (!existing || Object.keys(changes).length > 0) {
+      // Preserve audit history for new or modified facilities.
+      if (
+        !existing ||
+        Object.keys(changes).length > 0
+      ) {
         await client.query(
           `INSERT INTO facility_audit_logs (
-             facility_id, import_run_id, action, changed_fields, actor_user_id
-           ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+             facility_id,
+             import_run_id,
+             action,
+             changed_fields,
+             actor_user_id
+           )
+           VALUES (
+             $1, $2, $3, $4::jsonb, $5
+           )`,
           [
             upsert.rows[0].id,
             importRunId,
-            existing ? "SOURCE_UPDATE" : "SOURCE_CREATE",
+            existing
+              ? "SOURCE_UPDATE"
+              : "SOURCE_CREATE",
             JSON.stringify(changes),
             actorUserId,
           ]
@@ -163,9 +275,12 @@ export async function applyFacilityImport(
       }
     }
 
+    // Commit only after all records are processed.
     await client.query("COMMIT");
+
     return importRunId;
   } catch (error) {
+    // Roll back all changes if any step fails.
     await client.query("ROLLBACK");
     throw error;
   }
