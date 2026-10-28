@@ -21,12 +21,13 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Setup pnpm 11
-        uses: pnpm/action-setup@v4
+        uses: pnpm/setup@v2
         with:
-          version: '11.28.3'
+          version: "11.28.3"
+          install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
