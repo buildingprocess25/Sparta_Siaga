@@ -24,7 +24,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_sysadmin_01",
     nik: "ADM0001",
-    name: "Ahmad Fauzi",
+    name: "System Administrator",
     email: "sysadmin@sparta-siaga.local",
     systemRole: "ADMIN",
     businessRole: null,
@@ -38,7 +38,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_01",
     nik: "HO0001",
-    name: "Budi Santoso",
+    name: "HO Admin 01",
     email: "ho.admin.01@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -51,7 +51,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_02",
     nik: "HO0002",
-    name: "Siti Rahmawati",
+    name: "HO Admin 02",
     email: "ho.admin.02@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -64,7 +64,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_03",
     nik: "HO0003",
-    name: "Dimas Pratama",
+    name: "HO Admin 03",
     email: "ho.admin.03@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -77,7 +77,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_04",
     nik: "HO0004",
-    name: "Dewi Anggraini",
+    name: "HO Admin 04",
     email: "ho.admin.04@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -90,7 +90,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_05",
     nik: "HO0005",
-    name: "Rian Hidayat",
+    name: "HO Admin 05",
     email: "ho.admin.05@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -103,7 +103,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_06",
     nik: "HO0006",
-    name: "Nurul Hidayah",
+    name: "HO Admin 06",
     email: "ho.admin.06@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -116,7 +116,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_ho_admin_07",
     nik: "HO0007",
-    name: "Eko Prasetyo",
+    name: "HO Admin 07",
     email: "ho.admin.07@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "ho_admin",
@@ -130,7 +130,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_sm_ho_01",
     nik: "SM0001",
-    name: "Hendra Wijaya",
+    name: "SM HO 01",
     email: "sm.ho.01@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "sm_ho",
@@ -143,7 +143,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_sm_ho_02",
     nik: "SM0002",
-    name: "Ratna Sari",
+    name: "SM HO 02",
     email: "sm.ho.02@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "sm_ho",
@@ -157,7 +157,7 @@ export const APPROVED_HO_PILOT_ACCOUNTS: PilotAccountConfig[] = [
   {
     id: "usr_gm_ho_01",
     nik: "GM0001",
-    name: "Bambang Gunawan",
+    name: "GM HO 01",
     email: "gm.ho@sparta-siaga.local",
     systemRole: "USER",
     businessRole: "gm_ho",
