@@ -1,0 +1,97 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  validate:
+    name: Validate Code & Production Safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm 11
+        uses: pnpm/action-setup@v4
+        with:
+          version: '11.28.3'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        run: pnpm typecheck
+
+      - name: Architecture Web/Worker separation test
+        run: node scripts/test-web-worker-separation.ts
+
+      - name: Production packaging artifact audit
+        run: pnpm exec tsx scripts/test-production-packaging-clean.ts
+
+      - name: Validate database migrations
+        run: node scripts/migrate-production.mjs --validate-only
+
+  build-and-deploy:
+    name: Build, Push GHCR Image and Deploy Dokploy
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase Repository Name
+        run: echo "REPO=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO }}:latest
+            ghcr.io/${{ env.REPO }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
+            NEXT_PUBLIC_NOTIFICATIONS_ENABLED=${{ vars.NEXT_PUBLIC_NOTIFICATIONS_ENABLED }}
+            NEXT_PUBLIC_WEB_PUSH_ENABLED=${{ vars.NEXT_PUBLIC_WEB_PUSH_ENABLED }}
+            NEXT_PUBLIC_NOTIFICATION_GATE_REQUIRED=${{ vars.NEXT_PUBLIC_NOTIFICATION_GATE_REQUIRED }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+
+      - name: Trigger Dokploy Webhook
+        if: ${{ env.DOKPLOY_WEBHOOK != '' }}
+        env:
+          DOKPLOY_WEBHOOK: ${{ secrets.DOKPLOY_WEBHOOK }}
+        run: |
+          echo "Triggering Dokploy deployment webhook for image ghcr.io/${{ env.REPO }}:${{ github.sha }}..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${{ secrets.DOKPLOY_WEBHOOK }}")
+          echo "Dokploy Webhook response code: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Dokploy deployment triggered successfully."
+          else
+            echo "::warning::Dokploy webhook returned status $HTTP_STATUS"
+          fi
