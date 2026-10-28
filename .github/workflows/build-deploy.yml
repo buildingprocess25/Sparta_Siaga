@@ -48,6 +48,8 @@ jobs:
     name: Build, Push GHCR Image and Deploy Dokploy
     needs: validate
     runs-on: ubuntu-latest
+    env:
+      DOKPLOY_WEBHOOK: ${{ secrets.DOKPLOY_WEBHOOK }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
