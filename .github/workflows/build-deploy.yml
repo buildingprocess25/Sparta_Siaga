@@ -44,6 +44,9 @@ jobs:
       - name: Validate database migrations
         run: node scripts/migrate-production.mjs --validate-only
 
+      - name: Validate combined startup scripts
+        run: node --check scripts/supervise-web-worker.mjs && node --check scripts/health-combined.mjs
+
   build-and-deploy:
     name: Build, Push GHCR Image and Deploy Dokploy
     needs: validate

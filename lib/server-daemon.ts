@@ -197,9 +197,11 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
       dispatchedEarthquakeAlerts = result.dispatchedAlerts;
     }
 
-    // 4. Autonomous Weather / Flood Potential Evaluation across DC Branches
-    const branches = await getBranchCentroids();
-    if (branches.length > 0) {
+    // 4. Automatic weather notifications are disabled by default.
+    // Only earthquakes generate automatic operational reports.
+    const weatherAlertsEnabled = process.env.SPARTA_AUTONOMOUS_WEATHER_ALERTS === "true";
+    const branches = weatherAlertsEnabled ? await getBranchCentroids() : [];
+    if (weatherAlertsEnabled && branches.length > 0) {
       try {
         // Query Open-Meteo multi-coordinates for all branch centroids
         const lats = branches.map(b => b.lat).join(',');

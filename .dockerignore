@@ -52,6 +52,8 @@ playwright.config.ts
 scripts/*
 !scripts/migrate-production.mjs
 !scripts/worker-daemon.ts
+!scripts/supervise-web-worker.mjs
+!scripts/health-combined.mjs
 
 # UAT simulation & test uploads in public directory
 public/simulasi-uat

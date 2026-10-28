@@ -145,6 +145,16 @@ async function runPackagingVerification() {
       expectedInPackage: true,
       reason: 'Standalone autonomous daemon runner MUST be preserved in production packaging',
     },
+    {
+      id: 'PKG-21', category: 'PROD_SUPERVISOR',
+      target: 'scripts/supervise-web-worker.mjs', expectedInPackage: true,
+      reason: 'Combined supervisor ships in production',
+    },
+    {
+      id: 'PKG-22', category: 'PROD_HEALTH',
+      target: 'scripts/health-combined.mjs', expectedInPackage: true,
+      reason: 'Combined healthcheck ships in production',
+    },
     // 6. Documentation, QA reports, Graphify (Requirement 2)
     {
       id: 'PKG-12',

@@ -98,6 +98,9 @@ ENV TZ=UTC
 ENV PORT=3004
 ENV HOSTNAME=0.0.0.0
 ENV PRIVATE_STORAGE_ROOT=/app/storage
+# Enable explicitly after checking worker readiness
+ENV SPARTA_AUTONOMOUS_WORKER_ENABLED=false
+ENV SPARTA_AUTONOMOUS_WEATHER_ALERTS=false
 
 # Install ca-certificates and openssl in runner for external BMKG/USGS APIs and SSL
 RUN apt-get update -y && \
@@ -120,6 +123,8 @@ COPY --from=builder /app/types ./types
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/scripts/migrate-production.mjs ./scripts/migrate-production.mjs
 COPY --from=builder /app/scripts/worker-daemon.ts ./scripts/worker-daemon.ts
+COPY --from=builder /app/scripts/supervise-web-worker.mjs ./scripts/supervise-web-worker.mjs
+COPY --from=builder /app/scripts/health-combined.mjs ./scripts/health-combined.mjs
 COPY --from=builder /app/package.json ./package.json
 
 # Create private storage volume directory and grant ownership
@@ -129,7 +134,7 @@ USER nextjs
 
 EXPOSE 3004
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://localhost:' + (process.env.PORT || 3004) + '/api/health/live').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD ["node", "scripts/health-combined.mjs"]
 
-CMD ["node", "server.js"]
+CMD ["node", "scripts/supervise-web-worker.mjs"]

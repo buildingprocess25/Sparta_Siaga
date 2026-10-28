@@ -1,18 +1,44 @@
-import { startServerDaemon, stopServerDaemon } from '../lib/server-daemon';
+import { writeFile } from 'node:fs/promises';
+import { getDisasterCycleHealth, startServerDaemon, stopServerDaemon } from '../lib/server-daemon';
 import { closeDbPool } from '../lib/db';
 
 console.log('============================================================');
 console.log('🚀 [SPARTA SIAGA WORKER] Standalone Autonomous Worker starting...');
-console.log('   Service: 24/7 Earthquake (BMKG/USGS) & Weather (Open-Meteo) Monitoring');
+console.log('   Service: 24/7 Earthquake (BMKG/USGS) Monitoring (weather auto-alerts off)');
 console.log('============================================================');
 
 startServerDaemon();
+
+// The combined-container healthcheck reads this small, non-sensitive heartbeat.
+const heartbeatFile = process.env.SPARTA_WORKER_HEARTBEAT_FILE?.trim();
+async function writeWorkerHeartbeat() {
+  if (!heartbeatFile) return;
+  const cycle = getDisasterCycleHealth();
+  await writeFile(heartbeatFile, JSON.stringify({
+    pid: process.pid,
+    recordedAt: new Date().toISOString(),
+    lastStatus: cycle.lastStatus,
+    lastCycleStart: cycle.lastCycleStart,
+    lastCycleFinished: cycle.lastCycleFinished,
+    lastError: cycle.lastError ? 'cycle_error' : null,
+  }), { mode: 0o600 });
+}
+if (heartbeatFile) {
+  writeWorkerHeartbeat().catch((err) => console.error('[SPARTA WORKER] Heartbeat write failed:', err.message));
+}
+const heartbeatTimer = heartbeatFile
+  ? setInterval(() => {
+      writeWorkerHeartbeat().catch((err) => console.error('[SPARTA WORKER] Heartbeat write failed:', err.message));
+    }, 15000)
+  : null;
+heartbeatTimer?.unref();
 
 let isShuttingDown = false;
 
 async function handleShutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
   console.log(`\n[SPARTA SIAGA WORKER] Received ${signal}, starting graceful shutdown...`);
 
   try {
