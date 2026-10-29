@@ -336,7 +336,7 @@ export function ManualIncidentModal({
     if (photos.kiri.previewUrl) URL.revokeObjectURL(photos.kiri.previewUrl);
     if (photos.kanan.previewUrl) URL.revokeObjectURL(photos.kanan.previewUrl);
     if (photos.detailDC.previewUrl) URL.revokeObjectURL(photos.detailDC.previewUrl);
-    
+
     setPhotos({
       depan: emptyPhoto,
       dalam: emptyPhoto,
@@ -385,7 +385,7 @@ export function ManualIncidentModal({
 
         {/* Progress Bar */}
         <div className="h-1 w-full bg-slate-200 shrink-0">
-          <div 
+          <div
             className="h-full bg-[#D9272E] transition-all duration-300"
             style={{ width: `${(step / 3) * 100}%` }}
           />
@@ -393,11 +393,11 @@ export function ManualIncidentModal({
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-8">
-          
+
           {/* STEP 1: Pelapor & Lokasi & Kondisi */}
           {step === 1 && (
             <div className="space-y-6 max-w-2xl mx-auto animate-in fade-in slide-in-from-right-4">
-              
+
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <h4 className="text-xs font-bold text-[#123B6D] uppercase tracking-wider mb-4 flex items-center gap-2">
                   <User className="w-4 h-4" /> 1. Data Pelapor
@@ -443,10 +443,10 @@ export function ManualIncidentModal({
                 <h4 className="text-xs font-bold text-[#123B6D] uppercase tracking-wider mb-4 flex items-center gap-2">
                   <Building className="w-4 h-4" /> 2. Lokasi TKP
                 </h4>
-                
+
                 {/* Role-locked TKP Selector */}
                 <div className="grid grid-cols-2 gap-3 mb-5">
-                  <button 
+                  <button
                     type="button"
                     disabled={isBESRole}
                     onClick={() => {
@@ -471,7 +471,7 @@ export function ManualIncidentModal({
                       {isBESRole ? "Khusus Petugas BMS" : "Operasional BMS"}
                     </span>
                   </button>
-                  <button 
+                  <button
                     type="button"
                     disabled={isBMSRole}
                     onClick={() => {
@@ -636,7 +636,7 @@ export function ManualIncidentModal({
                 <h4 className="text-xs font-bold text-[#123B6D] uppercase tracking-wider mb-4 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" /> 3. Kategori Kejadian
                 </h4>
-                
+
                 <div className="mb-4">
                   <label className="block text-[10px] font-bold text-slate-500 mb-1">
                     Jenis Kejadian Utama:
@@ -656,26 +656,18 @@ export function ManualIncidentModal({
                 </div>
 
                 {disasterType === "earthquake" && (
-                  <div className="mb-4 p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl">
-                    <label className="block text-[11px] font-bold text-amber-900 mb-1 flex items-center gap-1.5">
-                      <Activity className="w-3.5 h-3.5 text-amber-600" />
-                      Kejadian Gempa Terkait (Opsional):
-                    </label>
-                    <select
-                      value={selectedEarthquakeEventId}
-                      onChange={(e) => setSelectedEarthquakeEventId(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-500"
-                    >
-                      <option value="">-- Tidak terkait kejadian pada daftar / Gempa Lokal --</option>
-                      {activeEarthquakes.map((eq) => (
-                        <option key={eq.id} value={eq.canonicalEventKey || eq.id}>
-                          [M{eq.magnitude}] {eq.title || eq.place} ({eq.time || eq.date})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-amber-800 mt-1.5 leading-snug">
-                      Pilih jika laporan ini berkaitan dengan salah satu kejadian gempa aktif dalam sistem untuk menghindari duplikasi laporan otomatis.
-                    </p>
+                  <div className="mb-4 p-3 bg-sky-50/80 border border-sky-200/80 rounded-xl">
+                    <div className="flex items-start gap-2">
+                      <Activity className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-bold text-sky-950">
+                          Rekonsiliasi Otomatis BMKG/USGS
+                        </p>
+                        <p className="text-[11px] text-sky-900 mt-0.5 leading-relaxed">
+                          Anda dapat langsung melaporkan pengamatan dan bukti fisik di lokasi tanpa harus memilih kejadian gempa. Sistem SPARTA SIAGA akan otomatis mencocokkan laporan ini dengan data gempa resmi BMKG/USGS.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -735,7 +727,7 @@ export function ManualIncidentModal({
 
                 {tkpType === "DC" && (
                   <div className="mb-6">
-                    <FieldPhotoUploader 
+                    <FieldPhotoUploader
                       label="Titik Kejadian Spesifik (Detail)"
                       description="Fokus pada lokasi kerusakan utama di area Gudang/DC"
                       value={photos.detailDC}
@@ -747,28 +739,28 @@ export function ManualIncidentModal({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FieldPhotoUploader 
+                  <FieldPhotoUploader
                     label="Foto Tampak 1"
                     value={photos.depan}
                     onChange={(data) => setPhotos({ ...photos, depan: data })}
                     storeName={store?.nama_toko || "Lokasi Tidak Diketahui"}
                     reporterName={identity?.name || "Pelapor Lapangan"}
                   />
-                  <FieldPhotoUploader 
+                  <FieldPhotoUploader
                     label="Foto Tampak 2"
                     value={photos.dalam}
                     onChange={(data) => setPhotos({ ...photos, dalam: data })}
                     storeName={store?.nama_toko || "Lokasi Tidak Diketahui"}
                     reporterName={identity?.name || "Pelapor Lapangan"}
                   />
-                  <FieldPhotoUploader 
+                  <FieldPhotoUploader
                     label="Foto Tampak 3"
                     value={photos.kiri}
                     onChange={(data) => setPhotos({ ...photos, kiri: data })}
                     storeName={store?.nama_toko || "Lokasi Tidak Diketahui"}
                     reporterName={identity?.name || "Pelapor Lapangan"}
                   />
-                  <FieldPhotoUploader 
+                  <FieldPhotoUploader
                     label="Foto Tampak 4"
                     value={photos.kanan}
                     onChange={(data) => setPhotos({ ...photos, kanan: data })}
@@ -787,7 +779,7 @@ export function ManualIncidentModal({
                 <h4 className="text-sm font-bold text-[#123B6D] uppercase tracking-wider mb-6 flex items-center gap-2">
                   <Eye className="w-5 h-5" /> 5. Review Laporan
                 </h4>
-                
+
                 <div className="space-y-4">
                   <div className="flex justify-between pb-3 border-b border-slate-100">
                     <span className="text-xs text-slate-500">TKP / Lokasi</span>
@@ -832,7 +824,7 @@ export function ManualIncidentModal({
           >
             {step === 1 ? "Batal" : "Kembali"}
           </button>
-          
+
           {step < 3 ? (
             <button
               type="button"

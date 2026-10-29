@@ -52,12 +52,16 @@ function report(patch: Partial<IncidentRecord> = {}): IncidentRecord {
   };
 }
 
+// Phase 1 Rules:
+// 1. Unapproved reports (both manual and auto-earthquake) must NOT be visible to HO
 assert.equal(canAccessReport(ho, report()), false, "HO must not see an unapproved manual report");
 assert.equal(
-  canAccessReport(ho, report({ reportOrigin: "automatic_earthquake", disasterType: "earthquake" })),
-  true,
-  "HO must see an automatic earthquake report immediately"
+  canAccessReport(ho, report({ reportOrigin: "automatic_earthquake", disasterType: "earthquake", status: "pending_confirmation" })),
+  false,
+  "Phase 1: HO must NOT see an unapproved automatic earthquake report before BnM confirmation"
 );
+
+// 2. Both manual and automatic earthquake reports become visible after BnM approval
 assert.equal(
   canAccessReport(ho, report({
     status: "confirmed_affected",
@@ -65,6 +69,7 @@ assert.equal(
       confirmedBy: "BMS Bandung",
       confirmedAt: "2026-10-22T01:00:00.000Z",
       isDamaged: true,
+      photos: ["https://example.com/photo.jpg"],
       bmApproval: {
         decision: "approved",
         decidedBy: "BnM Bandung",
@@ -75,6 +80,50 @@ assert.equal(
   true,
   "HO must see a manual report after initial BnM approval"
 );
+
+assert.equal(
+  canAccessReport(ho, report({
+    reportOrigin: "automatic_earthquake",
+    disasterType: "earthquake",
+    status: "confirmed_affected",
+    verification: {
+      confirmedBy: "BMS Bandung",
+      confirmedAt: "2026-10-22T01:00:00.000Z",
+      isDamaged: true,
+      photos: ["https://example.com/photo.jpg"],
+      bmApproval: {
+        decision: "approved",
+        decidedBy: "BnM Bandung",
+        decidedAt: "2026-10-22T02:00:00.000Z",
+      },
+    },
+  })),
+  true,
+  "Phase 1: HO must see an automatic earthquake report after initial BnM approval"
+);
+
+// Confirmed safe report must also be visible to HO
+assert.equal(
+  canAccessReport(ho, report({
+    reportOrigin: "automatic_earthquake",
+    disasterType: "earthquake",
+    status: "confirmed_safe",
+    verification: {
+      confirmedBy: "BMS Bandung",
+      confirmedAt: "2026-10-22T01:00:00.000Z",
+      isDamaged: false,
+      photos: ["https://example.com/photo_safe.jpg"],
+      bmApproval: {
+        decision: "safe",
+        decidedBy: "BnM Bandung",
+        decidedAt: "2026-10-22T02:00:00.000Z",
+      },
+    },
+  })),
+  true,
+  "Phase 1: HO must see a confirmed safe report after BnM confirmation"
+);
+
 assert.equal(canAccessReport({ ...bms, branch: "JAKARTA" }, report()), false, "branch users must not cross branches");
 
 assert.deepEqual(

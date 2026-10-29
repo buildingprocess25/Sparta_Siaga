@@ -41,6 +41,10 @@ next-env.d.ts
 
 # backups & dumps
 /backups/
+/database/backups/
+*.dump
+*.sql.gz
+*.backup.json
 *.dump
 
 *.png
@@ -49,4 +53,7 @@ next-env.d.ts
 
 # graphify
 graphify-out/
-.graphify*
+.graphify*/scratch/
+
+/scratch/
+/.graphifyignore

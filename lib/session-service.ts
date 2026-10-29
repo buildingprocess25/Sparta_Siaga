@@ -9,6 +9,8 @@ export interface DeviceSessionRecord {
   id: string;
   user_id: string;
   refresh_token_hash: string;
+  previous_refresh_token_hash?: string | null;
+  previous_token_expires_at?: string | null;
   device_type: string;
   user_agent?: string | null;
   ip_address?: string | null;
@@ -44,10 +46,14 @@ export async function ensureUserSessionsTable(): Promise<void> {
   if (tableEnsured) return;
   const pool = getDbPool();
   await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;
+
     CREATE TABLE IF NOT EXISTS user_sessions (
       id VARCHAR(64) PRIMARY KEY,
       user_id VARCHAR(64) NOT NULL,
       refresh_token_hash VARCHAR(64) NOT NULL UNIQUE,
+      previous_refresh_token_hash VARCHAR(64),
+      previous_token_expires_at TIMESTAMPTZ,
       device_type VARCHAR(32) DEFAULT 'unknown',
       user_agent TEXT,
       ip_address VARCHAR(64),
@@ -57,8 +63,12 @@ export async function ensureUserSessionsTable(): Promise<void> {
       last_used_at TIMESTAMPTZ DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL
     );
+    ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS previous_refresh_token_hash VARCHAR(64);
+    ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS previous_token_expires_at TIMESTAMPTZ;
+
     CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_hash ON user_sessions(refresh_token_hash);
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_prev_hash ON user_sessions(previous_refresh_token_hash);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
   `);
   tableEnsured = true;
@@ -144,7 +154,11 @@ export async function createDeviceSession(params: {
  */
 export async function rotateDeviceSession(
   rawRefreshToken: string,
-  options: { userAgent?: string | null; ipAddress?: string | null } = {}
+  options: {
+    userAgent?: string | null;
+    ipAddress?: string | null;
+    allowGracePeriod?: boolean;
+  } = {}
 ): Promise<SessionRefreshResult | null> {
   if (!rawRefreshToken || typeof rawRefreshToken !== "string") {
     return null;
@@ -154,10 +168,20 @@ export async function rotateDeviceSession(
   const pool = getDbPool();
   const tokenHash = hashToken(rawRefreshToken);
 
-  const { rows } = await pool.query<DeviceSessionRecord>(
-    `SELECT * FROM user_sessions WHERE refresh_token_hash = $1`,
-    [tokenHash]
-  );
+  const allowGrace = options.allowGracePeriod ?? false;
+
+  const queryText = allowGrace
+    ? `SELECT * FROM user_sessions 
+       WHERE refresh_token_hash = $1 
+          OR (previous_refresh_token_hash = $1 AND previous_token_expires_at > NOW())
+       ORDER BY CASE WHEN refresh_token_hash = $1 THEN 0 ELSE 1 END
+       LIMIT 1`
+    : `SELECT * FROM user_sessions WHERE refresh_token_hash = $1 LIMIT 1`;
+
+  const { rows } = await pool.query<DeviceSessionRecord & {
+    previous_refresh_token_hash?: string | null;
+    previous_token_expires_at?: string | null;
+  }>(queryText, [tokenHash]);
 
   if (rows.length === 0) {
     return null;
@@ -193,6 +217,31 @@ export async function rotateDeviceSession(
     return null;
   }
 
+  // Grace period match: recently rotated by a concurrent in-flight request
+  const isGraceMatch = allowGrace && session.previous_refresh_token_hash === tokenHash && session.refresh_token_hash !== tokenHash;
+
+  if (isGraceMatch) {
+    await pool.query(
+      `UPDATE user_sessions SET last_used_at = NOW() WHERE id = $1`,
+      [session.id]
+    );
+
+    const newAccessToken = await signSession({
+      id: user.id,
+      nik: user.nik,
+      systemRole: user.systemRole,
+      v: user.tokenVersion || 1,
+    });
+
+    return {
+      sessionId: session.id,
+      accessToken: newAccessToken,
+      refreshToken: rawRefreshToken,
+      expiresAt: new Date(session.expires_at),
+      user,
+    };
+  }
+
   // ROTATION: generate brand new refresh token and update database
   const newRawRefreshToken = generateRefreshToken();
   const newTokenHash = hashToken(newRawRefreshToken);
@@ -200,7 +249,9 @@ export async function rotateDeviceSession(
 
   await pool.query(
     `UPDATE user_sessions 
-     SET refresh_token_hash = $1, 
+     SET previous_refresh_token_hash = refresh_token_hash,
+         previous_token_expires_at = NOW() + INTERVAL '30 seconds',
+         refresh_token_hash = $1, 
          last_used_at = NOW(), 
          expires_at = $2,
          user_agent = COALESCE($3, user_agent),
@@ -241,7 +292,9 @@ export async function revokeSessionByRefreshToken(rawRefreshToken: string): Prom
   const tokenHash = hashToken(rawRefreshToken);
 
   const res = await pool.query(
-    `UPDATE user_sessions SET is_revoked = TRUE, expires_at = NOW() WHERE refresh_token_hash = $1`,
+    `UPDATE user_sessions 
+     SET is_revoked = TRUE, expires_at = NOW() 
+     WHERE refresh_token_hash = $1 OR previous_refresh_token_hash = $1`,
     [tokenHash]
   );
   return (res.rowCount || 0) > 0;

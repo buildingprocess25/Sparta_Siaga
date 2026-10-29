@@ -1,7 +1,14 @@
 import { getDbPool } from "./db";
+import { sendEmergencyEmail, getBranchDutyOfficerEmail } from "./email-service";
 
 export type DeliveryChannel = "email" | "whatsapp";
-export type DeliveryStatus = "queued_no_provider" | "not_configured" | "sent" | "failed" | "pending";
+export type DeliveryStatus =
+  | "queued_no_provider"
+  | "not_configured"
+  | "sent"
+  | "failed"
+  | "pending"
+  | "suppressed_testing_mode";
 
 export interface DistributionRecord {
   id?: string;
@@ -23,27 +30,46 @@ export class ReportDistributionService {
   /**
    * Dispatches a report to all configured channels (Email & WhatsApp).
    */
-  static async distributeReport(reportId: string, branch: string, data: any) {
-    // In a real scenario, recipients would be looked up based on branch and role.
-    const mockEmailRecipient = `bm.${branch.toLowerCase()}@alfamart.local`;
+  static async distributeReport(reportId: string, branch: string, data?: any) {
+    const verifiedEmailRecipient = getBranchDutyOfficerEmail(branch);
     const mockWaRecipient = `+628000000${branch.length}`;
 
-    await this.recordDelivery({
-      reportId,
-      channel: "email",
-      recipient: mockEmailRecipient,
-      status: "not_configured", // No real provider yet, MUST be honest!
-      attemptedAt: new Date().toISOString(),
-      errorMessage: "Email provider is not yet configured in production."
+    // 1. Dispatch real email via email-service
+    const subject = `[SPARTA SIAGA] Distribusi Laporan Darurat ${reportId} — Cabang ${branch}`;
+    const emailResult = await sendEmergencyEmail({
+      to: verifiedEmailRecipient,
+      branch,
+      subject,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; color: #1e293b;">
+          <h2>Laporan Kejadian Darurat SPARTA Siaga</h2>
+          <p>ID Laporan: <strong>${reportId}</strong></p>
+          <p>Cabang: <strong>${branch}</strong></p>
+          <p>Waktu Distribusi: <strong>${new Date().toISOString()}</strong></p>
+        </div>
+      `,
+      ticketNumber: reportId,
     });
 
     await this.recordDelivery({
       reportId,
+      channel: "email",
+      recipient: verifiedEmailRecipient,
+      status: emailResult.status as DeliveryStatus,
+      providerMessageId: emailResult.providerMessageId,
+      attemptedAt: new Date().toISOString(),
+      sentAt: emailResult.sentAt,
+      errorMessage: emailResult.errorMessage,
+    });
+
+    // 2. WhatsApp status (honestly queued_no_provider)
+    await this.recordDelivery({
+      reportId,
       channel: "whatsapp",
       recipient: mockWaRecipient,
-      status: "queued_no_provider", // Honest status
+      status: "queued_no_provider",
       attemptedAt: new Date().toISOString(),
-      errorMessage: "WhatsApp Business API is not yet linked."
+      errorMessage: "WhatsApp Business API is not yet linked.",
     });
   }
 

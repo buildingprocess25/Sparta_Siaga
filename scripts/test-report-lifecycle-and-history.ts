@@ -255,13 +255,13 @@ async function runTestSuite() {
     // TEST 6: HO Visibility & Branch Authorization
     // -------------------------------------------------------------------------
     console.log("\n--- TEST 6: HO Visibility & Branch Authorization Rules ---");
-    // 1. Auto-earthquake expired report: visible to HO
+    // 1. Phase 1: Unapproved automatic earthquake expired report is hidden from HO
     const autoEqExpired: IncidentRecord = {
       ...inc48h,
       status: "expired_unhandled",
       reportOrigin: "automatic_earthquake",
     };
-    assert(isReportVisibleToHo(autoEqExpired), "V1", "Automatic earthquake expired report is visible to HO");
+    assert(!isReportVisibleToHo(autoEqExpired), "V1", "Phase 1: Automatic earthquake unapproved expired report is hidden from HO");
 
     // 2. Manual unapproved expired report: hidden from HO
     const manualExpired: IncidentRecord = {
@@ -280,21 +280,24 @@ async function runTestSuite() {
     assert(branchAccess.clause.includes("branch"), "V3", "Branch access SQL restricts to user's responsible branch");
     assert(branchAccess.values[0] === "SURABAYA", "V4", "Branch access SQL value matches responsible branch");
 
-    // 4. Server-side SQL access policy for HO
+    // 4. Server-side SQL access policy for HO (Phase 1: requires confirmed statuses)
     const hoAccess = getReportAccessSql({
       systemRole: "USER",
       scope: "HO",
       branch: null,
     });
-    assert(hoAccess.clause.includes("report_origin = 'automatic_earthquake'"), "V5", "HO access SQL includes auto-earthquake reports");
+    assert(!hoAccess.clause.includes("report_origin = 'automatic_earthquake'"), "V5", "Phase 1: HO access SQL excludes unapproved auto-earthquake reports");
+    assert(hoAccess.clause.includes("status = ANY"), "V5b", "HO access SQL enforces post-approval statuses");
 
     // -------------------------------------------------------------------------
     // TEST 7: Expiration API Route Handler
     // -------------------------------------------------------------------------
     console.log("\n--- TEST 7: Expiration API Route Handler ---");
     const { POST: expirationRouteHandler } = await import("../app/api/incidents/expiration/route");
+    const internalSecret = process.env.SPARTA_INTERNAL_WORKER_SECRET;
     const req = new Request("http://localhost:3000/api/incidents/expiration?simulatedNow=" + baseTime.toISOString() + "&includeTestIds=true", {
       method: "POST",
+      headers: internalSecret ? { authorization: `Bearer ${internalSecret}` } : undefined,
     });
     const res = await expirationRouteHandler(req);
     assert(res.status === 200, "API-1", "Expiration API route returns HTTP 200");

@@ -11,6 +11,9 @@ import { rotateDeviceSession } from "@/lib/session-service";
 
 export const dynamic = "force-dynamic";
 
+// Single-flight in-memory deduplication map to prevent parallel concurrent refreshes from clashing
+const inFlightRefreshes = new Map<string, Promise<any>>();
+
 export async function POST(request: Request) {
   try {
     let refreshToken: string | undefined;
@@ -49,7 +52,23 @@ export async function POST(request: Request) {
     const userAgent = request.headers.get("user-agent") || null;
     const ipAddress = request.headers.get("x-forwarded-for") || null;
 
-    const result = await rotateDeviceSession(refreshToken, { userAgent, ipAddress });
+    // Deduplicate in-flight requests for the exact same token to avoid race conditions
+    let refreshPromise = inFlightRefreshes.get(refreshToken);
+    if (!refreshPromise) {
+      refreshPromise = rotateDeviceSession(refreshToken, { 
+        userAgent, 
+        ipAddress, 
+        allowGracePeriod: true 
+      }).finally(() => {
+        // Keep in map for 5 seconds to catch near-simultaneous browser calls
+        setTimeout(() => {
+          inFlightRefreshes.delete(refreshToken!);
+        }, 5000);
+      });
+      inFlightRefreshes.set(refreshToken, refreshPromise);
+    }
+
+    const result = await refreshPromise;
 
     if (!result) {
       // Refresh token is revoked, expired, or invalid. Clear cookies.

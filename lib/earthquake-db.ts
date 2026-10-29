@@ -1,4 +1,4 @@
-import { getDbPool } from "./db";
+import { getProductionDbPool } from "./db";
 import { Earthquake } from "@/types/disaster";
 
 export interface EarthquakeEventRecord {
@@ -28,8 +28,9 @@ export interface EarthquakeEventRecord {
  */
 export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
   try {
-    const pool = getDbPool();
+    const pool = getProductionDbPool();
     const occurredAt = new Date(eq.timestamp).toISOString();
+    const validatedSource = (eq.source === "BMKG" || eq.source === "USGS") ? eq.source : (eq.source || "UNVERIFIED");
 
     await pool.query(
       `INSERT INTO earthquake_events (
@@ -47,7 +48,7 @@ export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
       [
         eq.id,
         eq.id,
-        eq.source || "BMKG",
+        validatedSource,
         eq.magnitude,
         eq.depthKm || 10,
         eq.latitude,
@@ -77,7 +78,7 @@ export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
  */
 export async function dbGetEarthquakeEventById(id: string): Promise<EarthquakeEventRecord | null> {
   try {
-    const pool = getDbPool();
+    const pool = getProductionDbPool();
     const { rows } = await pool.query(
       `SELECT * FROM earthquake_events WHERE id = $1 LIMIT 1`,
       [id]
@@ -115,7 +116,7 @@ export async function dbGetEarthquakeEventById(id: string): Promise<EarthquakeEv
  */
 export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<Earthquake[]> {
   try {
-    const pool = getDbPool();
+    const pool = getProductionDbPool();
     const { rows } = await pool.query(
       `SELECT * FROM earthquake_events 
        WHERE occurred_at >= NOW() - ($1 || ' hours')::interval
@@ -124,13 +125,15 @@ export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<E
     );
     return rows.map((r) => {
       const timestamp = new Date(r.occurred_at).getTime();
+      const sourceLabel = r.source_primary || "UNVERIFIED";
+      const verificationStatus = (r.source_primary === "BMKG" ? "official" : r.source_primary === "USGS" ? "official_external" : "unverified") as any;
       return {
         id: r.id,
-        source: r.source_primary || "BMKG",
-        sourcePrimary: r.source_primary,
+        source: sourceLabel,
+        sourcePrimary: sourceLabel,
         canonicalEventKey: r.id,
         informationType: "official_event",
-        verificationStatus: (r.source_primary === "BMKG" ? "official" : "official_external") as any,
+        verificationStatus,
         title: r.title,
         magnitude: parseFloat(r.magnitude),
         depth: `${r.depth_km} km`,

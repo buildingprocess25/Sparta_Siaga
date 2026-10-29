@@ -13,7 +13,10 @@ import {
   CompletionApprovalService,
 } from "../lib/completion-approval-service";
 
+import { selectIsolatedDatabaseEnvironment } from "../lib/isolated-database-config";
+
 async function runUatLifecycleTests() {
+  selectIsolatedDatabaseEnvironment();
   console.log("==============================================================");
   console.log("🧪 TESTING FULL LIFECYCLE: SIMULASI 1 & SIMULASI 2");
   console.log("==============================================================");

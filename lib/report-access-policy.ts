@@ -36,11 +36,22 @@ export function getReportAccessSql(
   if (user.systemRole === "ADMIN") return { clause: "TRUE", values: [] };
 
   if (user.scope === "HO") {
+    // Phase 1: All reports (manual & automatic earthquake) require official BnM confirmation before appearing in HO.
+    // Unapproved reports, preliminary alerts, and records with incorrectly assigned status lacking BnM confirmation
+    // are strictly excluded from HO views.
     return {
       clause: `(
-        ${alias}.report_origin = 'automatic_earthquake'
-        OR (${alias}.verification->'bmApproval'->>'decision') IN ('approved', 'safe')
-        OR ${alias}.status = ANY($${firstParameter}::text[])
+        ${alias}.status = ANY($${firstParameter}::text[])
+        AND ${alias}.status NOT IN (
+          'pending_confirmation',
+          'verifying',
+          'pending_bm_approval',
+          'clarification_requested',
+          'rejected_invalid',
+          'investigating',
+          'expired_unhandled'
+        )
+        AND (${alias}.verification->'bmApproval'->>'decision' IN ('approved', 'safe'))
       )`,
       values: [[...HO_POST_APPROVAL_STATUSES]],
     };

@@ -16,6 +16,41 @@ export async function listReconciliationCases(status = "OPEN") {
   return rows;
 }
 
+export async function createReconciliationCase(input: {
+  incidentId: string;
+  candidateCanonicalEventId?: string | null;
+  candidateLocationKind?: string | null;
+  candidateLocationId?: string | null;
+  reason: string;
+  details?: Record<string, unknown>;
+}): Promise<{ id: string } | null> {
+  const pool = getDbPool();
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO earthquake_reconciliation_cases (
+         incident_id, candidate_canonical_event_id, candidate_location_kind,
+         candidate_location_id, reason, details
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       ON CONFLICT (incident_id, candidate_canonical_event_id, candidate_location_kind, candidate_location_id)
+         WHERE status = 'OPEN'
+       DO UPDATE SET details = EXCLUDED.details, created_at = NOW()
+       RETURNING id`,
+      [
+        input.incidentId,
+        input.candidateCanonicalEventId ?? null,
+        input.candidateLocationKind ?? "STORE",
+        input.candidateLocationId ?? null,
+        input.reason,
+        JSON.stringify(input.details || {}),
+      ]
+    );
+    return rows[0] || null;
+  } catch (err) {
+    console.warn("[reconciliation-service] Warning creating reconciliation case:", err);
+    return null;
+  }
+}
+
 export async function decideReconciliation(input: {
   caseId: string;
   action: "LINK" | "DISMISS";

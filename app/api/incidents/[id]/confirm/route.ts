@@ -18,6 +18,7 @@ import {
   BmDecision,
   DamageReport,
   InspectionRevision,
+  IncidentStatus,
 } from "@/types/incident";
 import { validateImageMagicBytes, processAndWatermarkPhoto } from "@/lib/watermark";
 import { saveInspectionPhoto } from "@/lib/inspection-storage";
@@ -89,6 +90,21 @@ export async function POST(request: Request, { params }: RouteContext) {
     const isBmAction = action === "bm_approval" || action === "bm_decision" || bodyData.decision !== undefined;
 
     if (isBmAction) {
+      if (
+        report.status === "confirmed_affected" ||
+        report.status === "confirmed_safe" ||
+        report.verification?.bmApproval?.decision === "approved" ||
+        report.verification?.bmApproval?.decision === "safe"
+      ) {
+        return NextResponse.json(
+          {
+            error: "Laporan ini sudah dikonfirmasi sebelumnya oleh BnM Manajer.",
+            code: "REPORT_ALREADY_CONFIRMED",
+          },
+          { status: 409 }
+        );
+      }
+
       const bmAuth = await canApproveAsBmAsync(sessionUser, report);
       if (!bmAuth.authorized) {
         return NextResponse.json(
@@ -143,7 +159,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         );
       }
 
-      let newStatus: typeof report.status;
+      let newStatus: IncidentStatus;
       let timelineLabel: string;
 
       const actorRoleTitle = sessionUser.systemRole === "ADMIN" ? "Admin SPARTA SIAGA" : "BnM Manajer";
@@ -194,11 +210,58 @@ export async function POST(request: Request, { params }: RouteContext) {
         notes: reason || notes,
       };
 
-      await dbUpdateIncident(id, {
-        status: newStatus,
-        verification: updatedVerification,
-        timeline: [...(report.timeline || []), timelineEntry],
-      });
+      if (decision === "approved" || decision === "safe") {
+        const { commitAtomicBmApprovalTransaction } = await import("@/lib/approval-event-service");
+        const atomicRes = await commitAtomicBmApprovalTransaction({
+          reportId: id,
+          newStatus,
+          updatedVerification,
+          timelineEntry,
+          approvalEvent: {
+            eventId: `appr_${id}`,
+            reportId: id,
+            decision,
+            outcomeStatus: newStatus as "confirmed_affected" | "confirmed_safe",
+            disasterType: report.disasterType,
+            reportOrigin: report.reportOrigin,
+            branch: report.branch,
+            storeId: report.storeId,
+            storeName: report.storeName,
+            locationCity: report.locationCity,
+            decidedBy: {
+              userId: sessionUser.id,
+              name: sessionUser.name,
+              role: sessionUser.role || "bm",
+              systemRole: sessionUser.systemRole,
+            },
+            decidedAt: nowWib,
+            decisionNotes: notes,
+            condition: decision === "approved" ? "damaged" : "safe",
+            evidenceCount: (updatedVerification.photos?.length ?? 0) + (updatedVerification.evidenceDetails?.length ?? 0),
+            publishedToHo: true,
+            createdAt: new Date().toISOString(),
+          },
+        });
+
+        if (!atomicRes.success) {
+          if (atomicRes.conflict) {
+            return NextResponse.json(
+              { error: atomicRes.reason || "Laporan ini sudah dikonfirmasi sebelumnya oleh BnM Manajer.", code: "REPORT_ALREADY_CONFIRMED" },
+              { status: 409 }
+            );
+          }
+          return NextResponse.json(
+            { error: atomicRes.reason || "Gagal menyimpan keputusan BnM Manajer." },
+            { status: 500 }
+          );
+        }
+      } else {
+        await dbUpdateIncident(id, {
+          status: newStatus,
+          verification: updatedVerification,
+          timeline: [...(report.timeline || []), timelineEntry],
+        });
+      }
 
       return NextResponse.json({
         data: {

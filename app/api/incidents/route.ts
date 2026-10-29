@@ -159,8 +159,31 @@ export async function POST(request: Request) {
     // Untrusted user input must never be allowed to claim "automatic" origin.
     body.reportOrigin = "manual";
 
+    // Phase 2: Automated Concurrency-Safe Reconciliation for Earthquake Reports
+    if (body.disasterType === "earthquake") {
+      const { reconcileManualEarthquakeSubmission } = await import("@/lib/earthquake-reconciliation");
+      const recResult = await reconcileManualEarthquakeSubmission({
+        sessionUser,
+        body,
+      });
+
+      // Trigger distribution (Email/WA) for the reconciled incident
+      await ReportDistributionService.distributeReport(recResult.incident.id, recResult.incident.branch, recResult.incident);
+
+      const statusCode = recResult.outcome === "merged_into_existing" ? 200 : 201;
+      return NextResponse.json(
+        {
+          data: recResult.incident,
+          reconciliation: recResult.outcome,
+          canonicalEventId: recResult.canonicalEventId,
+          candidateCount: recResult.candidateCount,
+        },
+        { status: statusCode }
+      );
+    }
+
     const created = await dbCreateIncident(body);
-    
+
     // Trigger distribution (Email/WA)
     await ReportDistributionService.distributeReport(created.id, created.branch, created);
 

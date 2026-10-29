@@ -101,7 +101,7 @@ export async function getSessionUser(req?: Request): Promise<UserContext | null>
     const userAgent = req?.headers.get("user-agent") || null;
     const ipAddress = req?.headers.get("x-forwarded-for") || null;
 
-    const refreshResult = await rotateDeviceSession(refreshToken, { userAgent, ipAddress });
+    const refreshResult = await rotateDeviceSession(refreshToken, { userAgent, ipAddress, allowGracePeriod: true });
     if (refreshResult) {
       // Try updating the cookies in response headers if running within Next.js async storage
       try {

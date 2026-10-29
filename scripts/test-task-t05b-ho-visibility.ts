@@ -256,7 +256,7 @@ async function runAll18Scenarios() {
   }
 
   // -------------------------------------------------------------
-  // Scenario 8: Gempa dibuat otomatis oleh sistem -> Langsung terlihat HO
+  // Scenario 8: Gempa dibuat otomatis oleh sistem belum disetujui BnM -> TIDAK terlihat HO (Phase 1)
   // -------------------------------------------------------------
   {
     const repAutoEarthquake: IncidentRecord = {
@@ -267,30 +267,40 @@ async function runAll18Scenarios() {
       earthquakeEventId: "bmkg_20261022_001",
       status: "pending_confirmation",
     };
-    assert.equal(isReportVisibleToHo(repAutoEarthquake), true, "S8: isReportVisibleToHo harus true");
-    assert.equal(canViewReport(hoUser, repAutoEarthquake), true, "S8: canViewReport HO harus true");
-    assert.equal(await canViewReportAsync(hoUser, repAutoEarthquake), true, "S8: canViewReportAsync HO harus true");
-    console.log("  [Skenario 08] PASS: Gempa dibuat otomatis oleh sistem -> Langsung terlihat HO");
+    assert.equal(isReportVisibleToHo(repAutoEarthquake), false, "S8: Phase 1 unapproved auto-earthquake report must be false for HO");
+    assert.equal(canViewReport(hoUser, repAutoEarthquake), false, "S8: canViewReport HO harus false");
+    assert.equal(await canViewReportAsync(hoUser, repAutoEarthquake), false, "S8: canViewReportAsync HO harus false");
+    console.log("  [Skenario 08] PASS: Gempa dibuat otomatis oleh sistem belum disetujui BnM -> Tersembunyi dari HO");
     passedCount++;
   }
 
   // -------------------------------------------------------------
-  // Scenario 9: Gempa otomatis belum diverifikasi -> Terlihat dengan status sebenarnya
+  // Scenario 9: Gempa otomatis setelah diverifikasi dan disetujui BnM -> Resmi terlihat HO
   // -------------------------------------------------------------
   {
-    const repUnverifiedAuto: IncidentRecord = {
+    const repVerifiedAuto: IncidentRecord = {
       ...baseReport,
       id: "LAP-EQ-AUTO-002",
       disasterType: "earthquake",
       reportOrigin: "automatic_earthquake",
       earthquakeEventId: "bmkg_20261022_002",
-      status: "pending_confirmation",
-      verification: undefined,
+      status: "confirmed_affected",
+      verification: {
+        confirmedBy: "Petugas Lapangan",
+        confirmedAt: "2026-10-22 10:00:00 WIB",
+        isDamaged: true,
+        photos: ["/storage/sample.jpg"],
+        bmApproval: {
+          decision: "approved",
+          decidedBy: "BnM Manajer",
+          decidedAt: "2026-10-22 11:00:00 WIB",
+        },
+      },
     };
-    assert.equal(isReportVisibleToHo(repUnverifiedAuto), true, "S9: isReportVisibleToHo harus true");
-    assert.equal(repUnverifiedAuto.status, "pending_confirmation", "S9: status harus tetap pending_confirmation");
-    assert.equal(repUnverifiedAuto.verification, undefined, "S9: verification harus undefined (belum diverifikasi)");
-    console.log("  [Skenario 09] PASS: Gempa otomatis belum diverifikasi -> Terlihat dengan status sebenarnya");
+    assert.equal(isReportVisibleToHo(repVerifiedAuto), true, "S9: isReportVisibleToHo harus true setelah disetujui BnM");
+    assert.equal(canViewReport(hoUser, repVerifiedAuto), true, "S9: canViewReport HO harus true setelah disetujui BnM");
+    assert.equal(await canViewReportAsync(hoUser, repVerifiedAuto), true, "S9: canViewReportAsync HO harus true setelah disetujui BnM");
+    console.log("  [Skenario 09] PASS: Gempa otomatis setelah diverifikasi dan disetujui BnM -> Resmi terlihat HO");
     passedCount++;
   }
 
@@ -405,15 +415,22 @@ async function runAll18Scenarios() {
         status: "confirmed_affected",
         verification: { confirmedBy: "P", confirmedAt: "T", isDamaged: true, bmApproval: { decision: "approved", decidedBy: "BM", decidedAt: "T" } }
       }, // Terlihat (1)
-      { ...baseReport, id: "M5", reportOrigin: "automatic_earthquake", status: "pending_confirmation" }, // Terlihat (2)
-      { ...baseReport, id: "M6", reportOrigin: "automatic_earthquake", status: "verifying" },           // Terlihat (3)
+      { ...baseReport, id: "M5", reportOrigin: "automatic_earthquake", status: "pending_confirmation" }, // Sembunyi (Phase 1)
+      { ...baseReport, id: "M6", reportOrigin: "automatic_earthquake", status: "verifying" },           // Sembunyi (Phase 1)
+      { 
+        ...baseReport, 
+        id: "M7", 
+        reportOrigin: "automatic_earthquake", 
+        status: "confirmed_safe",
+        verification: { confirmedBy: "P", confirmedAt: "T", isDamaged: false, photos: ["/storage/sample.jpg"], bmApproval: { decision: "safe", decidedBy: "BM", decidedAt: "T" } }
+      }, // Terlihat (2)
     ];
 
     // Simulasi backend filtering seperti pada GET /api/incidents
     const hoVisibleReports = mixedReports.filter((r) => canViewReport(hoUser, r));
-    assert.equal(hoVisibleReports.length, 3, "S14: Hanya 3 dari 6 laporan yang boleh masuk ke dashboard HO");
-    assert.deepEqual(hoVisibleReports.map((r) => r.id), ["M4", "M5", "M6"], "S14: Hanya M4, M5, M6 yang terhitung");
-    console.log("  [Skenario 14] PASS: Dashboard HO menghitung laporan -> Hanya laporan yang boleh terlihat (3/6)");
+    assert.equal(hoVisibleReports.length, 2, "S14: Hanya 2 laporan terkonfirmasi (M4 & M7) yang boleh masuk ke dashboard HO");
+    assert.deepEqual(hoVisibleReports.map((r) => r.id), ["M4", "M7"], "S14: Hanya M4 dan M7 yang terhitung");
+    console.log("  [Skenario 14] PASS: Dashboard HO menghitung laporan -> Hanya laporan terkonfirmasi yang terlihat (2/7)");
     passedCount++;
   }
 

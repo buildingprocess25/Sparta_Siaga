@@ -1,6 +1,6 @@
 import webpush from 'web-push';
 import crypto from 'crypto';
-import { getDbPool } from './db';
+import { getDbPool, isTestingModeActiveSync } from './db';
 import { ensureWebPushConfigured } from './web-push-config';
 
 export type DeviceType = 'android' | 'ios' | 'desktop' | 'unknown';
@@ -191,10 +191,22 @@ export async function sendSinglePushNotification(
   payload: WebPushPayload,
   options: { maxRetries?: number } = {}
 ): Promise<PushDeliveryOutcome> {
+  const deviceType: DeviceType = (sub.device_type as DeviceType) || detectDeviceType(sub.user_agent || null);
+
+  if (isTestingModeActiveSync()) {
+    return {
+      endpoint: sub.endpoint,
+      userId: sub.user_id,
+      deviceType,
+      branch: sub.branch || null,
+      success: false,
+      error: 'Suppressed: Testing Mode is active',
+    };
+  }
+
   ensureWebPushConfigured();
   const pool = getDbPool();
   const maxRetries = options.maxRetries ?? 2;
-  const deviceType: DeviceType = (sub.device_type as DeviceType) || detectDeviceType(sub.user_agent || null);
 
   const pushSubscription = {
     endpoint: sub.endpoint,
@@ -335,6 +347,11 @@ export async function dispatchEarthquakePushNotifications(params: {
     },
     outcomes: [],
   };
+
+  if (isTestingModeActiveSync()) {
+    console.log('[Web Push] 🛑 SUPPRESSED: Testing Mode active. Real push notifications blocked.');
+    return summary;
+  }
 
   try {
     // 1. Fetch eligible subscriptions:

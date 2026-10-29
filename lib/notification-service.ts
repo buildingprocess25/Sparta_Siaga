@@ -1,4 +1,5 @@
 import { getDbPool } from './db';
+import { sendEmergencyEmail, getBranchDutyOfficerEmail } from './email-service';
 import { DisasterNotificationType, NotificationChannel, NotificationLog, AffectedStoreSummary } from '@/types/notification';
 import { Store } from '@/types/store';
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
@@ -227,11 +228,45 @@ export async function recordNotificationLog(params: DispatchNotificationParams):
   const ticketNumber = params.ticketNumber || `ESC-${params.branch.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const now = new Date().toISOString();
 
-  // Honest delivery status: no actual email/WA provider is configured in this version.
-  // Status reflects the notification RECORD was created, not that it was delivered.
-  const deliveryStatus: NotificationLog['status'] = 'sent'; // 'sent' in legacy schema means "dispatched internally"
-  // delivery_status column (new) will carry the honest value:
-  const honestDeliveryStatus = 'not_configured'; // actual email/WA not yet integrated
+  const deliveryStatus: NotificationLog['status'] = 'sent';
+  let honestDeliveryStatus = 'not_configured';
+  let deliveryError: string | null = null;
+  let deliveryAttemptedAt: string | null = null;
+
+  if (params.channel === 'email_and_pwa') {
+    deliveryAttemptedAt = now;
+    const recipient = params.recipientContact.includes('@')
+      ? params.recipientContact
+      : getBranchDutyOfficerEmail(params.branch);
+
+    const emailHtml = generateEmergencyEmailHtml({
+      ticketNumber,
+      branch: params.branch,
+      disasterTitle: params.title,
+      disasterDetail: params.message,
+      affectedCount: params.affectedStores.length,
+      stores: params.affectedStores,
+      instructions: [
+        'Duty Officer DC Cabang segera melakukan panggilan radio/telepon siaga ke Area Coordinator (AC) terkait.',
+        'Instruksikan personil toko melakukan evakuasi pelanggan dan kru jika struktur bangunan menunjukkan keretakan.',
+        'Matikan aliran listrik utama (MCB) dan amankan tabung gas jika tercium bau kebocoran.',
+        'Laporkan status operasional (Buka / Tutup Sementara / Kerusakan) melalui Command Center SPARTA.',
+      ],
+      sentAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
+    });
+
+    const emailResult = await sendEmergencyEmail({
+      to: recipient,
+      branch: params.branch,
+      subject: `[EMERGENCY SIAGA] ${params.title} — ${ticketNumber}`,
+      html: emailHtml,
+      disasterId: params.canonicalEventId || params.disasterId,
+      ticketNumber,
+    });
+
+    honestDeliveryStatus = emailResult.status;
+    deliveryError = emailResult.errorMessage || null;
+  }
 
   const query = `
     INSERT INTO notification_logs (
@@ -239,8 +274,9 @@ export async function recordNotificationLog(params: DispatchNotificationParams):
       recipient_role, recipient_contact, title, message, 
       affected_stores_count, affected_stores_sample, ticket_number, 
       status, sent_at, delivery_status, canonical_event_id,
-      recipient_group, notification_category
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      recipient_group, notification_category, delivery_channel,
+      delivery_attempted_at, delivery_error
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
     ON CONFLICT (canonical_event_id, branch, recipient_group, notification_category)
       WHERE canonical_event_id IS NOT NULL
         AND recipient_group IS NOT NULL
@@ -250,7 +286,10 @@ export async function recordNotificationLog(params: DispatchNotificationParams):
       message = EXCLUDED.message,
       affected_stores_count = EXCLUDED.affected_stores_count,
       affected_stores_sample = EXCLUDED.affected_stores_sample,
-      sent_at = EXCLUDED.sent_at
+      sent_at = EXCLUDED.sent_at,
+      delivery_status = EXCLUDED.delivery_status,
+      delivery_attempted_at = EXCLUDED.delivery_attempted_at,
+      delivery_error = EXCLUDED.delivery_error
     RETURNING *;
   `;
 
@@ -273,6 +312,9 @@ export async function recordNotificationLog(params: DispatchNotificationParams):
     params.canonicalEventId ?? params.disasterId,
     params.recipientGroup ?? 'BMS',
     params.category ?? 'INFORMATION',
+    params.channel,
+    deliveryAttemptedAt,
+    deliveryError,
   ];
 
   const res = await pool.query(query, values);

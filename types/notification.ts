@@ -28,7 +28,7 @@ export interface NotificationLog {
   affected_stores_sample: AffectedStoreSummary[];
   ticket_number: string;
   status: 'not_configured' | 'pending' | 'queued' | 'sent' | 'failed' | 'delivered' | 'acknowledged' | 'resolved';
-  delivery_status?: 'not_configured' | 'pending' | 'queued' | 'sent' | 'delivered' | 'failed';
+  delivery_status?: 'not_configured' | 'pending' | 'queued' | 'sent' | 'delivered' | 'failed' | 'suppressed_testing_mode';
   sent_at: string;
   updated_at?: string;
   acknowledged_at?: string;

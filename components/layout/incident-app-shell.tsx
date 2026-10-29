@@ -40,6 +40,7 @@ export interface IncidentAppShellProps {
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
   onOpenReportModal?: () => void;
+  testingMode?: boolean;
   children: React.ReactNode;
 }
 
@@ -52,8 +53,32 @@ export function IncidentAppShell({
   theme = "light",
   onToggleTheme,
   onOpenReportModal,
+  testingMode: testingModeProp,
   children,
 }: IncidentAppShellProps) {
+  const [internalTestingMode, setInternalTestingMode] = useState<boolean>(Boolean(testingModeProp));
+
+  React.useEffect(() => {
+    if (typeof testingModeProp === "boolean") {
+      setInternalTestingMode(testingModeProp);
+      return;
+    }
+    const checkTestingMode = () => {
+      fetch("/api/admin/testing-mode")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.state) {
+            setInternalTestingMode(Boolean(data.state.enabled));
+          }
+        })
+        .catch(() => {});
+    };
+    checkTestingMode();
+    const interval = setInterval(checkTestingMode, 15000);
+    return () => clearInterval(interval);
+  }, [testingModeProp]);
+
+  const activeTestingMode = typeof testingModeProp === "boolean" ? testingModeProp : internalTestingMode;
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [isMoreSheetOpen, setIsMoreSheetOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -483,6 +508,24 @@ export function IncidentAppShell({
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Persistent TESTING MODE Indicator Banner */}
+        {activeTestingMode && (
+          <div className="bg-amber-500 text-slate-950 px-3.5 py-1.5 text-xs font-bold flex items-center justify-between border-b border-amber-600 shadow-md shrink-0 z-50">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-2 w-2 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-900 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-950"></span>
+              </span>
+              <span className="truncate">
+                ⚠️ MODE PENGUJIAN AKTIF — Transaksi UAT dialihkan ke database terisolasi. Notifikasi email &amp; push eksternal diblokir.
+              </span>
+            </div>
+            <span className="bg-slate-950/20 text-slate-950 px-2 py-0.5 rounded text-[10px] font-mono font-black uppercase tracking-wider shrink-0 ml-2">
+              UAT ISOLATED
+            </span>
+          </div>
+        )}
+
         {/* TOP BAR / HEADER (Hidden on Peta Monitoring, Task 1 & Task 4) */}
         {!isMonitoringPage && (
           <header

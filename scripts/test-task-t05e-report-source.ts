@@ -204,7 +204,7 @@ const baseReport: IncidentRecord = {
 // Skenario 10: HO Visibility rule dari Task T05B tetap utuh
 // -------------------------------------------------------------
 {
-  // 1. Laporan gempa otomatis sistem: terlihat HO sebelum approval awal BnM
+  // 1. Phase 1: Laporan gempa otomatis sistem TIDAK terlihat HO sebelum approval awal BnM
   const autoEqUnapproved: IncidentRecord = {
     ...baseReport,
     id: "LAP-EQ-AUTO-HO-1",
@@ -212,7 +212,27 @@ const baseReport: IncidentRecord = {
     reportOrigin: "automatic_earthquake",
     status: "pending_confirmation",
   };
-  assert.strictEqual(isReportVisibleToHo(autoEqUnapproved), true, "Auto EQ unapproved must be visible to HO");
+  assert.strictEqual(isReportVisibleToHo(autoEqUnapproved), false, "Phase 1: Auto EQ unapproved must NOT be visible to HO");
+
+  const autoEqApproved: IncidentRecord = {
+    ...baseReport,
+    id: "LAP-EQ-AUTO-HO-1-APPR",
+    disasterType: "earthquake",
+    reportOrigin: "automatic_earthquake",
+    status: "confirmed_affected",
+    verification: {
+      confirmedBy: "Petugas Lapangan",
+      confirmedAt: new Date().toISOString(),
+      isDamaged: true,
+      photos: ["/storage/sample.jpg"],
+      bmApproval: {
+        decision: "approved",
+        decidedBy: "BnM Manajer",
+        decidedAt: new Date().toISOString(),
+      },
+    },
+  };
+  assert.strictEqual(isReportVisibleToHo(autoEqApproved), true, "Auto EQ approved must be visible to HO");
 
   // 2. Laporan gempa manual user yang belum disetujui: TIDAK terlihat HO
   const manualEqUnapproved: IncidentRecord = {
@@ -234,7 +254,7 @@ const baseReport: IncidentRecord = {
   };
   assert.strictEqual(isReportVisibleToHo(manualFloodUnapproved), false, "Manual flood unapproved must NOT be visible to HO");
 
-  // 4. Laporan manual user pasca approval BnM (misal in_maintenance): terlihat HO
+  // 4. Laporan manual user pasca approval BnM (misal in_maintenance): terlihat HO jika memiliki BnM approval sah
   const manualPostApproval: IncidentRecord = {
     ...baseReport,
     id: "LAP-MANUAL-APPROVED",
@@ -242,8 +262,30 @@ const baseReport: IncidentRecord = {
     reportOrigin: "manual",
     status: "in_maintenance",
     progress: 50,
+    verification: {
+      confirmedBy: "Petugas Lapangan",
+      confirmedAt: "2026-10-22 10:00:00 WIB",
+      isDamaged: true,
+      photos: ["/storage/sample.jpg"],
+      bmApproval: {
+        decision: "approved",
+        decidedBy: "BnM Manajer",
+        decidedAt: "2026-10-22 10:30:00 WIB",
+      },
+    },
   };
   assert.strictEqual(isReportVisibleToHo(manualPostApproval), true, "Approved manual report must be visible to HO");
+
+  // 5. Laporan dengan status pasca-approval tetapi TIDAK memiliki konfirmasi sah BnM: TIDAK boleh terlihat HO
+  const unconfirmedPostStatus: IncidentRecord = {
+    ...baseReport,
+    id: "LAP-INCORRECT-POST-STATUS",
+    disasterType: "flood",
+    reportOrigin: "manual",
+    status: "in_maintenance",
+    progress: 50,
+  };
+  assert.strictEqual(isReportVisibleToHo(unconfirmedPostStatus), false, "Post-approval status without BnM confirmation must be hidden from HO");
 
   console.log("✅ Skenario 10-12 PASS: Aturan visibilitas HO (T05B) tetap berfungsi 100% tanpa regresi");
 }

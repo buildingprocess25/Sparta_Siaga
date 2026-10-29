@@ -46,30 +46,34 @@ export async function proxy(request: NextRequest) {
   }
 
   const sessionToken = request.cookies.get('siaga_session')?.value;
+  const refreshToken = request.cookies.get('siaga_refresh')?.value;
 
-  if (!sessionToken) {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // 1. If valid short-lived access token is present, allow immediately
+  if (sessionToken) {
+    try {
+      const jwtSecret = new TextEncoder().encode(getJwtSecret());
+      const { payload } = await jwtVerify(sessionToken, jwtSecret);
+      if (payload && payload.id) {
+        return NextResponse.next();
+      }
+    } catch {
+      // Access token expired; fall through to evaluate refresh token
     }
-    const loginUrl = new URL('/login', request.url);
-    return NextResponse.redirect(loginUrl);
   }
 
-  try {
-    const jwtSecret = new TextEncoder().encode(getJwtSecret());
-    const { payload } = await jwtVerify(sessionToken, jwtSecret);
-    if (!payload || !payload.id) {
-      throw new Error("Invalid session payload");
-    }
-
+  // 2. If access token is expired or missing but 30-day refresh token exists:
+  // Allow pass-through so API routes (via getSessionUser) or client shell (via /api/auth/refresh)
+  // can transparently renew the session without an abrupt forced logout.
+  if (refreshToken) {
     return NextResponse.next();
-  } catch {
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const loginUrl = new URL('/login', request.url);
-    return NextResponse.redirect(loginUrl);
   }
+
+  // 3. Neither session nor refresh token exists: deny unauthenticated access
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const loginUrl = new URL('/login', request.url);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

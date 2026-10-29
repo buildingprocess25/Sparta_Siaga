@@ -87,23 +87,54 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
   // Load incidents from database API on mount
   const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const checkAndRenewSession = useCallback(() => {
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          const user = data.user || data;
-          setCurrentUser(user);
-          if (user.role || user.businessRole) {
-            setActiveRole((user.role || user.businessRole) as RoleType);
-          }
+  const checkAndRenewSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        const user = data.user || data;
+        setCurrentUser(user);
+        if (user.role || user.businessRole) {
+          setActiveRole((user.role || user.businessRole) as RoleType);
         }
-      })
-      .catch((err) => console.error("[Layout] Failed to load user session:", err));
-  }, []);
+        return;
+      }
+
+      // If access token expired (401), attempt proactive transparent renewal
+      if (res.status === 401) {
+        const refreshRes = await fetch("/api/auth/refresh", { method: "POST" });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          if (refreshData.user) {
+            setCurrentUser(refreshData.user);
+            if (refreshData.user.role || refreshData.user.businessRole) {
+              setActiveRole((refreshData.user.role || refreshData.user.businessRole) as RoleType);
+            }
+            return;
+          }
+        } else if (refreshRes.status === 401) {
+          router.push("/login");
+        }
+      }
+    } catch (err) {
+      console.error("[Layout] Session renewal error:", err);
+    }
+  }, [router]);
 
   useEffect(() => {
     checkAndRenewSession();
+
+    // Proactive background session renewal every 10 minutes (before 15-minute access token expiry)
+    const sessionRenewInterval = setInterval(() => {
+      fetch("/api/auth/refresh", { method: "POST" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.user) {
+            setCurrentUser(data.user);
+          }
+        })
+        .catch(() => {});
+    }, 10 * 60 * 1000);
 
     // Re-verify and renew session transparently when PWA returns to foreground
     const handleVisibilityChange = () => {
@@ -127,6 +158,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
       .catch((err) => console.error("[Sparta Siaga] Failed to load incidents from DB:", err));
 
     return () => {
+      clearInterval(sessionRenewInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleVisibilityChange);
     };
@@ -1023,6 +1055,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
       <SystemSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        currentUser={currentUser}
         permissionState={permissionState}
         onRequestPermission={async () => {
           const perm = await requestDesktopNotificationPermission();

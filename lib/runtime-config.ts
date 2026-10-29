@@ -37,9 +37,21 @@ export interface MapTileConfig {
   esriLightUrl: string;
 }
 
+export interface EmailConfig {
+  enabled: boolean;
+  smtpHost?: string;
+  smtpPort: number;
+  smtpUser?: string;
+  smtpPass?: string;
+  smtpSecure: boolean;
+  smtpFrom: string;
+  approvedTestRecipients: string[];
+}
+
 export interface RuntimeConfig {
   nodeEnv: NodeEnvironment;
   databaseUrl: string;
+  isolatedDatabaseUrl?: string;
   jwtSecret: string;
   workerSecret: string;
   appUrl?: URL;
@@ -53,6 +65,7 @@ export interface RuntimeConfig {
   dbSslCa?: string;
   externalApi: ExternalApiConfig;
   mapTile: MapTileConfig;
+  email: EmailConfig;
 }
 
 export class RuntimeConfigError extends Error {
@@ -343,9 +356,62 @@ export function getMapTileConfig(env: NodeJS.ProcessEnv = process.env): MapTileC
   };
 }
 
+export function getEmailConfig(env: NodeJS.ProcessEnv, nodeEnv: NodeEnvironment): EmailConfig {
+  const enabled = getEnvValue(env, "EMAIL_NOTIFICATIONS_ENABLED", nodeEnv) === "true";
+  const smtpHost = getEnvValue(env, "SMTP_HOST", nodeEnv);
+  const smtpPort = parseBoundedInteger(env, "SMTP_PORT", 587, 1, 65535, nodeEnv);
+  const smtpUser = getEnvValue(env, "SMTP_USER", nodeEnv);
+  const smtpPass = getEnvValue(env, "SMTP_PASS", nodeEnv);
+  const smtpSecure = getEnvValue(env, "SMTP_SECURE", nodeEnv) === "true";
+  const smtpFrom = getEnvValue(env, "SMTP_FROM", nodeEnv) || "SPARTA Siaga <siaga@sparta-alfamart.web.id>";
+  const rawApproved = getEnvValue(env, "APPROVED_TEST_EMAIL_RECIPIENTS", nodeEnv) || "novalalfian90@gmail.com";
+  const approvedTestRecipients = rawApproved
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  return {
+    enabled,
+    smtpHost,
+    smtpPort,
+    smtpUser,
+    smtpPass,
+    smtpSecure,
+    smtpFrom,
+    approvedTestRecipients,
+  };
+}
+
+export function isTestExecutionContext(): boolean {
+  if (process.env.NODE_ENV === "test" || process.env.SPARTA_TEST_MODE === "true") {
+    return true;
+  }
+  const cmd = (process.argv || []).join(" ").toLowerCase();
+  return (
+    cmd.includes("test-") ||
+    cmd.includes("scripts\\test") ||
+    cmd.includes("scripts/test") ||
+    cmd.includes("playwright") ||
+    cmd.includes("jest") ||
+    cmd.includes("vitest")
+  );
+}
+
 export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const nodeEnv = getNodeEnvironment(env.NODE_ENV);
-  const databaseUrl = parsePostgresUrl(requireValue(env, "DATABASE_URL", nodeEnv));
+  const rawDatabaseUrl = getEnvValue(env, "DATABASE_URL", nodeEnv);
+  const rawIsolatedUrl = getEnvValue(env, "SPARTA_ISOLATED_TEST_DATABASE_URL", nodeEnv);
+  const isolatedDatabaseUrl = rawIsolatedUrl ? parsePostgresUrl(rawIsolatedUrl) : undefined;
+
+  let databaseUrl: string;
+  if (rawDatabaseUrl) {
+    databaseUrl = parsePostgresUrl(rawDatabaseUrl);
+  } else if (nodeEnv === "production" && !isTestExecutionContext()) {
+    throw new RuntimeConfigError("Missing required environment variable: DATABASE_URL");
+  } else {
+    databaseUrl = "postgresql://isolated-guard@127.0.0.1:5432/siaga_blocked";
+  }
+
   const privateStorageRoot = getEnvValue(env, "PRIVATE_STORAGE_ROOT", nodeEnv)
     || (nodeEnv === "production" ? "" : "storage");
 
@@ -362,6 +428,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeC
   return {
     nodeEnv,
     databaseUrl,
+    isolatedDatabaseUrl,
     jwtSecret: getJwtSecret(env),
     workerSecret: getWorkerSecret(env, nodeEnv),
     appUrl: parseOptionalUrl(env, ["APP_BASE_URL", "NEXT_PUBLIC_APP_URL"], nodeEnv),
@@ -391,6 +458,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeC
       : undefined,
     externalApi: getExternalApiConfig(env),
     mapTile: getMapTileConfig(env),
+    email: getEmailConfig(env, nodeEnv),
   };
 }
 

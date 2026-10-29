@@ -881,11 +881,23 @@ export async function canApproveAsBmAsync(
     };
   }
 
-  // Syarat bukti pemeriksaan harus terpenuhi sebelum persetujuan BnM Manajer
-  if (!report.verification?.confirmedBy && report.status !== "pending_bm_approval") {
+  // Syarat bukti pemeriksaan dan bukti foto harus terpenuhi sebelum konfirmasi BnM Manajer
+  const hasPhotos =
+    (Array.isArray(report.verification?.photos) && report.verification.photos.length > 0) ||
+    (Array.isArray(report.verification?.evidenceDetails) && report.verification.evidenceDetails.length > 0) ||
+    (Array.isArray(report.fieldPhotos) && report.fieldPhotos.length > 0);
+
+  if (!report.verification?.confirmedBy) {
     return {
       authorized: false,
       reason: "Hasil pemeriksaan lapangan wajib disubmit oleh petugas cabang sebelum BnM Manajer memberikan keputusan persetujuan.",
+    };
+  }
+
+  if (!hasPhotos) {
+    return {
+      authorized: false,
+      reason: "Bukti foto pemeriksaan lapangan wajib dilampirkan sebelum BnM Manajer memberikan keputusan persetujuan.",
     };
   }
 

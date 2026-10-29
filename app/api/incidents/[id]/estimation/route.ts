@@ -7,9 +7,9 @@ import { EstimationIntegrationService, HandlerType } from "@/lib/estimation-serv
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -55,7 +55,7 @@ export async function GET(_: Request, { params }: RouteContext) {
 export async function POST(request: Request, { params }: RouteContext) {
   try {
     // 1. Authenticate session
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -78,21 +78,39 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
-    // 4. Validate report status eligibility (Must not be resolved/archived, and must not be pending_confirmation)
-    if (incident.status === "pending_confirmation") {
+    // 4. Validate report status eligibility
+    if (incident.status === "confirmed_safe") {
       return NextResponse.json(
         {
-          error: "Laporan masih menunggu konfirmasi kondisi toko. Estimasi hanya dapat dibuat setelah konfirmasi dampak selesai.",
-          code: "REPORT_PENDING_CONFIRMATION",
+          error: "Laporan berstatus aman (confirmed_safe). Estimasi perbaikan hanya berlaku untuk laporan yang dikonfirmasi mengalami kerusakan fisik.",
+          code: "REPORT_SAFE_NO_ESTIMATION",
         },
         { status: 422 }
       );
     }
 
-    if (incident.status === "resolved" || incident.status === "archived") {
+    const unapprovedStatuses = [
+      "pending_confirmation",
+      "verifying",
+      "pending_bm_approval",
+      "clarification_requested",
+      "rejected_invalid",
+      "expired_unhandled",
+    ];
+    if (unapprovedStatuses.includes(incident.status)) {
       return NextResponse.json(
         {
-          error: "Laporan yang telah selesai (resolved) atau diarsipkan tidak dapat dibuatkan estimasi baru.",
+          error: "Estimasi perbaikan hanya dapat diproses setelah laporan dikonfirmasi mengalami kerusakan (confirmed_affected) oleh BnM Manajer.",
+          code: "REPORT_NOT_CONFIRMED_AFFECTED",
+        },
+        { status: 422 }
+      );
+    }
+
+    if (incident.status === "resolved" || incident.status === "archived" || incident.status === "closed") {
+      return NextResponse.json(
+        {
+          error: "Laporan yang telah selesai atau ditutup tidak dapat dibuatkan estimasi baru.",
           code: "REPORT_NOT_ELIGIBLE",
         },
         { status: 422 }

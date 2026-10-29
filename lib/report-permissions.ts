@@ -24,34 +24,29 @@ export interface UserContext {
 // ============================================================
 
 /**
- * Aturan Visibilitas Laporan untuk Head Office (HO) — TASK T05B
+ * Aturan Visibilitas Laporan untuk Head Office (HO) — Phase 1 Business Rules
  *
  * Prinsip:
- * 1. Pengecualian Laporan Otomatis Gempa:
- *    Laporan gempa yang benar-benar dibuat secara otomatis oleh sistem (reportOrigin === 'automatic_earthquake')
- *    langsung dapat dilihat oleh HO tanpa menunggu Approval Pemeriksaan Awal BnM Manajer.
- *    Laporan tetap menyajikan status verifikasi sebenarnya (misal: pending_confirmation, verifying).
+ * 1. Seluruh Laporan (Manual & Otomatis Gempa):
+ *    Tidak ada pengecualian otomatis gempa. Seluruh laporan kejadian (baik manual maupun otomatis sistem)
+ *    adalah laporan awal cabang (preliminary) yang TIDAK boleh terlihat oleh HO sebelum menerima konfirmasi resmi
+ *    dari BnM Manajer cabang terkait (approval keputusan: 'approved' [terdampak] atau 'safe' [aman]).
  *
- * 2. Laporan Manual & Sumber Non-Otomatis Lainnya:
- *    Laporan manual yang dibuat cabang TIDAK boleh terlihat oleh HO sebelum menerima Approval Pemeriksaan Awal
- *    yang sah dari BnM Manajer.
- *    - Status belum disetujui (pending_confirmation, verifying, pending_bm_approval, clarification_requested,
- *      rejected_invalid, investigating) -> TIDAK terlihat HO.
- *    - Setelah disetujui BnM Manajer (bmApproval.decision === 'approved' | 'safe', atau status pasca-approval:
- *      confirmed_affected, confirmed_safe, in_estimation, in_maintenance, in_construction, awaiting_spk,
- *      spk_issued, awaiting_st, pending_final_approval, revision_requested, closed, resolved, archived)
- *      -> Terlihat HO (read-only).
+ * 2. Status Belum Disetujui (Preliminary / Klarifikasi):
+ *    - pending_confirmation, verifying, pending_bm_approval, clarification_requested,
+ *      rejected_invalid, investigating, expired_unhandled -> TIDAK terlihat HO.
+ *
+ * 3. Status Pasca Konfirmasi Resmi BnM Manajer:
+ *    - confirmed_affected (kerusakan disetujui, masuk ke alur perbaikan),
+ *    - confirmed_safe (kondisi aman terkonfirmasi, masuk ke riwayat resmi),
+ *    - in_estimation, awaiting_spk, spk_issued, in_maintenance, in_construction,
+ *      awaiting_st, pending_final_approval, approved_pending_close, revision_requested,
+ *      resolved, closed, archived -> Terlihat HO (read-only).
  */
 export function isReportVisibleToHo(report: IncidentRecord): boolean {
   if (!report) return false;
 
-  // 1. Pengecualian Laporan Otomatis Gempa Sistem
-  if (report.reportOrigin === "automatic_earthquake") {
-    return true;
-  }
-
-  // 2. Laporan Manual (termasuk laporan gempa yang dibuat secara manual oleh user):
-  // Blokir status-status yang belum/tidak menerima Approval Pemeriksaan Awal BnM
+  // 1. Blokir seluruh status yang belum atau tidak menerima konfirmasi/approval resmi BnM
   const unapprovedStatuses: IncidentStatus[] = [
     "pending_confirmation",
     "verifying",
@@ -65,16 +60,7 @@ export function isReportVisibleToHo(report: IncidentRecord): boolean {
     return false;
   }
 
-  // Cek keputusan BnM Manajer pada record verifikasi pemeriksaan awal
-  const bmDecision = report.verification?.bmApproval?.decision;
-  if (bmDecision === "approved" || bmDecision === "safe") {
-    return true;
-  }
-  if (bmDecision === "rejected" || bmDecision === "clarification_requested") {
-    return false;
-  }
-
-  // Status-status yang sudah melewati approval pemeriksaan awal
+  // 2. Status harus merupakan status pasca-approval yang sah
   const postApprovalStatuses: IncidentStatus[] = [
     "confirmed_affected",
     "confirmed_safe",
@@ -85,16 +71,20 @@ export function isReportVisibleToHo(report: IncidentRecord): boolean {
     "in_construction",
     "awaiting_st",
     "pending_final_approval",
+    "approved_pending_close",
     "revision_requested",
     "resolved",
     "closed",
     "archived",
   ];
-  if (postApprovalStatuses.includes(report.status)) {
-    return true;
+  if (!postApprovalStatuses.includes(report.status)) {
+    return false;
   }
 
-  return false;
+  // 3. Wajib memiliki konfirmasi resmi BnM Manajer yang valid ('approved' atau 'safe').
+  // Status pasca-approval yang disematkan tanpa konfirmasi sah BnM Manajer tidak boleh terlihat oleh HO.
+  const bmDecision = report.verification?.bmApproval?.decision;
+  return bmDecision === "approved" || bmDecision === "safe";
 }
 
 export function canViewReport(
@@ -192,7 +182,13 @@ export function canCloseReport(
   user: UserContext,
   report: IncidentRecord
 ): boolean {
-  return canActOnReport(user, report);
+  if (user.scope === "HO") return false; // HO strictly read-only
+  if (user.systemRole === "ADMIN") return true;
+  if ((user.role || "").toLowerCase() !== "bm") return false; // BnM Manager only
+
+  const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
+  const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+  return userBranch === reportBranch;
 }
 
 export function isBranchAffected(

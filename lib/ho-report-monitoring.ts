@@ -47,19 +47,11 @@ export function getHoAttentionReasons(report: IncidentRecord, now = Date.now()):
   if (isReportFinalized(report)) return [];
   const issues: string[] = [];
   switch (report.status) {
-    case "pending_confirmation":
-    case "verifying":
-      issues.push("Menunggu pemeriksaan atau verifikasi lapangan");
-      break;
-    case "pending_bm_approval":
-      issues.push("Menunggu keputusan BnM Manajer");
-      break;
-    case "clarification_requested":
-    case "revision_requested":
-      issues.push("Perlu klarifikasi atau revisi");
-      break;
     case "confirmed_affected":
       issues.push("Kerusakan disetujui, menunggu proses penanganan");
+      break;
+    case "revision_requested":
+      issues.push("Perlu revisi penyelesaian pekerjaan");
       break;
     case "pending_final_approval":
       issues.push("Menunggu persetujuan akhir");

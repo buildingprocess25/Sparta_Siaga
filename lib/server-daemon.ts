@@ -3,24 +3,25 @@
 
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
-import { getDbPool } from './db';
+import { getProductionDbPool } from './db';
 import { fetchDisasterFeed } from './disaster-service';
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
 import { dbUpsertEarthquakeEvent } from './earthquake-db';
 import { ensureEarthquakeReport } from './earthquake-report-service';
-import { 
+import { createReconciliationCase } from './reconciliation-service';
+import {
   hasEventAlreadyBeenProcessed,
   isNotificationCooldownActive,
-  recordNotificationLog, 
+  recordNotificationLog,
   updateNotificationLogForEvent,
-  generateEmergencyEmailHtml 
+  generateEmergencyEmailHtml
 } from './notification-service';
-import { 
-  dbFindAutoEarthquakeReport, 
-  dbFindManualEarthquakeReportByEvent, 
+import {
+  dbFindAutoEarthquakeReport,
+  dbFindManualEarthquakeReportByEvent,
   dbFindUnlinkedManualEarthquakeCandidates,
-  dbCreateIncident, 
-  dbUpdateIncident 
+  dbCreateIncident,
+  dbUpdateIncident
 } from './incident-db';
 import { AffectedStoreSummary } from '@/types/notification';
 import { ReportAffectedStore } from '@/types/incident';
@@ -29,10 +30,10 @@ import { Earthquake } from '@/types/disaster';
 import { dispatchEarthquakePushNotifications } from './web-push-service';
 import { getExternalApiConfig } from './runtime-config';
 
-import { 
-  syncStoresFromGoogleSheets, 
-  getLastStoreSyncHistory, 
-  StoreSyncHistoryRecord 
+import {
+  syncStoresFromGoogleSheets,
+  getLastStoreSyncHistory,
+  StoreSyncHistoryRecord
 } from './google-sheets-sync';
 
 export const AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES = parseInt(process.env.AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES || '60', 10);
@@ -91,13 +92,13 @@ async function getBranchCentroids(): Promise<BranchCentroid[]> {
   }
 
   try {
-    const pool = getDbPool();
+    const pool = getProductionDbPool();
     const res = await pool.query(`
-      SELECT cabang, 
-             ROUND(AVG(latitude)::numeric, 4) as lat, 
+      SELECT cabang,
+             ROUND(AVG(latitude)::numeric, 4) as lat,
              ROUND(AVG(longitude)::numeric, 4) as lon,
              COUNT(*)::int as store_count
-      FROM stores 
+      FROM stores
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
       GROUP BY cabang
       ORDER BY store_count DESC;
@@ -139,7 +140,7 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
   let lockAcquired = false;
 
   try {
-    const pool = getDbPool();
+    const pool = getProductionDbPool();
 
     // DB-backed concurrency control: acquire advisory lock on a dedicated client session
     // to guarantee mutual exclusion and prevent lock leakage across connection pool reuse
@@ -479,6 +480,22 @@ export async function processEarthquakeAlertsAndReports(
   }
 
   for (const eq of earthquakes) {
+    // CRITICAL EARTHQUAKE DATA INTEGRITY GUARD:
+    // Only official, genuine earthquakes from verified agency providers (BMKG or USGS)
+    // are permitted to trigger automatic store reports or branch emergency notifications.
+    const source = (eq.source || eq.sourcePrimary || "").toUpperCase();
+    const isOfficialProvider = source === "BMKG" || source === "USGS";
+    const isSyntheticOrTest = Boolean(
+      (eq.id && /test|simul|uji|demo|p2_test/i.test(eq.id)) ||
+      (eq.title && /test|simul|uji|demo/i.test(eq.title)) ||
+      ((eq as any).provider_event_id && /test|simul|uji|demo/i.test((eq as any).provider_event_id))
+    );
+
+    if (!isOfficialProvider || isSyntheticOrTest) {
+      console.warn(`[Daemon Alert Guard] Ignored non-official/synthetic earthquake from production alert evaluation: ID=${eq.id}, Title="${eq.title}", Source="${source}"`);
+      continue;
+    }
+
     const eventTimestamp = eq.timestamp || (eq.time ? new Date(eq.time).getTime() : Date.now());
     const eventAgeMinutes = (Date.now() - eventTimestamp) / (1000 * 60);
 
@@ -517,7 +534,7 @@ export async function processEarthquakeAlertsAndReports(
     }> = [];
 
     try {
-      const pool = getDbPool();
+      const pool = getProductionDbPool();
       const facRes = await pool.query(
         `SELECT id::text, code, name, facility_type, branch_id, latitude, longitude,
                 operational_status, auto_report_enabled, mapping_verified_at
@@ -590,7 +607,7 @@ export async function processEarthquakeAlertsAndReports(
             reportId: `LAP-EQ-FAC-${reportHash}`,
             canonicalEventId: eq.id,
             eventOccurredAt: new Date(eventTimestamp),
-            source: eq.source || 'BMKG/USGS',
+            source: eq.source || 'UNVERIFIED',
             location: {
               kind: 'FACILITY',
               id: facility.id,
@@ -751,7 +768,7 @@ export async function processEarthquakeAlertsAndReports(
         const existingAuto = await dbFindAutoEarthquakeReport(eq.id, store.kode_toko, branch);
         if (existingAuto) {
           await dbUpdateIncident(existingAuto.id, {
-            earthquakeSource: eq.source || 'BMKG/USGS',
+            earthquakeSource: eq.source || 'UNVERIFIED',
             disasterMetadata: {
               magnitude: eq.magnitude,
               depth: eq.depth,
@@ -777,8 +794,11 @@ export async function processEarthquakeAlertsAndReports(
           const candidate = unlinkedCandidates[0];
           await dbUpdateIncident(candidate.id, {
             earthquakeEventId: eq.id,
-            earthquakeSource: eq.source || 'BMKG/USGS',
-            earthquakeProvenance: `Ditautkan otomatis ke event ${eq.source || 'BMKG/USGS'} ${eq.id} (jendela ${MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES}m)`,
+            canonicalEventId: eq.id,
+            locationKind: 'STORE',
+            locationId: store.kode_toko,
+            earthquakeSource: eq.source || 'UNVERIFIED',
+            earthquakeProvenance: `Ditautkan otomatis ke event ${eq.source || 'UNVERIFIED'} ${eq.id} (jendela ${MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES}m)`,
             disasterMetadata: {
               magnitude: eq.magnitude,
               depth: eq.depth,
@@ -789,7 +809,22 @@ export async function processEarthquakeAlertsAndReports(
           });
           continue;
         } else if (unlinkedCandidates.length > 1) {
-          console.warn(`[Autonomous Daemon] Ambiguous unlinked manual reports found for Store ${store.kode_toko}. Skipping auto-report.`);
+          console.warn(`[Autonomous Daemon] Ambiguous unlinked manual reports found for Store ${store.kode_toko}. Routing to reconciliation.`);
+          for (const cand of unlinkedCandidates) {
+            await createReconciliationCase({
+              incidentId: cand.id,
+              candidateCanonicalEventId: eq.id,
+              candidateLocationKind: 'STORE',
+              candidateLocationId: store.kode_toko,
+              reason: 'MULTIPLE_MANUAL_CANDIDATES',
+              details: {
+                matchCount: unlinkedCandidates.length,
+                candidateIds: unlinkedCandidates.map(c => c.id),
+                earthquakeTitle: eq.title,
+                magnitude: eq.magnitude,
+              },
+            });
+          }
           continue;
         }
 
@@ -824,10 +859,10 @@ export async function processEarthquakeAlertsAndReports(
             latitudeSnapshot: store.latitude,
             longitudeSnapshot: store.longitude,
             branchSnapshot: branch,
-            earthquakeSource: eq.source || 'BMKG/USGS',
+            earthquakeSource: eq.source || 'UNVERIFIED',
             earthquakeProvenance: isBackfill
-              ? `Estimasi area dampak berdasarkan data gempa ${eq.source || 'BMKG/USGS'} dan perhitungan SPARTA (Pemulihan pasca-downtime, usia event: ${Math.round(eventAgeMinutes)}m).`
-              : `Estimasi area dampak berdasarkan data gempa ${eq.source || 'BMKG/USGS'} dan perhitungan SPARTA.`,
+              ? `Estimasi area dampak berdasarkan data gempa ${eq.source || 'UNVERIFIED'} dan perhitungan SPARTA (Pemulihan pasca-downtime, usia event: ${Math.round(eventAgeMinutes)}m).`
+              : `Estimasi area dampak berdasarkan data gempa ${eq.source || 'UNVERIFIED'} dan perhitungan SPARTA.`,
             tkpType: 'toko',
             storeId: store.kode_toko,
             storeName: store.nama_toko,
@@ -851,7 +886,7 @@ export async function processEarthquakeAlertsAndReports(
                 stage: isBackfill ? 'Laporan Otomatis Di-backfill (Pasca-Downtime)' : 'Laporan Otomatis Dibuat',
                 label: isBackfill
                   ? `Laporan gempa dipulihkan pasca-downtime (usia event ${Math.round(eventAgeMinutes)} menit). Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi lapangan.`
-                  : `Gempa M${eq.magnitude} terdeteksi oleh ${eq.source || 'BMKG/USGS'}. Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas pantau (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi kondisi lapangan.`,
+                  : `Gempa M${eq.magnitude} terdeteksi oleh ${eq.source || 'UNVERIFIED'}. Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas pantau (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi kondisi lapangan.`,
                 timestamp: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
                 actor: 'SPARTA Siaga — Autonomous Engine',
                 notes: `Event ID: ${eq.id}`,
