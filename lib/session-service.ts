@@ -4,6 +4,7 @@ import { signSession, SessionPayload } from "./jwt";
 import { dbGetUserById } from "./user-db";
 import { detectDeviceType } from "./web-push-service";
 import { UserModel } from "./user-db";
+import { getJwtSecret } from "./runtime-config";
 
 export interface DeviceSessionRecord {
   id: string;
@@ -11,6 +12,7 @@ export interface DeviceSessionRecord {
   refresh_token_hash: string;
   previous_refresh_token_hash?: string | null;
   previous_token_expires_at?: string | null;
+  current_token_encrypted?: string | null;
   device_type: string;
   user_agent?: string | null;
   ip_address?: string | null;
@@ -40,7 +42,7 @@ export interface SessionRefreshResult {
 let tableEnsured = false;
 
 /**
- * Ensures the user_sessions table exists with appropriate indexes.
+ * Ensures the user_sessions table exists with appropriate indexes and columns.
  */
 export async function ensureUserSessionsTable(): Promise<void> {
   if (tableEnsured) return;
@@ -54,6 +56,7 @@ export async function ensureUserSessionsTable(): Promise<void> {
       refresh_token_hash VARCHAR(64) NOT NULL UNIQUE,
       previous_refresh_token_hash VARCHAR(64),
       previous_token_expires_at TIMESTAMPTZ,
+      current_token_encrypted TEXT,
       device_type VARCHAR(32) DEFAULT 'unknown',
       user_agent TEXT,
       ip_address VARCHAR(64),
@@ -65,13 +68,63 @@ export async function ensureUserSessionsTable(): Promise<void> {
     );
     ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS previous_refresh_token_hash VARCHAR(64);
     ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS previous_token_expires_at TIMESTAMPTZ;
+    ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS current_token_encrypted TEXT;
 
     CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_hash ON user_sessions(refresh_token_hash);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_prev_hash ON user_sessions(previous_refresh_token_hash);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_user_sessions_prev_token_grace ON user_sessions(previous_refresh_token_hash, previous_token_expires_at);
   `);
   tableEnsured = true;
+}
+
+/**
+ * Derives a 256-bit symmetric key from JWT secret for AES-256-GCM.
+ */
+function getEncryptionKey(): Buffer {
+  let secret: string;
+  try {
+    secret = getJwtSecret();
+  } catch {
+    secret = process.env.JWT_SECRET || "development-fallback-secret-at-least-32-chars-long";
+  }
+  return crypto.createHash("sha256").update(`session_token_enc:${secret}`).digest();
+}
+
+/**
+ * Encrypts a raw token string using authenticated AES-256-GCM.
+ */
+export function encryptToken(token: string): string {
+  const key = getEncryptionKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
+}
+
+/**
+ * Decrypts an encrypted token string using authenticated AES-256-GCM.
+ * Returns null if decryption or authentication tag validation fails.
+ */
+export function decryptToken(encryptedData: string | null | undefined): string | null {
+  if (!encryptedData) return null;
+  try {
+    const parts = encryptedData.split(":");
+    if (parts.length !== 3) return null;
+    const [ivHex, tagHex, dataHex] = parts;
+    const key = getEncryptionKey();
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+    const data = Buffer.from(dataHex, "hex");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -109,6 +162,7 @@ export async function createDeviceSession(params: {
   const sessionId = `sess_${user.id}_${crypto.randomBytes(8).toString("hex")}`;
   const rawRefreshToken = generateRefreshToken();
   const tokenHash = hashToken(rawRefreshToken);
+  const encryptedToken = encryptToken(rawRefreshToken);
   const deviceType = detectDeviceType(params.userAgent || null);
   const tokenVersion = params.tokenVersion || user.tokenVersion || 1;
 
@@ -117,13 +171,14 @@ export async function createDeviceSession(params: {
 
   await pool.query(
     `INSERT INTO user_sessions (
-      id, user_id, refresh_token_hash, device_type, user_agent, ip_address,
+      id, user_id, refresh_token_hash, current_token_encrypted, device_type, user_agent, ip_address,
       token_version, is_revoked, created_at, last_used_at, expires_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, NOW(), NOW(), $8)`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, NOW(), NOW(), $9)`,
     [
       sessionId,
       user.id,
       tokenHash,
+      encryptedToken,
       deviceType,
       params.userAgent || null,
       params.ipAddress || null,
@@ -150,7 +205,8 @@ export async function createDeviceSession(params: {
 
 /**
  * Rotates an active refresh token (Refresh Token Rotation - RTR) and returns a new access/refresh pair.
- * If token reuse or invalid token is detected, rejects and protects the session family.
+ * Uses atomic row locking (FOR UPDATE) to prevent concurrency races.
+ * In grace period, returns the current valid token to prevent cookie overwrites with stale tokens.
  */
 export async function rotateDeviceSession(
   rawRefreshToken: string,
@@ -167,64 +223,130 @@ export async function rotateDeviceSession(
   await ensureUserSessionsTable();
   const pool = getDbPool();
   const tokenHash = hashToken(rawRefreshToken);
-
   const allowGrace = options.allowGracePeriod ?? false;
 
-  const queryText = allowGrace
-    ? `SELECT * FROM user_sessions 
-       WHERE refresh_token_hash = $1 
-          OR (previous_refresh_token_hash = $1 AND previous_token_expires_at > NOW())
-       ORDER BY CASE WHEN refresh_token_hash = $1 THEN 0 ELSE 1 END
-       LIMIT 1`
-    : `SELECT * FROM user_sessions WHERE refresh_token_hash = $1 LIMIT 1`;
+  const client = await pool.connect();
 
-  const { rows } = await pool.query<DeviceSessionRecord & {
-    previous_refresh_token_hash?: string | null;
-    previous_token_expires_at?: string | null;
-  }>(queryText, [tokenHash]);
+  try {
+    await client.query("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
 
-  if (rows.length === 0) {
-    return null;
-  }
+    // Lock the session row FOR UPDATE to serialize concurrent rotation attempts
+    const queryText = allowGrace
+      ? `SELECT * FROM user_sessions 
+         WHERE refresh_token_hash = $1 
+            OR (previous_refresh_token_hash = $1 AND previous_token_expires_at > NOW())
+         ORDER BY CASE WHEN refresh_token_hash = $1 THEN 0 ELSE 1 END
+         LIMIT 1
+         FOR UPDATE`
+      : `SELECT * FROM user_sessions WHERE refresh_token_hash = $1 LIMIT 1 FOR UPDATE`;
 
-  const session = rows[0];
+    const { rows } = await client.query<DeviceSessionRecord>(queryText, [tokenHash]);
 
-  // If token was already revoked, this might be a replay attack
-  if (session.is_revoked) {
-    console.warn(`[Session Service] Attempted to use revoked session ${session.id} for user ${session.user_id}`);
-    return null;
-  }
+    if (rows.length === 0) {
+      // Check if this was a reuse of an old rotated token whose grace period expired
+      const reuseCheck = await client.query(
+        `SELECT id, user_id FROM user_sessions 
+         WHERE previous_refresh_token_hash = $1 AND previous_token_expires_at <= NOW()
+         LIMIT 1`,
+        [tokenHash]
+      );
+      if (reuseCheck.rows.length > 0) {
+        console.warn(`[Session Service] Stale token used outside grace period for session ${reuseCheck.rows[0].id}. Revoking session family.`);
+        await client.query(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = $1`, [reuseCheck.rows[0].id]);
+        await client.query("COMMIT");
+        return null;
+      }
+      await client.query("ROLLBACK");
+      return null;
+    }
 
-  // Check expiration
-  const expiresAtDate = new Date(session.expires_at);
-  if (expiresAtDate.getTime() <= Date.now()) {
-    console.warn(`[Session Service] Session ${session.id} expired at ${session.expires_at}`);
-    return null;
-  }
+    const session = rows[0];
 
-  // Verify user status and token version in database
-  const user = await dbGetUserById(session.user_id);
-  if (!user || user.status !== "ACTIVE") {
-    console.warn(`[Session Service] User ${session.user_id} is inactive or missing`);
-    // Revoke the session immediately
-    await pool.query(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = $1`, [session.id]);
-    return null;
-  }
+    // If token was already revoked, reject
+    if (session.is_revoked) {
+      await client.query("ROLLBACK");
+      return null;
+    }
 
-  if (user.tokenVersion && session.token_version < user.tokenVersion) {
-    console.warn(`[Session Service] Session token version ${session.token_version} < user token version ${user.tokenVersion}`);
-    await pool.query(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = $1`, [session.id]);
-    return null;
-  }
+    // Check expiration
+    const expiresAtDate = new Date(session.expires_at);
+    if (expiresAtDate.getTime() <= Date.now()) {
+      await client.query("ROLLBACK");
+      return null;
+    }
 
-  // Grace period match: recently rotated by a concurrent in-flight request
-  const isGraceMatch = allowGrace && session.previous_refresh_token_hash === tokenHash && session.refresh_token_hash !== tokenHash;
+    // Verify user status and token version in database (using existing client to prevent pool starvation)
+    const user = await dbGetUserById(session.user_id, client);
+    if (!user || user.status !== "ACTIVE") {
+      await client.query(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = $1`, [session.id]);
+      await client.query("COMMIT");
+      return null;
+    }
 
-  if (isGraceMatch) {
-    await pool.query(
-      `UPDATE user_sessions SET last_used_at = NOW() WHERE id = $1`,
-      [session.id]
+    if (user.tokenVersion && session.token_version < user.tokenVersion) {
+      await client.query(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = $1`, [session.id]);
+      await client.query("COMMIT");
+      return null;
+    }
+
+    // Grace period match: recently rotated by a concurrent in-flight request
+    const isGraceMatch = allowGrace && session.previous_refresh_token_hash === tokenHash && session.refresh_token_hash !== tokenHash;
+
+    if (isGraceMatch) {
+      // Decrypt the active refresh token so we return the NEWEST token, NOT the stale one!
+      const activeRefreshToken = decryptToken(session.current_token_encrypted);
+
+      await client.query(
+        `UPDATE user_sessions SET last_used_at = NOW() WHERE id = $1`,
+        [session.id]
+      );
+
+      await client.query("COMMIT");
+
+      const newAccessToken = await signSession({
+        id: user.id,
+        nik: user.nik,
+        systemRole: user.systemRole,
+        v: user.tokenVersion || 1,
+      });
+
+      return {
+        sessionId: session.id,
+        accessToken: newAccessToken,
+        refreshToken: activeRefreshToken || rawRefreshToken,
+        expiresAt: new Date(session.expires_at),
+        user,
+      };
+    }
+
+    // PRIMARY ROTATION: generate brand new refresh token and update database
+    const newRawRefreshToken = generateRefreshToken();
+    const newTokenHash = hashToken(newRawRefreshToken);
+    const newEncryptedToken = encryptToken(newRawRefreshToken);
+    const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // extend sliding window (30 days)
+
+    await client.query(
+      `UPDATE user_sessions 
+       SET previous_refresh_token_hash = refresh_token_hash,
+           previous_token_expires_at = NOW() + INTERVAL '60 seconds',
+           refresh_token_hash = $1,
+           current_token_encrypted = $2,
+           last_used_at = NOW(), 
+           expires_at = $3,
+           user_agent = COALESCE($4, user_agent),
+           ip_address = COALESCE($5, ip_address)
+       WHERE id = $6`,
+      [
+        newTokenHash,
+        newEncryptedToken,
+        newExpiresAt.toISOString(),
+        options.userAgent || null,
+        options.ipAddress || null,
+        session.id,
+      ]
     );
+
+    await client.query("COMMIT");
 
     const newAccessToken = await signSession({
       id: user.id,
@@ -236,50 +358,17 @@ export async function rotateDeviceSession(
     return {
       sessionId: session.id,
       accessToken: newAccessToken,
-      refreshToken: rawRefreshToken,
-      expiresAt: new Date(session.expires_at),
+      refreshToken: newRawRefreshToken,
+      expiresAt: newExpiresAt,
       user,
     };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[Session Service] Rotation error:", err);
+    return null;
+  } finally {
+    client.release();
   }
-
-  // ROTATION: generate brand new refresh token and update database
-  const newRawRefreshToken = generateRefreshToken();
-  const newTokenHash = hashToken(newRawRefreshToken);
-  const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // extend sliding window
-
-  await pool.query(
-    `UPDATE user_sessions 
-     SET previous_refresh_token_hash = refresh_token_hash,
-         previous_token_expires_at = NOW() + INTERVAL '30 seconds',
-         refresh_token_hash = $1, 
-         last_used_at = NOW(), 
-         expires_at = $2,
-         user_agent = COALESCE($3, user_agent),
-         ip_address = COALESCE($4, ip_address)
-     WHERE id = $5`,
-    [
-      newTokenHash,
-      newExpiresAt.toISOString(),
-      options.userAgent || null,
-      options.ipAddress || null,
-      session.id,
-    ]
-  );
-
-  const newAccessToken = await signSession({
-    id: user.id,
-    nik: user.nik,
-    systemRole: user.systemRole,
-    v: user.tokenVersion || 1,
-  });
-
-  return {
-    sessionId: session.id,
-    accessToken: newAccessToken,
-    refreshToken: newRawRefreshToken,
-    expiresAt: newExpiresAt,
-    user,
-  };
 }
 
 /**

@@ -43,7 +43,12 @@ function rowToUser(row: any): UserModel {
 
 export async function dbGetUserByNik(nik: string): Promise<UserModel | null> {
   const pool = getDbPool();
-  const { rows } = await pool.query(`SELECT * FROM users WHERE nik = $1`, [nik]);
+  const trimmed = nik?.trim();
+  if (!trimmed) return null;
+  const { rows } = await pool.query(
+    `SELECT * FROM users WHERE LOWER(TRIM(nik)) = LOWER($1) LIMIT 1`,
+    [trimmed]
+  );
   if (rows.length === 0) return null;
   return rowToUser(rows[0]);
 }
@@ -71,9 +76,12 @@ export async function dbGetUserByIdentifier(identifier: string): Promise<UserMod
   return rowToUser(rows[0]);
 }
 
-export async function dbGetUserById(id: string): Promise<UserModel | null> {
-  const pool = getDbPool();
-  const { rows } = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+export async function dbGetUserById(
+  id: string,
+  clientOrPool?: { query: (...args: any[]) => Promise<any> }
+): Promise<UserModel | null> {
+  const runner = clientOrPool || getDbPool();
+  const { rows } = await runner.query(`SELECT * FROM users WHERE id = $1`, [id]);
   if (rows.length === 0) return null;
   return rowToUser(rows[0]);
 }
@@ -142,6 +150,14 @@ export async function dbCreateUser(user: Partial<UserModel> & { id: string, name
   const scope = isSystemAdmin ? null : (user.scope || null);
   const branch = isSystemAdmin || scope === "HO" ? null : (user.branch || null);
 
+  const trimmedNik = user.nik?.trim() || null;
+  if (trimmedNik) {
+    const existing = await dbGetUserByNik(trimmedNik);
+    if (existing) {
+      throw new Error("NIK sudah terdaftar pada pengguna lain.");
+    }
+  }
+
   const { rows } = await pool.query(
     `INSERT INTO users (id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, source, password_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -149,7 +165,7 @@ export async function dbCreateUser(user: Partial<UserModel> & { id: string, name
     [
       user.id,
       user.externalUserId || null,
-      user.nik || null,
+      trimmedNik,
       user.name,
       user.email || null,
       user.systemRole || "USER",
@@ -199,8 +215,15 @@ export async function dbAdminUpdateUser(id: string, updates: Partial<UserModel>)
     values.push(updates.name);
   }
   if (updates.nik !== undefined) {
+    const trimmedNik = updates.nik?.trim() || null;
+    if (trimmedNik) {
+      const existing = await dbGetUserByNik(trimmedNik);
+      if (existing && existing.id !== id) {
+        throw new Error("NIK sudah terdaftar pada pengguna lain.");
+      }
+    }
     setClauses.push(`nik = $${idx++}`);
-    values.push(updates.nik);
+    values.push(trimmedNik);
   }
   if (updates.avatarUrl !== undefined) {
     setClauses.push(`avatar_url = $${idx++}`);

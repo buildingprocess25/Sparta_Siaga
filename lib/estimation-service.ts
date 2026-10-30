@@ -63,7 +63,7 @@ export interface CreateEstimationRouteParams {
     name: string;
     nik?: string | null;
   };
-  report: IncidentRecord;
+  report?: IncidentRecord | null;
 }
 
 export interface UpdateEstimationRouteParams {
@@ -229,8 +229,9 @@ export class EstimationIntegrationService {
       throw err;
     }
 
-    const storeCode = params.report.storeId || null;
-    const branchCode = params.report.branch || null;
+    const rep = params.report || (await dbGetIncidentById(params.reportId));
+    const storeCode = rep?.storeId || (rep as any)?.facilityId || null;
+    const branchCode = rep?.branch || null;
     const initialStatus: RoutingStatus = "WAITING_ESTIMATION";
     const initialWorkStatus: WorkStatus = "NOT_READY";
     const initialDataSource: DataSource = params.dataSource || "MANUAL";

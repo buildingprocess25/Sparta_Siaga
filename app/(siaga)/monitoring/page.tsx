@@ -429,15 +429,15 @@ export default function MonitoringPage() {
                   role="tab"
                   aria-selected={selected}
                   onClick={() => handleModeChange(tab.id)}
-                  className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-xs font-semibold transition-all min-h-[36px] sm:min-h-[38px] ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all min-h-[40px] ${
                     selected
-                      ? "bg-[#1D5AA6] text-white shadow-sm"
+                      ? "bg-[#1D5AA6] text-white shadow-sm font-bold"
                       : isDark
                       ? "text-slate-300 hover:text-white hover:bg-white/5"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <Icon className="w-4 h-4 shrink-0" />
                   <span>{tab.label}</span>
                 </button>
               );
@@ -448,7 +448,7 @@ export default function MonitoringPage() {
           <button
             type="button"
             onClick={() => setIsMobileControlsOpen(true)}
-            className={`lg:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl shadow-lg backdrop-blur-md border text-xs font-bold transition-all min-h-[36px] sm:min-h-[38px] shrink-0 ${
+            className={`lg:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl shadow-lg backdrop-blur-md border text-xs font-bold transition-all min-h-[40px] shrink-0 ${
               isDark
                 ? "bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-cyan-400"
                 : "bg-white/95 hover:bg-slate-50 border-slate-200 text-[#123B6D] shadow-md"
@@ -456,7 +456,7 @@ export default function MonitoringPage() {
             aria-label="Buka Kontrol Peta"
             title="Buka Kontrol Peta"
           >
-            <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-500 shrink-0" />
+            <Layers className="w-4 h-4 text-cyan-500 shrink-0" />
             <span>Kontrol Peta</span>
             {showRadar && <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />}
           </button>
@@ -474,7 +474,7 @@ export default function MonitoringPage() {
             >
               {latestEq && (
                 <div
-                  className="hidden md:flex items-center gap-1.5 px-2 py-1 max-w-[280px] xl:max-w-[360px] truncate text-xs"
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 max-w-[280px] xl:max-w-[360px] truncate text-xs"
                   title={latestEq.title || latestEq.place}
                 >
                   <span className="font-bold text-red-500 bg-red-50 dark:bg-red-950/60 px-1.5 py-0.5 rounded text-[11px]">
@@ -488,7 +488,7 @@ export default function MonitoringPage() {
               <button
                 type="button"
                 onClick={handleOpenEarthquakes}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors min-h-[34px] ${
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
                   isDark ? "hover:bg-slate-800 text-slate-200" : "hover:bg-slate-100 text-slate-700"
                 }`}
               >
@@ -498,7 +498,7 @@ export default function MonitoringPage() {
               <button
                 type="button"
                 onClick={handleOpenEvaluated}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors min-h-[34px] ${
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
                   isDark ? "hover:bg-slate-800 text-slate-200" : "hover:bg-slate-100 text-slate-700"
                 }`}
               >
@@ -509,7 +509,7 @@ export default function MonitoringPage() {
                 <button
                   type="button"
                   onClick={() => handleFocusDisaster(latestEq)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors min-h-[34px]"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors min-h-[38px]"
                   title="Pusatkan peta ke episentrum gempa"
                 >
                   <MapPin className="w-4 h-4" />
@@ -545,7 +545,7 @@ export default function MonitoringPage() {
               <button
                 type="button"
                 onClick={handleOpenFilter}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors min-h-[34px] ${
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
                   facilityBranch || facilityStatus || facilityMapping
                     ? "bg-blue-50 dark:bg-blue-950/60 text-[#1D5AA6] dark:text-blue-400 font-bold"
                     : isDark
@@ -560,7 +560,7 @@ export default function MonitoringPage() {
               <button
                 type="button"
                 onClick={handleOpenLocationList}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors min-h-[34px] ${
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
                   isDark ? "hover:bg-slate-800 text-slate-200" : "hover:bg-slate-100 text-slate-700"
                 }`}
               >
@@ -572,7 +572,7 @@ export default function MonitoringPage() {
                 <button
                   type="button"
                   onClick={handleResetLocationFilters}
-                  className="inline-flex items-center px-2 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors min-h-[34px]"
+                  className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors min-h-[38px]"
                   title="Reset pencarian dan filter"
                 >
                   Reset

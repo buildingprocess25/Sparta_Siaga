@@ -8,20 +8,14 @@ import {
   LayoutDashboard,
   MapPin,
   ClipboardList,
-  Activity,
   History,
   Settings,
   Bell,
   Search,
-  Calendar,
   ShieldAlert,
   Store,
-  ChevronDown,
   ChevronUp,
-  Menu,
   X,
-  Sun,
-  Moon,
   UserCog,
   MoreHorizontal,
   PanelLeftClose,
@@ -166,6 +160,18 @@ export function IncidentAppShell({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isRoleDropdownOpen, isMoreSheetOpen]);
+
+  // Close profile dropdown popover when clicking outside
+  React.useEffect(() => {
+    if (!isRoleDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsRoleDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isRoleDropdownOpen]);
 
   React.useEffect(() => {
     fetch("/api/auth/me")
@@ -533,7 +539,7 @@ export function IncidentAppShell({
               isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
             }`}
           >
-            {/* Left: Mobile hamburger & title, Desktop Breadcrumbs */}
+            {/* Left: Mobile Brand Title, Desktop Breadcrumbs */}
             <div className="flex items-center gap-3 flex-1 min-w-0">              {/* Mobile Header Title */}
               <div className="lg:hidden flex items-center gap-2.5 min-w-0">
                 <Image src="/brand/building_logo.png" alt="SPARTA" width={28} height={28} className="shrink-0 object-contain" />
@@ -628,7 +634,7 @@ export function IncidentAppShell({
         <main
           className={`relative flex-1 transition-colors duration-200 flex flex-col min-w-0 min-h-0 ${
             isMonitoringPage
-              ? "p-0 m-0 w-full h-full overflow-hidden pb-16 lg:pb-0"
+              ? "p-0 m-0 w-full h-full overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
               : `overflow-y-auto pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:pb-6 lg:px-5 ${
                   isDark ? "bg-slate-900" : "bg-[#f5f7fa]"
                 }`

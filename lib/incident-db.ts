@@ -86,17 +86,24 @@ export async function dbGetIncidentById(
   id: string
 ): Promise<IncidentRecord | null> {
   const pool = getDbPool();
-  const { rows } = await pool.query(
-    `SELECT i.*, u.name AS primary_pic_name,
+  const sql = `SELECT i.*, u.name AS primary_pic_name,
             ca.status AS completion_approval_status
      FROM incidents i
      LEFT JOIN users u ON u.id = i.primary_pic_user_id
      LEFT JOIN report_completion_approvals ca ON ca.report_id = i.id
-     WHERE i.id = $1`,
-    [id]
-  );
-  if (rows.length === 0) return null;
-  return rowToIncident(rows[0]);
+     WHERE i.id = $1`;
+  try {
+    const { rows } = await pool.query(sql, [id]);
+    if (rows.length === 0) return null;
+    return rowToIncident(rows[0]);
+  } catch (err: any) {
+    if (err?.message && err.message.includes("Connection terminated unexpectedly")) {
+      const { rows } = await pool.query(sql, [id]);
+      if (rows.length === 0) return null;
+      return rowToIncident(rows[0]);
+    }
+    throw err;
+  }
 }
 
 // Lookup existing auto-report by event and store, falling back to branch for legacy data.

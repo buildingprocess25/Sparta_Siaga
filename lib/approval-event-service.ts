@@ -154,6 +154,15 @@ export async function recordReportApprovalEvent(event: ReportApprovalEvent): Pro
     console.warn(`[approval-event-service] Failed to persist approval notification log for ${event.reportId}:`, err);
   }
 
+  // Trigger async approval outbox email distribution (Phase 3)
+  import("./approval-email-service")
+    .then(({ processReportApprovalOutbox }) => {
+      processReportApprovalOutbox({ reportId: event.reportId }).catch((outboxErr) => {
+        console.warn(`[approval-event-service] Non-fatal outbox dispatch error for ${event.reportId}:`, outboxErr);
+      });
+    })
+    .catch(() => {});
+
   return event;
 }
 
@@ -310,6 +319,17 @@ export async function commitAtomicBmApprovalTransaction(params: {
     }).catch((notifErr) => {
       console.warn(`[approval-event-service] Non-fatal notification log error for ${params.reportId}:`, notifErr);
     });
+
+    // Trigger async approval outbox email distribution outside transaction boundary (Phase 3)
+    import("./approval-email-service")
+      .then(({ processReportApprovalOutbox }) => {
+        processReportApprovalOutbox({ reportId: params.approvalEvent.reportId }).catch((outboxErr) => {
+          console.warn(`[approval-event-service] Non-fatal outbox processing error for ${params.reportId}:`, outboxErr);
+        });
+      })
+      .catch((importErr) => {
+        console.warn(`[approval-event-service] Failed loading approval-email-service for ${params.reportId}:`, importErr);
+      });
 
     return { success: true };
   } catch (err) {

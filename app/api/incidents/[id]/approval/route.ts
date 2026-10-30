@@ -13,12 +13,6 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: RouteContext) {
   try {
-    const { id } = await params;
-    const report = await dbGetIncidentById(id);
-    if (!report) {
-      return NextResponse.json({ error: "Laporan tidak ditemukan" }, { status: 404 });
-    }
-
     const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized: Sesi login diperlukan." }, { status: 401 });
@@ -29,6 +23,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         { error: "Forbidden: Akun Head Office hanya memiliki hak akses baca (read-only) dan dilarang memberikan approval BnM Manajer." },
         { status: 403 }
       );
+    }
+
+    const { id } = await params;
+    const report = await dbGetIncidentById(id);
+    if (!report) {
+      return NextResponse.json({ error: "Laporan tidak ditemukan" }, { status: 404 });
     }
 
     if (report.status === "closed" || report.status === "resolved" || report.status === "archived") {

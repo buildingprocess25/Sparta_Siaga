@@ -110,7 +110,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       }
     }
 
-    // 5. Reset Password jika dikirimkan
+    // 5. Validasi keunikan NIK jika dikirimkan
+    if (body.nik !== undefined) {
+      if (typeof body.nik !== "string" || !body.nik.trim()) {
+        return NextResponse.json({ error: "NIK tidak boleh kosong." }, { status: 400 });
+      }
+      const trimmedNik = body.nik.trim();
+      const existingUserWithNik = await dbGetUserByNik(trimmedNik);
+      if (existingUserWithNik && existingUserWithNik.id !== id) {
+        return NextResponse.json({ error: "NIK sudah terdaftar pada pengguna lain." }, { status: 400 });
+      }
+      body.nik = trimmedNik;
+    }
+
+    // 6. Reset Password jika dikirimkan
     if (body.password !== undefined && body.password !== null && body.password !== "") {
       if (typeof body.password !== "string" || body.password.length < 8) {
         return NextResponse.json({ error: "Password minimal 8 karakter." }, { status: 400 });

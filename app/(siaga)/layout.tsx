@@ -86,39 +86,66 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
 
   // Load incidents from database API on mount
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const inFlightCheckRef = useRef<Promise<void> | null>(null);
+  const lastVisibilityCheckRef = useRef<number>(0);
 
   const checkAndRenewSession = useCallback(async () => {
-    try {
-      const res = await fetch("/api/auth/me");
-      if (res.ok) {
-        const data = await res.json();
-        const user = data.user || data;
-        setCurrentUser(user);
-        if (user.role || user.businessRole) {
-          setActiveRole((user.role || user.businessRole) as RoleType);
-        }
-        return;
-      }
+    // Coalesce concurrent calls into a single in-flight promise
+    if (inFlightCheckRef.current) {
+      return inFlightCheckRef.current;
+    }
 
-      // If access token expired (401), attempt proactive transparent renewal
-      if (res.status === 401) {
-        const refreshRes = await fetch("/api/auth/refresh", { method: "POST" });
-        if (refreshRes.ok) {
-          const refreshData = await refreshRes.json();
-          if (refreshData.user) {
-            setCurrentUser(refreshData.user);
-            if (refreshData.user.role || refreshData.user.businessRole) {
-              setActiveRole((refreshData.user.role || refreshData.user.businessRole) as RoleType);
-            }
+    const executeCheck = async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          const user = data.user || data;
+          setCurrentUser(user);
+          if (user.role || user.businessRole) {
+            setActiveRole((user.role || user.businessRole) as RoleType);
+          }
+          return;
+        }
+
+        // If access token expired (401), attempt proactive transparent renewal
+        if (res.status === 401) {
+          // If offline or network unavailable, do NOT force logout; keep existing view
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            console.warn("[Layout] Network offline; retaining current session state");
             return;
           }
-        } else if (refreshRes.status === 401) {
-          router.push("/login");
+
+          const refreshRes = await fetch("/api/auth/refresh", { 
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+          });
+
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            if (refreshData.user) {
+              setCurrentUser(refreshData.user);
+              if (refreshData.user.role || refreshData.user.businessRole) {
+                setActiveRole((refreshData.user.role || refreshData.user.businessRole) as RoleType);
+              }
+              return;
+            }
+          } else if (refreshRes.status === 401) {
+            // Only redirect to login when refresh token is explicitly confirmed invalid/revoked
+            router.push("/login");
+          }
         }
+      } catch (err) {
+        // Transient network failures or server errors must never force logout
+        console.warn("[Layout] Session verification error (preserved session):", err);
+      } finally {
+        inFlightCheckRef.current = null;
       }
-    } catch (err) {
-      console.error("[Layout] Session renewal error:", err);
-    }
+    };
+
+    inFlightCheckRef.current = executeCheck();
+    return inFlightCheckRef.current;
   }, [router]);
 
   useEffect(() => {
@@ -139,7 +166,12 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
     // Re-verify and renew session transparently when PWA returns to foreground
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        checkAndRenewSession();
+        const now = Date.now();
+        // Throttle foreground checks to at most once every 5 seconds to eliminate duplicate focus + visibilitychange races
+        if (now - lastVisibilityCheckRef.current > 5000) {
+          lastVisibilityCheckRef.current = now;
+          checkAndRenewSession();
+        }
         if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
           import("@/lib/pwa-push-client").then(({ registerPushSubscription }) => {
             registerPushSubscription().catch(() => {});

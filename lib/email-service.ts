@@ -37,6 +37,10 @@ function cleanOldDedupEntries() {
   }
 }
 
+export function clearRecentEmailDispatches(): void {
+  recentDispatches.clear();
+}
+
 /**
  * Returns the verified DC Duty Officer email for a branch.
  * Adheres strictly to Alfamart DC convention (dc.<branch>@alfamart.co.id).
@@ -51,8 +55,18 @@ export function getBranchDutyOfficerEmail(branch: string): string {
  * Singleton nodemailer transporter
  */
 let transporterInstance: Transporter | null = null;
+let isMockTransporterSet = false;
+
+export function setMockEmailTransporter(mockTransporter: Transporter | null): void {
+  transporterInstance = mockTransporter;
+  isMockTransporterSet = Boolean(mockTransporter);
+}
 
 export function getEmailTransporter(): Transporter | null {
+  if (isMockTransporterSet) {
+    return transporterInstance;
+  }
+
   const { email } = getRuntimeConfig();
 
   if (!email.enabled || !email.smtpHost) {
@@ -158,6 +172,85 @@ export async function sendEmergencyEmail(params: EmergencyEmailParams): Promise<
     };
   } catch (error: any) {
     console.error(`[Email Service] ❌ Failed to dispatch email to ${params.to}:`, error);
+    return {
+      status: 'failed',
+      errorMessage: error.message || 'Unknown SMTP error',
+    };
+  }
+}
+
+export interface HoApprovalNotificationEmailParams {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  reportId: string;
+  branch: string;
+}
+
+/**
+ * Dispatch an automated approval notification email to an authorized Head Office recipient.
+ * Deduplicates per (reportId, recipient), honors testing mode suppression, and tracks delivery status.
+ */
+export async function sendHoApprovalNotificationEmail(
+  params: HoApprovalNotificationEmailParams
+): Promise<EmailSendResult> {
+  // 1. Check Testing Mode suppression
+  if (isTestingModeActiveSync()) {
+    console.log(`[Email Service] 🛑 SUPPRESSED: Testing Mode active. Real email to ${params.to} blocked.`);
+    return {
+      status: 'suppressed_testing_mode',
+      errorMessage: 'Email delivery suppressed because Testing Mode is active.',
+    };
+  }
+
+  // 2. Check deduplication key (recipient-specific)
+  cleanOldDedupEntries();
+  const normalizedTo = params.to.trim().toLowerCase();
+  const dedupKey = `HO_APPROVAL_${params.reportId}_${normalizedTo}`;
+  if (recentDispatches.has(dedupKey)) {
+    console.log(`[Email Service] ⏭️ SUPPRESSED: Duplicate email detected for key ${dedupKey}`);
+    return {
+      status: 'sent',
+      errorMessage: 'Email already dispatched for this report to recipient in current window (deduplicated).',
+    };
+  }
+
+  // 3. Check transporter configuration
+  const transporter = getEmailTransporter();
+  const { email } = getRuntimeConfig();
+
+  if (!transporter) {
+    console.warn(`[Email Service] ⚠️ Email provider is not configured. Recording honest 'not_configured' status.`);
+    return {
+      status: 'not_configured',
+      errorMessage: 'Email provider is not configured in production environment.',
+    };
+  }
+
+  // 4. Dispatch email
+  try {
+    const fromAddress = isMockTransporterSet
+      ? 'SPARTA Siaga <siaga@sparta-alfamart.web.id>'
+      : (email.smtpFrom || 'SPARTA Siaga <siaga@sparta-alfamart.web.id>');
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: normalizedTo,
+      subject: params.subject,
+      html: params.html,
+      text: params.text || 'Laporan resmi telah dikonfirmasi oleh BnM Manajer. Buka dashboard SPARTA Siaga untuk rincian.',
+    });
+
+    recentDispatches.set(dedupKey, Date.now());
+
+    console.log(`[Email Service] ✉️ HO Approval notification dispatched to ${normalizedTo}. MessageId: ${info.messageId}`);
+    return {
+      status: 'sent',
+      providerMessageId: info.messageId,
+      sentAt: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    console.error(`[Email Service] ❌ Failed to dispatch email to ${normalizedTo}:`, error);
     return {
       status: 'failed',
       errorMessage: error.message || 'Unknown SMTP error',

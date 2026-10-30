@@ -103,7 +103,8 @@ export async function POST(request: Request) {
     const r = (sessionUser.role || "").toLowerCase();
     const isBMM = !isAdmin && !isHO && r === "bm";
     const isBES = !isAdmin && !isHO && r === "bes";
-    const isBMS = !isAdmin && !isHO && !isBMM && !isBES;
+    const isBBS = !isAdmin && !isHO && r === "bbs";
+    const isBMS = !isAdmin && !isHO && !isBMM && !isBES && !isBBS;
 
     const isFacilityReport =
       body.locationKind === "FACILITY" ||
@@ -153,6 +154,14 @@ export async function POST(request: Request) {
     // Default dates if omitted
     if (!body.date) {
       body.date = body.createdAt || new Date().toISOString();
+    }
+
+    // Default initial lifecycle status and progress for new incidents
+    if (!body.status) {
+      body.status = "pending_confirmation";
+    }
+    if (typeof body.progress !== "number") {
+      body.progress = 0;
     }
 
     // TASK T05E: Enforce manual origin for reports submitted through user endpoint.

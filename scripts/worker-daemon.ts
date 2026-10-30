@@ -33,12 +33,27 @@ const heartbeatTimer = heartbeatFile
   : null;
 heartbeatTimer?.unref();
 
+// Approval outbox periodic sweep for HO email distribution (Phase 3)
+let outboxIntervalTimer: NodeJS.Timeout | null = setInterval(async () => {
+  try {
+    const { processReportApprovalOutbox } = await import('../lib/approval-email-service');
+    await processReportApprovalOutbox({ limit: 10 });
+  } catch (err: any) {
+    console.warn('[SPARTA SIAGA WORKER] Approval outbox periodic sweep error:', err.message);
+  }
+}, 30000);
+outboxIntervalTimer?.unref();
+
 let isShuttingDown = false;
 
 async function handleShutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (outboxIntervalTimer) {
+    clearInterval(outboxIntervalTimer);
+    outboxIntervalTimer = null;
+  }
   console.log(`\n[SPARTA SIAGA WORKER] Received ${signal}, starting graceful shutdown...`);
 
   try {
