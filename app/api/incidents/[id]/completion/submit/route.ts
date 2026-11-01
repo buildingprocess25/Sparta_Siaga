@@ -18,6 +18,13 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
+    if (sessionUser.systemRole === "ADMIN") {
+      return NextResponse.json(
+        { error: "Forbidden: System Administrator tidak dapat melakukan tindakan operasional pengajuan penyelesaian.", code: "ADMIN_OPERATIONAL_BYPASS_BLOCKED" },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
     const notes = (body.notes || body.reason || "").toString().trim();

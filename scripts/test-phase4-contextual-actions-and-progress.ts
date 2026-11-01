@@ -299,7 +299,29 @@ async function runRefinementSuite() {
       `Status: ${lowerRes.status}, error: ${lowerJson.error}`
     );
 
-    // 2.5 Valid monotonic progress update succeeds (50%)
+    // 2.5 Server rejects floating point/decimal percentage (50.5) without parseInt truncation
+    const decimalRes = await postProgress(bmsCookie, "50.5");
+    const decimalJson = await decimalRes.json();
+    record(
+      "NUM-06",
+      "Numeric Bounds",
+      "Server rejects decimal progress percentage (50.5) with HTTP 400 without auto-truncating",
+      decimalRes.status === 400 && String(decimalJson.error).includes("bilangan bulat"),
+      `Status: ${decimalRes.status}, error: ${decimalJson.error}`
+    );
+
+    // 2.6 Server rejects alphanumeric suffix percentage ("50abc") without parseInt truncation
+    const suffixRes = await postProgress(bmsCookie, "50abc");
+    const suffixJson = await suffixRes.json();
+    record(
+      "NUM-07",
+      "Numeric Bounds",
+      "Server rejects alphanumeric progress ('50abc') with HTTP 400 without parseInt truncation",
+      suffixRes.status === 400 && String(suffixJson.error).includes("bilangan bulat"),
+      `Status: ${suffixRes.status}, error: ${suffixJson.error}`
+    );
+
+    // 2.7 Valid monotonic progress update succeeds (50%)
     const validRes = await postProgress(bmsCookie, 50, "Pengerjaan struktur atap toko 50%");
     const validJson = await validRes.json();
     const updatedInc = await dbGetIncidentById(testReportId);
@@ -659,6 +681,16 @@ async function runRefinementSuite() {
       hoMileRes.status === 403,
       `Status: ${hoMileRes.status}`
     );
+
+    // 4.7 System Admin Operational Mutation Prohibition (Milestone Upload)
+    const adminMileRes = await submitMilestone(tokoReportId, adminCookie);
+    record(
+      "ADMIN-MILE-01",
+      "Admin Operational Separation",
+      "System Administrator is rejected with HTTP 403 on operational milestone upload",
+      adminMileRes.status === 403,
+      `Status: ${adminMileRes.status}`
+    );
   }
 
   // ============================================================================
@@ -763,7 +795,44 @@ async function runRefinementSuite() {
       });
     }
 
-    // BMS submits completion (transitions to WAITING_COORDINATOR_APPROVAL)
+    // System Admin attempt to submit completion -> Rejected with HTTP 403
+    const adminSubmitReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/submit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `siaga_session=${adminCookie}`,
+      },
+      body: JSON.stringify({ notes: "Attempted completion submit by System Admin." }),
+    });
+    const adminSubmitRes = await compSubmitRoute.POST(adminSubmitReq, { params: Promise.resolve({ id: approvalReportId }) });
+    record(
+      "ADMIN-SUBMIT-01",
+      "Admin Operational Separation",
+      "System Administrator is rejected with HTTP 403 from submitting operational completion",
+      adminSubmitRes.status === 403,
+      `Status: ${adminSubmitRes.status}`
+    );
+
+    // Coordinator attempt to approve BEFORE PIC submits completion -> Rejected with HTTP 400 INVALID_APPROVAL_STATE
+    const earlyCoordReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/approve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `siaga_session=${bmcCookie}`,
+      },
+      body: JSON.stringify({ notes: "Early approve before submission." }),
+    });
+    const earlyCoordRes = await compApproveRoute.POST(earlyCoordReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const earlyCoordJson = await earlyCoordRes.json();
+    record(
+      "COORD-PRE-01",
+      "Coordinator Gate",
+      "Coordinator approval is rejected with HTTP 400 before PIC officially submits completion",
+      earlyCoordRes.status === 400 && (earlyCoordJson.code === "INVALID_APPROVAL_STATE" || String(earlyCoordJson.error).includes("WAITING_PIC_SUBMISSION")),
+      `Status: ${earlyCoordRes.status}, code: ${earlyCoordJson.code}`
+    );
+
+    // BMS submits completion (transitions to awaiting_st / WAITING_COORDINATOR_APPROVAL)
     const compSubmitReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/submit`, {
       method: "POST",
       headers: {
@@ -772,7 +841,15 @@ async function runRefinementSuite() {
       },
       body: JSON.stringify({ notes: "Pekerjaan fisik telah 100% dan dokumen ST terlampir." }),
     });
-    await compSubmitRoute.POST(compSubmitReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const compSubmitRes = await compSubmitRoute.POST(compSubmitReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const submittedInc = await dbGetIncidentById(approvalReportId);
+    record(
+      "SUBMIT-SYNC-01",
+      "Lifecycle Synchronization",
+      "After PIC submits completion, incident status transitions to awaiting_st (not pending_final_approval)",
+      compSubmitRes.status === 200 && submittedInc?.status === "awaiting_st",
+      `Status: ${compSubmitRes.status}, incident status: ${submittedInc?.status}`
+    );
 
     // Helper: Coordinator approval request
     async function postCoordApproval(cookie: string) {
@@ -800,12 +877,20 @@ async function runRefinementSuite() {
 
     // 6.2 BMC (Store Coordinator) on Toko report -> Authorized
     const bmcTokoRes = await postCoordApproval(bmcCookie);
+    const coordApprovedInc = await dbGetIncidentById(approvalReportId);
     record(
       "COORD-02",
       "Coordinator Review",
       "BMC coordinator is authorized to approve Toko completion review",
       bmcTokoRes.status === 200,
       `Status: ${bmcTokoRes.status}`
+    );
+    record(
+      "COORD-SYNC-01",
+      "Lifecycle Synchronization",
+      "After coordinator approves, incident status transitions to pending_final_approval for BnM Manajer",
+      bmcTokoRes.status === 200 && coordApprovedInc?.status === "pending_final_approval",
+      `Status: ${bmcTokoRes.status}, incident status: ${coordApprovedInc?.status}`
     );
 
     // 6.3 Coordinator cannot execute Case Close

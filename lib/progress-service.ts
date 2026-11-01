@@ -294,8 +294,8 @@ export class ProgressService {
 
     // 3. Validasi Persentase Progress (Section T)
     const percentage = Number(params.progressPercentage);
-    if (isNaN(percentage) || percentage < 0 || percentage > 100) {
-      const err: any = new Error("Persentase progress harus berada di antara 0% dan 100%.");
+    if (isNaN(percentage) || !Number.isInteger(percentage) || percentage < 0 || percentage > 100) {
+      const err: any = new Error("Persentase progress harus berupa bilangan bulat antara 0% dan 100%.");
       err.status = 400;
       err.code = "INVALID_PROGRESS";
       throw err;

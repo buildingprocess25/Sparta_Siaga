@@ -209,20 +209,12 @@ export function OperationalReportCenter({
         return {
           label: "Update Progres",
           icon: Wrench,
-          disabled: !isSpecialist && !isSysAdmin,
+          disabled: !isSpecialist,
           disabledReason: !isSpecialist ? `Pembaruan progres fisik dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
           handler: () => setSelectedProgressReport(inc),
         };
       }
-      // 100% physically complete
-      if (isCoordinator || isSysAdmin) {
-        return {
-          label: "Review Koordinator",
-          icon: UserCheck,
-          disabled: false,
-          handler: () => setSelectedApprovalReport(inc),
-        };
-      }
+      // 100% physically complete: PIC must complete milestones & submit completion first
       if (isSpecialist) {
         return {
           label: "Berkas Milestone",
@@ -231,33 +223,34 @@ export function OperationalReportCenter({
           handler: () => setSelectedProgressReport(inc),
         };
       }
+      // Coordinator button remains disabled until PIC officially submits completion
       return {
         label: "Review Koordinator",
         icon: UserCheck,
         disabled: true,
-        disabledReason: `Menunggu verifikasi ${expectedCoordinatorRole.toUpperCase()} cabang.`,
+        disabledReason: "Menunggu PIC resmi mengajukan penyelesaian pekerjaan dan melengkapi berkas.",
         handler: () => onSelectIncident(inc),
       };
     }
 
-    // 6. Awaiting Coordinator Approval
+    // 6. Awaiting Coordinator Approval (PIC officially submitted completion)
     if (inc.status === "awaiting_st") {
       return {
         label: "Review Koordinator",
         icon: UserCheck,
-        disabled: !isCoordinator && !isSysAdmin,
+        disabled: !isCoordinator,
         disabledReason: !isCoordinator ? `Menunggu review ${expectedCoordinatorRole.toUpperCase()} cabang.` : undefined,
         handler: () => setSelectedApprovalReport(inc),
       };
     }
 
-    // 7. Awaiting Final Manager Case Close
+    // 7. Awaiting Final Manager Case Close (Coordinator officially approved completion)
     if (["pending_final_approval", "approved_pending_close"].includes(inc.status)) {
       return {
         label: "Persetujuan & Case Close",
         icon: ShieldCheck,
-        disabled: !isManager && !isSysAdmin,
-        disabledReason: !isManager ? "Menunggu penutupan resmi oleh BnM Manajer cabang." : undefined,
+        disabled: !isManager,
+        disabledReason: !isManager ? "Menunggu persetujuan akhir dan penutupan resmi oleh BnM Manajer cabang." : undefined,
         handler: () => setSelectedApprovalReport(inc),
       };
     }

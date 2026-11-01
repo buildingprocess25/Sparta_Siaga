@@ -188,8 +188,8 @@ export function ProgressUpdateModal({
     setErrorMessage(null);
 
     // Validasi input
-    if (isNaN(progressValue) || progressValue < 0 || progressValue > 100) {
-      setErrorMessage("Persentase progress harus berupa angka bulat antara 0 hingga 100.");
+    if (isNaN(progressValue) || !Number.isInteger(progressValue) || progressValue < 0 || progressValue > 100) {
+      setErrorMessage("Persentase progress harus berupa bilangan bulat antara 0% dan 100%.");
       return;
     }
 
@@ -484,8 +484,12 @@ export function ProgressUpdateModal({
                       step={1}
                       value={isNaN(progressValue) ? "" : progressValue}
                       onChange={(e) => {
-                        const val = e.target.value === "" ? NaN : parseInt(e.target.value, 10);
-                        setProgressValue(val);
+                        const val = e.target.value.trim();
+                        if (val === "") {
+                          setProgressValue(NaN);
+                        } else {
+                          setProgressValue(Number(val));
+                        }
                       }}
                       placeholder={`Nilai ${latestProgress || 0} - 100`}
                       className="w-full px-3 py-2 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1D5AA6] focus:border-transparent transition-all pr-8"

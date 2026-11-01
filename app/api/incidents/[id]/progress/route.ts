@@ -233,12 +233,20 @@ export async function POST(request: Request, { params }: RouteContext) {
     const stage = validStages.includes(rawStage.toUpperCase()) ? rawStage.toUpperCase() : "PENGERJAAN";
     const defaultPhotoType = ((formData.get("photo_type") as string) || "PROGRESS").toUpperCase() as PhotoType;
 
-    if (!rawPercentage) {
+    if (rawPercentage === undefined || rawPercentage === null || rawPercentage === "") {
       return NextResponse.json({ error: "Persentase progress wajib diisi." }, { status: 400 });
     }
 
-    const percentage = parseInt(rawPercentage.toString(), 10);
-    if (isNaN(percentage) || percentage < 0 || percentage > 100) {
+    const rawPercentageStr = rawPercentage.toString().trim();
+    if (!/^\d+$/.test(rawPercentageStr)) {
+      return NextResponse.json(
+        { error: "Persentase progress harus berupa bilangan bulat antara 0% dan 100%." },
+        { status: 400 }
+      );
+    }
+
+    const percentage = Number(rawPercentageStr);
+    if (!Number.isInteger(percentage) || percentage < 0 || percentage > 100) {
       return NextResponse.json(
         { error: "Persentase progress harus berada di antara 0% dan 100%." },
         { status: 400 }

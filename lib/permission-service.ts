@@ -464,12 +464,13 @@ export async function checkUserPermission(params: CheckPermissionParams): Promis
 
   // 1. SYSTEM ADMIN CLASSIFICATION
   // Admin SPARTA SIAGA is the super administrator for application administration.
-  // Section 4.G: System Admin tidak otomatis boleh menggantikan pihak operasional dalam melakukan approval (REPORT_BM_APPROVAL, COMPLETION_APPROVE_COORDINATOR, REPORT_CLOSE).
+  // Section 4.G: System Admin tidak otomatis boleh menggantikan pihak operasional dalam melakukan approval atau pengajuan lapangan (REPORT_BM_APPROVAL, COMPLETION_APPROVE_COORDINATOR, REPORT_CLOSE, COMPLETION_SUBMIT).
   if (user.systemRole === "ADMIN") {
     if (
       permission === "REPORT_BM_APPROVAL" ||
       permission === "COMPLETION_APPROVE_COORDINATOR" ||
-      permission === "REPORT_CLOSE"
+      permission === "REPORT_CLOSE" ||
+      permission === "COMPLETION_SUBMIT"
     ) {
       // Fall through to strict role & branch operational evaluation
     } else {
