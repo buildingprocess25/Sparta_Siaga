@@ -910,7 +910,7 @@ export function CompletionApprovalCard({
                   <AlertTriangle className="w-4 h-4" />
                   Prasyarat belum lengkap (100% + Bukti Handover)
                 </span>
-              ) : canSubmitCompletion ? (
+              ) : canSubmitCompletion && !isSysAdmin ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -942,7 +942,7 @@ export function CompletionApprovalCard({
                 </p>
               </div>
 
-              {canApproveCoordinator ? (
+              {canApproveCoordinator && !isSysAdmin ? (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1131,7 +1131,7 @@ export function CompletionApprovalCard({
                   : activeModal === "close"
                   ? "Konfirmasi Penutupan Laporan (Case Close)"
                   : activeModal === "approve"
-                  ? (userRole?.toLowerCase() === "bm" || isSysAdmin)
+                  ? userRole?.toLowerCase() === "bm"
                     ? "Konfirmasi Persetujuan Final (Final Approval)"
                     : "Persetujuan Koordinator"
                   : "Minta Revisi Pekerjaan"}
@@ -1144,7 +1144,7 @@ export function CompletionApprovalCard({
                 : activeModal === "close"
                 ? "Apakah Anda yakin ingin menutup laporan ini secara resmi? Tindakan Case Close akan mengubah status laporan menjadi CLOSED dan menandai seluruh tahapan penanganan selesai."
                 : activeModal === "approve"
-                ? (userRole?.toLowerCase() === "bm" || isSysAdmin)
+                ? userRole?.toLowerCase() === "bm"
                   ? "Persetujuan final BnM Manajer menyatakan bahwa pekerjaan selesai dan dokumen serah terima lengkap. Tindakan ini BELUM menutup laporan. Laporan akan menunggu tindakan Case Close secara eksplisit."
                   : "Persetujuan Koordinator akan meneruskan berkas serah terima ke tahap akhir (Persetujuan Final BnM Manajer)."
                 : "Tuliskan alasan atau bagian yang perlu direvisi secara jelas agar PIC dapat memperbaikinya."}

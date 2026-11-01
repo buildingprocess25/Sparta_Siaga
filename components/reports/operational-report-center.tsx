@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   UserCheck,
   FileCheck,
+  Send,
 } from "lucide-react";
 import { IncidentRecord, DisasterType, IncidentStatus, RoleType, isActiveStatus, isHistoryStatus } from "@/types/incident";
 import { UserIdentity } from "@/lib/identity";
@@ -163,8 +164,12 @@ export function OperationalReportCenter({
       return {
         label: "Pemeriksaan Lapangan",
         icon: ClipboardCheck,
-        disabled: !isSpecialist && !isSysAdmin,
-        disabledReason: !isSpecialist ? `Hanya dapat diperiksa oleh ${expectedSpecialistRole.toUpperCase()} cabang terkait.` : undefined,
+        disabled: isSysAdmin || !isSpecialist,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isSpecialist
+          ? `Hanya dapat diperiksa oleh ${expectedSpecialistRole.toUpperCase()} cabang terkait.`
+          : undefined,
         handler: () => setSelectedVerificationReport(inc),
       };
     }
@@ -174,8 +179,12 @@ export function OperationalReportCenter({
       return {
         label: "Revisi Pemeriksaan",
         icon: RotateCcw,
-        disabled: !isSpecialist && !isSysAdmin,
-        disabledReason: !isSpecialist ? `Menunggu revisi bukti dari ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
+        disabled: isSysAdmin || !isSpecialist,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isSpecialist
+          ? `Menunggu revisi bukti dari ${expectedSpecialistRole.toUpperCase()} cabang.`
+          : undefined,
         handler: () => setSelectedVerificationReport(inc),
       };
     }
@@ -185,8 +194,12 @@ export function OperationalReportCenter({
       return {
         label: "Konfirmasi BnM",
         icon: ShieldCheck,
-        disabled: !isManager && !isSysAdmin,
-        disabledReason: !isManager ? "Menunggu persetujuan awal BnM Manajer cabang." : undefined,
+        disabled: isSysAdmin || !isManager,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isManager
+          ? "Menunggu persetujuan awal BnM Manajer cabang."
+          : undefined,
         handler: () => setSelectedVerificationReport(inc),
       };
     }
@@ -196,8 +209,12 @@ export function OperationalReportCenter({
       return {
         label: "Penanganan Kerusakan",
         icon: Wrench,
-        disabled: !isSpecialist && !isSysAdmin,
-        disabledReason: !isSpecialist ? `Tindak lanjut dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
+        disabled: isSysAdmin || !isSpecialist,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isSpecialist
+          ? `Tindak lanjut dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.`
+          : undefined,
         handler: () => setSelectedProgressReport(inc),
       };
     }
@@ -209,17 +226,24 @@ export function OperationalReportCenter({
         return {
           label: "Update Progres",
           icon: Wrench,
-          disabled: !isSpecialist,
-          disabledReason: !isSpecialist ? `Pembaruan progres fisik dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
+          disabled: isSysAdmin || !isSpecialist,
+          disabledReason: isSysAdmin
+            ? "System Administrator memiliki akses read-only pada tindakan operasional."
+            : !isSpecialist
+            ? `Pembaruan progres fisik dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.`
+            : undefined,
           handler: () => setSelectedProgressReport(inc),
         };
       }
-      // 100% physically complete: PIC must complete milestones & submit completion first
+      // 100% physically complete: PIC can submit completion once prerequisites are met
       if (isSpecialist) {
         return {
-          label: "Berkas Milestone",
-          icon: FileCheck,
-          disabled: false,
+          label: "Ajukan Penyelesaian",
+          icon: Send,
+          disabled: isSysAdmin,
+          disabledReason: isSysAdmin
+            ? "System Administrator memiliki akses read-only pada tindakan operasional."
+            : undefined,
           handler: () => setSelectedProgressReport(inc),
         };
       }
@@ -233,24 +257,47 @@ export function OperationalReportCenter({
       };
     }
 
-    // 6. Awaiting Coordinator Approval (PIC officially submitted completion)
+    // 6. Revisi Penyelesaian Pekerjaan (Koordinator meminta perbaikan pekerjaan / berkas)
+    if (inc.status === "revision_requested") {
+      return {
+        label: "Revisi Penyelesaian",
+        icon: RotateCcw,
+        disabled: isSysAdmin || !isSpecialist,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isSpecialist
+          ? `Menunggu perbaikan berkas/pekerjaan dari ${expectedSpecialistRole.toUpperCase()} cabang.`
+          : undefined,
+        handler: () => setSelectedProgressReport(inc),
+      };
+    }
+
+    // 7. Awaiting Coordinator Approval (PIC officially submitted completion)
     if (inc.status === "awaiting_st") {
       return {
         label: "Review Koordinator",
         icon: UserCheck,
-        disabled: !isCoordinator,
-        disabledReason: !isCoordinator ? `Menunggu review ${expectedCoordinatorRole.toUpperCase()} cabang.` : undefined,
+        disabled: isSysAdmin || !isCoordinator,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isCoordinator
+          ? `Menunggu review ${expectedCoordinatorRole.toUpperCase()} cabang.`
+          : undefined,
         handler: () => setSelectedApprovalReport(inc),
       };
     }
 
-    // 7. Awaiting Final Manager Case Close (Coordinator officially approved completion)
+    // 8. Awaiting Final Manager Case Close (Coordinator officially approved completion)
     if (["pending_final_approval", "approved_pending_close"].includes(inc.status)) {
       return {
         label: "Persetujuan & Case Close",
         icon: ShieldCheck,
-        disabled: !isManager,
-        disabledReason: !isManager ? "Menunggu persetujuan akhir dan penutupan resmi oleh BnM Manajer cabang." : undefined,
+        disabled: isSysAdmin || !isManager,
+        disabledReason: isSysAdmin
+          ? "System Administrator memiliki akses read-only pada tindakan operasional."
+          : !isManager
+          ? "Menunggu persetujuan akhir dan penutupan resmi oleh BnM Manajer cabang."
+          : undefined,
         handler: () => setSelectedApprovalReport(inc),
       };
     }

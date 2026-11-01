@@ -16,6 +16,7 @@ import {
   FileCheck,
   ShieldCheck,
   Loader2,
+  Send,
 } from "lucide-react";
 import { IncidentRecord } from "@/types/incident";
 import { UserIdentity } from "@/lib/identity";
@@ -66,7 +67,7 @@ export function ProgressUpdateModal({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<ProgressUpdateRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<"progress" | "milestone">("progress");
+  const [activeTab, setActiveTab] = useState<"progress" | "milestone" | "submission">("progress");
   const [workflowPermissions, setWorkflowPermissions] = useState<{
     canConfirm: boolean;
     canBmApprove: boolean;
@@ -87,6 +88,8 @@ export function ProgressUpdateModal({
   const [approvalHistory, setApprovalHistory] = useState<CompletionApprovalHistoryRecord[]>([]);
   const [physicalProgress, setPhysicalProgress] = useState(latestProgress || 0);
   const [hasFinalEvidence, setHasFinalEvidence] = useState(false);
+
+  const isSysAdmin = identity?.systemRole === "ADMIN";
 
   const refreshWorkflow = async (selectInitialTab = false) => {
     if (!incident) return;
@@ -109,8 +112,10 @@ export function ProgressUpdateModal({
       setPhysicalProgress(progressJson?.data?.latestProgress ?? incident.progress ?? 0);
       setHasFinalEvidence(Boolean(progressJson?.data?.hasFinalEvidence));
       if (selectInitialTab) {
-        if ((incident.progress ?? 0) >= 100) {
+        if (incident.status === "revision_requested") {
           setActiveTab("milestone");
+        } else if ((incident.progress ?? 0) >= 100) {
+          setActiveTab("submission");
         } else {
           setActiveTab("progress");
         }
@@ -281,7 +286,7 @@ export function ProgressUpdateModal({
             }`}
           >
             <Wrench className="w-3.5 h-3.5" />
-            <span>1. Progres Fisik Lapangan</span>
+            <span>1. Progres Fisik</span>
           </button>
           <button
             type="button"
@@ -293,18 +298,61 @@ export function ProgressUpdateModal({
             }`}
           >
             <FileCheck className="w-3.5 h-3.5" />
-            <span>2. Berkas Milestone (10%-100%)</span>
+            <span>2. Berkas Milestone</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("submission")}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+              activeTab === "submission"
+                ? "bg-[#1D5AA6] text-white shadow-xs"
+                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
+            }`}
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>3. Ajukan Penyelesaian</span>
           </button>
         </div>
 
         {/* Modal Body (Scrollable Internal Only) */}
         <div className="p-6 overflow-y-auto overscroll-contain space-y-5 flex-1 min-h-0">
-          {activeTab === "milestone" ? (
+          {activeTab === "submission" ? (
+            <div className="space-y-4">
+              <CompletionApprovalCard
+                incident={incident}
+                approval={approval}
+                route={approvalRoute}
+                history={approvalHistory}
+                latestProgress={physicalProgress}
+                hasFinalEvidence={hasFinalEvidence}
+                userRole={identity?.role}
+                userBranch={identity?.branch}
+                userSystemRole={identity?.systemRole}
+                canSubmitCompletion={Boolean(workflowPermissions?.canSubmitCompletion && !isSysAdmin)}
+                submitCompletionReason={
+                  isSysAdmin
+                    ? "System Administrator memiliki akses read-only pada tindakan operasional."
+                    : workflowPermissions?.submitCompletionReason
+                }
+                canApproveCoordinator={false}
+                approveCoordinatorReason="Review koordinator dilakukan secara terpisah oleh koordinator."
+                canFinalApprove={false}
+                finalApproveReason="Persetujuan akhir dilakukan oleh BnM Manajer."
+                canClose={false}
+                closeReason="Penutupan kasus dilakukan oleh BnM Manajer."
+                readOnly={Boolean(isSysAdmin)}
+                onRefresh={() => {
+                  void refreshWorkflow();
+                  void onUpdated?.();
+                }}
+              />
+            </div>
+          ) : activeTab === "milestone" ? (
             <div className="space-y-4">
               <MilestoneProgressionCard
                 incident={incident}
                 identity={identity}
-                readOnly={false}
+                readOnly={Boolean(isSysAdmin)}
                 onMilestoneUpdated={() => {
                   void refreshWorkflow();
                   void onUpdated?.();
@@ -315,6 +363,10 @@ export function ProgressUpdateModal({
             <div className="p-8 text-center flex flex-col items-center justify-center space-y-3">
               <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
               <p className="text-xs text-slate-500">Memuat izin dan progres pekerjaan...</p>
+            </div>
+          ) : isSysAdmin ? (
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300">
+              System Administrator memiliki akses administrasi teknis dan detail read-only pada tindakan operasional.
             </div>
           ) : !workflowPermissions?.canUpdateProgress ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300">
@@ -369,9 +421,21 @@ export function ProgressUpdateModal({
               {successResult.progressPercentage === 100 && (
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-left text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
                   <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
-                  <p className="text-[11px] leading-relaxed">
-                    Pekerjaan fisik telah mencapai <strong>100%</strong>. Peninjauan kelayakan dan serah terima diajukan ke Koordinator melalui aksi terpisah <strong>Review Koordinator</strong>.
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-[11px] leading-relaxed">
+                      Pekerjaan fisik telah mencapai <strong>100%</strong>. Lengkapi berkas milestone dan ajukan penyelesaian pekerjaan melalui tab <strong>3. Ajukan Penyelesaian</strong>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSuccessResult(null);
+                        setActiveTab("submission");
+                      }}
+                      className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-[#1D5AA6] dark:text-blue-400 hover:underline"
+                    >
+                      Buka Tab Ajukan Penyelesaian <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -703,7 +767,7 @@ export function ProgressUpdateModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isSysAdmin}
                   className="px-5 py-2.5 text-xs font-bold text-white bg-[#1D5AA6] hover:bg-[#123B6D] rounded-xl shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {loading ? (

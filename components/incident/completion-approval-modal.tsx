@@ -148,7 +148,7 @@ export function CompletionApprovalModal({
             finalApproveReason={workflowPermissions?.finalApproveReason ?? workflowPermissions?.closeReason}
             canClose={Boolean(workflowPermissions?.canClose)}
             closeReason={workflowPermissions?.closeReason}
-            readOnly={false}
+            readOnly={identity?.systemRole === "ADMIN"}
             onRefresh={() => {
               void refreshApprovalData();
               void onUpdated?.();
