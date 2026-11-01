@@ -691,6 +691,30 @@ async function runRefinementSuite() {
       adminMileRes.status === 403,
       `Status: ${adminMileRes.status}`
     );
+
+    // 4.8 System Admin Operational Creation Prohibition (POST /api/incidents)
+    const incidentRoute = await import("../app/api/incidents/route");
+    const adminCreateReq = new Request("http://localhost:3004/api/incidents", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `siaga_session=${adminCookie}`,
+      },
+      body: JSON.stringify({
+        id: `INC-ADMIN-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "G001",
+        branch: "Bandung",
+      }),
+    });
+    const adminCreateRes = await incidentRoute.POST(adminCreateReq);
+    record(
+      "ADMIN-CREATE-01",
+      "Admin Operational Separation",
+      "System Administrator is rejected with HTTP 403 from creating operational incidents",
+      adminCreateRes.status === 403,
+      `Status: ${adminCreateRes.status}`
+    );
   }
 
   // ============================================================================
@@ -768,6 +792,25 @@ async function runRefinementSuite() {
     await EstimationIntegrationService.updateWorkStatus(approvalReportId, "IN_PROGRESS", { bypassReadinessValidation: true });
     await EstimationIntegrationService.updateWorkStatus(approvalReportId, "COMPLETED", { bypassReadinessValidation: true });
 
+    // Verify prerequisite gating: PIC submit rejected if no final evidence and no milestone ST
+    const earlyPicSubmitReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/submit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `siaga_session=${bmsCookie}`,
+      },
+      body: JSON.stringify({ notes: "Early submit before evidence/milestone." }),
+    });
+    const earlyPicSubmitRes = await compSubmitRoute.POST(earlyPicSubmitReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const earlyPicSubmitJson = await earlyPicSubmitRes.json();
+    record(
+      "SUBMIT-PREREQ-01",
+      "Completion Prerequisites",
+      "PIC completion submission is rejected with HTTP 400 when neither final evidence nor milestone SERAH_TERIMA is attached",
+      earlyPicSubmitRes.status === 400 && earlyPicSubmitJson.code === "FINAL_EVIDENCE_MISSING",
+      `Status: ${earlyPicSubmitRes.status}, code: ${earlyPicSubmitJson.code}`
+    );
+
     // Submit all 5 milestones required for manager approval
     const bmsUserCtx = {
       id: "usr_bms_bdg_01",
@@ -794,6 +837,16 @@ async function runRefinementSuite() {
         notes: `Test dokumen ${m.desc}`,
       });
     }
+
+    // Milestone SERAH_TERIMA preserves 100% progress and does NOT prematurely transition incident status to awaiting_st
+    const incAfterMilestoneSt = await dbGetIncidentById(approvalReportId);
+    record(
+      "MILE-ST-01",
+      "Milestone SERAH_TERIMA Gating",
+      "Milestone SERAH_TERIMA preserves 100% progress and does NOT prematurely transition incident status to awaiting_st",
+      incAfterMilestoneSt?.progress === 100 && incAfterMilestoneSt?.status === "in_maintenance",
+      `Progress: ${incAfterMilestoneSt?.progress}%, Status: ${incAfterMilestoneSt?.status}`
+    );
 
     // System Admin attempt to submit completion -> Rejected with HTTP 403
     const adminSubmitReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/submit`, {

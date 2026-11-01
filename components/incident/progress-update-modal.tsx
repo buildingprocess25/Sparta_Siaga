@@ -88,6 +88,7 @@ export function ProgressUpdateModal({
   const [approvalHistory, setApprovalHistory] = useState<CompletionApprovalHistoryRecord[]>([]);
   const [physicalProgress, setPhysicalProgress] = useState(latestProgress || 0);
   const [hasFinalEvidence, setHasFinalEvidence] = useState(false);
+  const [hasMilestoneSt, setHasMilestoneSt] = useState(false);
 
   const isSysAdmin = identity?.systemRole === "ADMIN";
 
@@ -110,7 +111,8 @@ export function ProgressUpdateModal({
       setApprovalRoute(completionJson?.data?.route || null);
       setApprovalHistory(completionJson?.data?.history || []);
       setPhysicalProgress(progressJson?.data?.latestProgress ?? incident.progress ?? 0);
-      setHasFinalEvidence(Boolean(progressJson?.data?.hasFinalEvidence));
+      setHasFinalEvidence(Boolean(progressJson?.data?.hasFinalEvidence || completionJson?.data?.hasFinalEvidence));
+      setHasMilestoneSt(Boolean(completionJson?.data?.hasMilestoneSt || progressJson?.data?.hasMilestoneSt));
       if (selectInitialTab) {
         if (incident.status === "revision_requested") {
           setActiveTab("milestone");
@@ -325,6 +327,7 @@ export function ProgressUpdateModal({
                 history={approvalHistory}
                 latestProgress={physicalProgress}
                 hasFinalEvidence={hasFinalEvidence}
+                hasMilestoneSt={hasMilestoneSt}
                 userRole={identity?.role}
                 userBranch={identity?.branch}
                 userSystemRole={identity?.systemRole}

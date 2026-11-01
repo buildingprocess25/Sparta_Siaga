@@ -120,7 +120,7 @@ export function OperationalReportCenter({
     Boolean(identity?.effectivePermissions?.COMPLETION_SUBMIT) ||
     Boolean(identity?.effectivePermissions?.COMPLETION_APPROVE_COORDINATOR)
   );
-  const canCreateReport = Boolean(identity) && !isHoViewer;
+  const canCreateReport = Boolean(identity) && !isHoViewer && !isSystemAdmin;
 
   // Contextual Modal States
   const [selectedProgressReport, setSelectedProgressReport] = useState<IncidentRecord | null>(null);
@@ -431,7 +431,7 @@ export function OperationalReportCenter({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
-          {canCreateReport && (
+          {canCreateReport ? (
             <button
               onClick={onOpenReportModal}
               type="button"
@@ -440,7 +440,17 @@ export function OperationalReportCenter({
               <Plus className="w-4 h-4" />
               Buat Laporan
             </button>
-          )}
+          ) : isSystemAdmin ? (
+            <button
+              type="button"
+              disabled
+              title="Akun System Administrator tidak diizinkan membuat laporan operasional."
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60 min-h-[40px]"
+            >
+              <Plus className="w-4 h-4" />
+              Buat Laporan
+            </button>
+          ) : null}
         </div>
       </div>
 

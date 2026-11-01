@@ -70,7 +70,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (sessionUser.scope === "HO" && sessionUser.systemRole !== "ADMIN") {
+    // System Administrator tidak boleh membuat laporan operasional (khusus audit & administrasi teknis)
+    if (sessionUser.systemRole === "ADMIN") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Akun System Administrator tidak diizinkan membuat laporan operasional.",
+          code: "ADMIN_OPERATIONAL_BYPASS_BLOCKED",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (sessionUser.scope === "HO") {
       return NextResponse.json(
         {
           error: "Forbidden: Pengguna HO hanya memiliki hak akses baca (read-only).",
@@ -141,16 +152,14 @@ export async function POST(request: Request) {
     body.status = body.status || "pending_confirmation";
     body.progress = 0;
 
-    const isAdmin = sessionUser.systemRole === "ADMIN";
-    const isHO = sessionUser.scope === "HO" && !isAdmin;
     const r = (sessionUser.role || "").toLowerCase();
-    const isBMM = !isAdmin && !isHO && r === "bm";
-    const isBMS = !isAdmin && !isHO && r === "bms";
-    const isBES = !isAdmin && !isHO && r === "bes";
-    const isBBS = !isAdmin && !isHO && r === "bbs";
+    const isBMM = r === "bm";
+    const isBMS = r === "bms";
+    const isBES = r === "bes";
+    const isBBS = r === "bbs";
 
     // 3. Reject unknown or unauthorized roles explicitly
-    if (!isAdmin && !isBMM && !isBMS && !isBES && !isBBS) {
+    if (!isBMM && !isBMS && !isBES && !isBBS) {
       return NextResponse.json(
         {
           error: "Akses ditolak: Peran pengguna tidak memiliki hak untuk membuat laporan kejadian baru. Hanya BMS (Toko), BES (DC), dan BBS (Gedung/Kantor) yang berwenang.",
@@ -174,91 +183,89 @@ export async function POST(request: Request) {
     const isStoreReport = !isDcReport && !isBuildingReport;
 
     // 4. Validate explicit facility-role mapping
-    if (!isAdmin) {
-      if (isStoreReport) {
-        if (isBES) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Toko.",
-              code: "BES_STORE_REPORT_FORBIDDEN",
-            },
-            { status: 403 }
-          );
-        }
-        if (isBBS) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Toko.",
-              code: "BBS_STORE_REPORT_FORBIDDEN",
-            },
-            { status: 403 }
-          );
-        }
-        if (!isBMS && !isBMM) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Hanya BMS cabang terkait yang berwenang membuat laporan untuk Toko.",
-              code: "BMS_STORE_REQUIRED",
-            },
-            { status: 403 }
-          );
-        }
-      } else if (isDcReport) {
-        if (isBMS) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Fasilitas/DC.",
-              code: "BMS_FACILITY_REPORT_FORBIDDEN",
-            },
-            { status: 403 }
-          );
-        }
-        if (isBBS) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Fasilitas/DC.",
-              code: "BBS_FACILITY_REPORT_FORBIDDEN",
-            },
-            { status: 403 }
-          );
-        }
-        if (!isBES && !isBMM) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Hanya BES cabang terkait yang berwenang membuat laporan untuk Fasilitas/DC.",
-              code: "BES_FACILITY_REQUIRED",
-            },
-            { status: 403 }
-          );
-        }
-      } else if (isBuildingReport) {
-        if (isBMS) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
-              code: "BMS_OFFICE_REPORT_FORBIDDEN",
-            },
-            { status: 403 }
-          );
-        }
-        if (isBES) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
-              code: "BES_OFFICE_REPORT_FORBIDDEN",
-            },
-            { status: 403 }
-          );
-        }
-        if (!isBBS && !isBMM) {
-          return NextResponse.json(
-            {
-              error: "Akses ditolak: Hanya BBS cabang terkait yang berwenang membuat laporan untuk Gedung/Kantor Cabang.",
-              code: "BBS_OFFICE_REQUIRED",
-            },
-            { status: 403 }
-          );
-        }
+    if (isStoreReport) {
+      if (isBES) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Toko.",
+            code: "BES_STORE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (isBBS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Toko.",
+            code: "BBS_STORE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isBMS && !isBMM) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Hanya BMS cabang terkait yang berwenang membuat laporan untuk Toko.",
+            code: "BMS_STORE_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+    } else if (isDcReport) {
+      if (isBMS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Fasilitas/DC.",
+            code: "BMS_FACILITY_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (isBBS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Fasilitas/DC.",
+            code: "BBS_FACILITY_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isBES && !isBMM) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Hanya BES cabang terkait yang berwenang membuat laporan untuk Fasilitas/DC.",
+            code: "BES_FACILITY_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+    } else if (isBuildingReport) {
+      if (isBMS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+            code: "BMS_OFFICE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (isBES) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+            code: "BES_OFFICE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isBBS && !isBMM) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Hanya BBS cabang terkait yang berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+            code: "BBS_OFFICE_REQUIRED",
+          },
+          { status: 403 }
+        );
       }
     }
 
@@ -272,13 +279,11 @@ export async function POST(request: Request) {
       );
     }
 
-    if (sessionUser.scope !== "HO" && !isAdmin) {
-      if (body.branch.trim().toLowerCase() !== (sessionUser.branch || "").trim().toLowerCase()) {
-        return NextResponse.json(
-          { error: "Unauthorized: Tidak dapat membuat laporan untuk cabang lain" },
-          { status: 403 }
-        );
-      }
+    if (body.branch.trim().toLowerCase() !== (sessionUser.branch || "").trim().toLowerCase()) {
+      return NextResponse.json(
+        { error: "Unauthorized: Tidak dapat membuat laporan untuk cabang lain" },
+        { status: 403 }
+      );
     }
 
     // Default dates if omitted

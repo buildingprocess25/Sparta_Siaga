@@ -433,9 +433,15 @@ export async function submitMilestoneDocument(params: SubmitMilestoneParams): Pr
     notes: notes || `Dokumen ${savedDoc.fileName} berhasil diverifikasi.`,
   };
 
+  // Section 1: Upload milestone SERAH_TERIMA tidak boleh otomatis mengubah status laporan ke awaiting_st.
+  // Status awaiting_st hanya boleh diberikan setelah PIC resmi melakukan submitCompletion.
+  const nextStatus = ["revision_requested", "in_maintenance"].includes(incident.status)
+    ? incident.status
+    : "in_maintenance";
+
   const updatedIncident = await dbUpdateIncident(reportId, {
     progress: newProgress,
-    status: stageKey === "SERAH_TERIMA" ? "awaiting_st" : "in_maintenance",
+    status: nextStatus,
     timeline: [...(incident.timeline || []), timelineEntry],
   });
 

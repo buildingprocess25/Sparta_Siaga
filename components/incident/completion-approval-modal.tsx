@@ -31,6 +31,7 @@ export function CompletionApprovalModal({
   const [approvalHistory, setApprovalHistory] = useState<CompletionApprovalHistoryRecord[]>([]);
   const [physicalProgress, setPhysicalProgress] = useState(0);
   const [hasFinalEvidence, setHasFinalEvidence] = useState(false);
+  const [hasMilestoneSt, setHasMilestoneSt] = useState(false);
   const [workflowPermissions, setWorkflowPermissions] = useState<{
     canSubmitCompletion: boolean;
     submitCompletionReason?: string;
@@ -74,8 +75,9 @@ export function CompletionApprovalModal({
       }
       if (progJson?.data) {
         setPhysicalProgress(Number(progJson.data.latestProgress) || 0);
-        setHasFinalEvidence(Boolean(progJson.data.hasFinalEvidence));
       }
+      setHasFinalEvidence(Boolean(progJson?.data?.hasFinalEvidence || compJson?.data?.hasFinalEvidence));
+      setHasMilestoneSt(Boolean(compJson?.data?.hasMilestoneSt || progJson?.data?.hasMilestoneSt));
     } catch (err) {
       console.error("[CompletionApprovalModal] Gagal memuat data persetujuan:", err);
     } finally {
@@ -137,6 +139,7 @@ export function CompletionApprovalModal({
             history={approvalHistory}
             latestProgress={physicalProgress}
             hasFinalEvidence={hasFinalEvidence}
+            hasMilestoneSt={hasMilestoneSt}
             userRole={identity?.role}
             userBranch={identity?.branch}
             userSystemRole={identity?.systemRole}

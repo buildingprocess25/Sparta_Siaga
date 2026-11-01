@@ -41,6 +41,16 @@ export async function GET(request: Request, { params }: RouteContext) {
         checkUserPermission({ user: sessionUser, permission: "REPORT_CLOSE", report: incident }),
       ]);
 
+    let hasMilestoneSt = false;
+    try {
+      const { getMilestones } = await import("@/lib/milestone-service");
+      const milestones = await getMilestones(id);
+      const st = milestones.find((m) => m.stageKey === "SERAH_TERIMA");
+      hasMilestoneSt = Boolean(st && st.status === "SUBMITTED" && (st.documentStorageKey || st.documentUrl));
+    } catch {
+      // ignore
+    }
+
     const isEstimationEligible =
       estimationRoute !== null &&
       (estimationRoute.workStatus === "READY_FOR_WORK" ||
@@ -66,6 +76,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         latestProgress: latestStatus.latestPercentage,
         workStatus: latestStatus.workStatus,
         hasFinalEvidence,
+        hasMilestoneSt,
         history: protectedHistory,
         canUpdateProgress: updateCheck.authorized,
         updateProgressReason: updateCheck.reason || "",
