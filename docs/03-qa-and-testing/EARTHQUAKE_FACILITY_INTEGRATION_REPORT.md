@@ -74,7 +74,7 @@ No branch was inferred from a name, code, city, or coordinate. Therefore importe
 | Next.js production build | PASS |
 | ESLint | PASS with 389 pre-existing warnings and 0 errors |
 | PWA HTTP/runtime audit | PASS 13/13 |
-| Independent visual browser regression | NOT RUN — browser CLI unavailable |
+| Independent visual browser regression | PASS (Phase 4 Browser UAT) - 17 Playwright Chromium scenarios verified with screenshots |
 
 The first run of the existing automation suite exposed a compatibility gap: legacy `dbCreateIncident` did not populate typed location identity, allowing concurrent inserts around the new constraint. The insert adapter now derives `canonical_event_id`, `STORE`, and `location_id`; the rerun passed 18/18.
 

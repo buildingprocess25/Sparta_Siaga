@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Final User Management & Role Restructuring Verification Suite
+ * SPARTA SIAGA - Final User Management & Role Restructuring Verification Suite
  * 
  * Verifies:
  * 1. Role Catalog: Building & Maintenance Manager (BMM), Deactivated BMC/BEC/Tim Toko

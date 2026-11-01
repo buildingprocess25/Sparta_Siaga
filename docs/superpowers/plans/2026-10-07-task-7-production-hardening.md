@@ -79,7 +79,7 @@ Expected: exit 1 with P1–P14 failures and a clear P15 result; failures must id
 
 - [ ] **Step 3: Make Task 4 SEC1 deterministic**
 
-The current baseline failure has already proven the mtime-based assertion is unstable in a fresh worktree. Replace the five-minute mtime heuristic with a snapshot of filenames in `public/uploads/progress` captured before Task 4 creates progress evidence and compare it with the set after the suite. A newly created public file fails; copied/tracked files with refreshed mtimes do not. Run Task 4 immediately after the edit—without waiting—to prove 36/36 PASS.
+The current baseline failure has already proven the mtime-based assertion is unstable in a fresh worktree. Replace the five-minute mtime heuristic with a snapshot of filenames in `public/uploads/progress` captured before Task 4 creates progress evidence and compare it with the set after the suite. A newly created public file fails; copied/tracked files with refreshed mtimes do not. Run Task 4 immediately after the edit - without waiting - to prove 36/36 PASS.
 
 - [ ] **Step 4: Commit the RED test and deterministic regression harness**
 

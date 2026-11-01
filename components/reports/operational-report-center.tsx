@@ -15,10 +15,14 @@ import {
   ChevronRight,
   X,
   RotateCcw,
+  ClipboardCheck,
+  ShieldCheck,
+  UserCheck,
+  FileCheck,
 } from "lucide-react";
 import { IncidentRecord, DisasterType, IncidentStatus, RoleType, isActiveStatus, isHistoryStatus } from "@/types/incident";
 import { UserIdentity } from "@/lib/identity";
-import { SelectReportModal } from "../incident/select-report-modal";
+import { CompletionApprovalModal } from "../incident/completion-approval-modal";
 import { EstimationModal } from "../incident/estimation-modal";
 import { ProgressUpdateModal } from "../incident/progress-update-modal";
 import { StoreVerificationModal } from "../incident/store-verification-modal";
@@ -117,11 +121,10 @@ export function OperationalReportCenter({
   );
   const canCreateReport = Boolean(identity) && !isHoViewer;
 
-  // Entry Point D2 & O states
-  const [selectReportPurpose, setSelectReportPurpose] = useState<"ESTIMATION" | "PROGRESS" | null>(null);
-  const [selectedEstimationReport, setSelectedEstimationReport] = useState<IncidentRecord | null>(null);
+  // Contextual Modal States
   const [selectedProgressReport, setSelectedProgressReport] = useState<IncidentRecord | null>(null);
   const [selectedVerificationReport, setSelectedVerificationReport] = useState<IncidentRecord | null>(null);
+  const [selectedApprovalReport, setSelectedApprovalReport] = useState<IncidentRecord | null>(null);
 
   useEffect(() => {
     setSelectedProgressReport((previous) =>
@@ -130,7 +133,137 @@ export function OperationalReportCenter({
     setSelectedVerificationReport((previous) =>
       previous ? incidents.find((item) => item.id === previous.id) || previous : previous
     );
+    setSelectedApprovalReport((previous) =>
+      previous ? incidents.find((item) => item.id === previous.id) || previous : previous
+    );
   }, [incidents]);
+
+  const getContextualAction = (inc: IncidentRecord) => {
+    if (isHoViewer) return null;
+    if (["closed", "resolved", "archived", "confirmed_safe", "rejected_invalid"].includes(inc.status)) {
+      return null;
+    }
+
+    const userRole = (identity?.role || "").toLowerCase();
+    const userBranch = (identity?.branch || "").trim().toLowerCase();
+    const repBranch = (inc.branch || "").trim().toLowerCase();
+    const isSameBranch = !userBranch || userBranch === repBranch;
+    const isSysAdmin = identity?.systemRole === "ADMIN";
+
+    const tkp = (inc.tkpType || (inc.locationKind === "FACILITY" ? "dc" : "toko")).toLowerCase();
+    const expectedSpecialistRole = tkp === "dc" ? "bes" : tkp === "building" ? "bbs" : "bms";
+    const expectedCoordinatorRole = tkp === "dc" ? "bec" : tkp === "building" ? "bbc" : "bmc";
+
+    const isSpecialist = userRole === expectedSpecialistRole && isSameBranch;
+    const isCoordinator = userRole === expectedCoordinatorRole && isSameBranch;
+    const isManager = userRole === "bm" && isSameBranch;
+
+    // 1. Pemeriksaan Lapangan
+    if (["pending_confirmation", "verifying"].includes(inc.status)) {
+      return {
+        label: "Pemeriksaan Lapangan",
+        icon: ClipboardCheck,
+        disabled: !isSpecialist && !isSysAdmin,
+        disabledReason: !isSpecialist ? `Hanya dapat diperiksa oleh ${expectedSpecialistRole.toUpperCase()} cabang terkait.` : undefined,
+        handler: () => setSelectedVerificationReport(inc),
+      };
+    }
+
+    // 2. Revisi Pemeriksaan
+    if (inc.status === "clarification_requested") {
+      return {
+        label: "Revisi Pemeriksaan",
+        icon: RotateCcw,
+        disabled: !isSpecialist && !isSysAdmin,
+        disabledReason: !isSpecialist ? `Menunggu revisi bukti dari ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
+        handler: () => setSelectedVerificationReport(inc),
+      };
+    }
+
+    // 3. Konfirmasi BnM Manajer
+    if (inc.status === "pending_bm_approval") {
+      return {
+        label: "Konfirmasi BnM",
+        icon: ShieldCheck,
+        disabled: !isManager && !isSysAdmin,
+        disabledReason: !isManager ? "Menunggu persetujuan awal BnM Manajer cabang." : undefined,
+        handler: () => setSelectedVerificationReport(inc),
+      };
+    }
+
+    // 4. Penanganan Kerusakan / Kesiapan Kerja
+    if (["confirmed_affected", "WAITING_ESTIMATION"].includes(inc.status)) {
+      return {
+        label: "Penanganan Kerusakan",
+        icon: Wrench,
+        disabled: !isSpecialist && !isSysAdmin,
+        disabledReason: !isSpecialist ? `Tindak lanjut dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
+        handler: () => setSelectedProgressReport(inc),
+      };
+    }
+
+    // 5. Work in Progress / Completion Review
+    if (inc.status === "in_maintenance") {
+      const currentProgress = inc.progress ?? 0;
+      if (currentProgress < 100) {
+        return {
+          label: "Update Progres",
+          icon: Wrench,
+          disabled: !isSpecialist && !isSysAdmin,
+          disabledReason: !isSpecialist ? `Pembaruan progres fisik dikelola oleh ${expectedSpecialistRole.toUpperCase()} cabang.` : undefined,
+          handler: () => setSelectedProgressReport(inc),
+        };
+      }
+      // 100% physically complete
+      if (isCoordinator || isSysAdmin) {
+        return {
+          label: "Review Koordinator",
+          icon: UserCheck,
+          disabled: false,
+          handler: () => setSelectedApprovalReport(inc),
+        };
+      }
+      if (isSpecialist) {
+        return {
+          label: "Berkas Milestone",
+          icon: FileCheck,
+          disabled: false,
+          handler: () => setSelectedProgressReport(inc),
+        };
+      }
+      return {
+        label: "Review Koordinator",
+        icon: UserCheck,
+        disabled: true,
+        disabledReason: `Menunggu verifikasi ${expectedCoordinatorRole.toUpperCase()} cabang.`,
+        handler: () => onSelectIncident(inc),
+      };
+    }
+
+    // 6. Awaiting Coordinator Approval
+    if (inc.status === "awaiting_st") {
+      return {
+        label: "Review Koordinator",
+        icon: UserCheck,
+        disabled: !isCoordinator && !isSysAdmin,
+        disabledReason: !isCoordinator ? `Menunggu review ${expectedCoordinatorRole.toUpperCase()} cabang.` : undefined,
+        handler: () => setSelectedApprovalReport(inc),
+      };
+    }
+
+    // 7. Awaiting Final Manager Case Close
+    if (["pending_final_approval", "approved_pending_close"].includes(inc.status)) {
+      return {
+        label: "Persetujuan & Case Close",
+        icon: ShieldCheck,
+        disabled: !isManager && !isSysAdmin,
+        disabledReason: !isManager ? "Menunggu penutupan resmi oleh BnM Manajer cabang." : undefined,
+        handler: () => setSelectedApprovalReport(inc),
+      };
+    }
+
+    return null;
+  };
 
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
@@ -146,12 +279,15 @@ export function OperationalReportCenter({
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const ticketId = inc.maintenanceTicket?.ticketId?.toLowerCase() || inc.id.toLowerCase();
+        const ticketId = (inc.maintenanceTicket?.ticketId || inc.id || '').toLowerCase();
+        const storeName = (inc.storeName || '').toLowerCase();
+        const branch = (inc.branch || '').toLowerCase();
+        const city = (inc.locationCity || '').toLowerCase();
         if (
           !ticketId.includes(q) &&
-          !inc.storeName.toLowerCase().includes(q) &&
-          !inc.branch.toLowerCase().includes(q) &&
-          !inc.locationCity.toLowerCase().includes(q)
+          !storeName.includes(q) &&
+          !branch.includes(q) &&
+          !city.includes(q)
         ) {
           return false;
         }
@@ -255,16 +391,6 @@ export function OperationalReportCenter({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
-          {canUpdateProgress && (
-            <button
-              onClick={() => setSelectReportPurpose("PROGRESS")}
-              type="button"
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 shadow-2xs transition-colors min-h-[40px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
-              <Wrench className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              Update Progress
-            </button>
-          )}
           {canCreateReport && (
             <button
               onClick={onOpenReportModal}
@@ -478,23 +604,27 @@ export function OperationalReportCenter({
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-right">
                           <div className="inline-flex items-center gap-1.5 justify-end">
-                            {!isHoViewer && inc.status !== "closed" && inc.status !== "resolved" && (
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  if (["pending_confirmation", "verifying", "clarification_requested", "pending_bm_approval"].includes(inc.status)) {
-                                    setSelectedVerificationReport(inc);
-                                  } else {
-                                    setSelectedProgressReport(inc);
-                                  }
-                                }}
-                                aria-label={`Tindak lanjut laporan ${inc.maintenanceTicket?.ticketId || inc.id}`}
-                                className="bg-[#1D5AA6] hover:bg-[#123B6D] text-white shadow-2xs font-semibold"
-                              >
-                                <Wrench className="w-3.5 h-3.5 mr-1" />
-                                Tindak Lanjut
-                              </Button>
-                            )}
+                            {(() => {
+                              const action = getContextualAction(inc);
+                              if (!action) return null;
+                              return (
+                                <Button
+                                  size="sm"
+                                  disabled={action.disabled}
+                                  onClick={action.handler}
+                                  title={action.disabled ? action.disabledReason : action.label}
+                                  aria-label={`Tindak lanjut: ${action.label} laporan ${inc.maintenanceTicket?.ticketId || inc.id}`}
+                                  className={`font-semibold shadow-2xs ${
+                                    action.disabled
+                                      ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60"
+                                      : "bg-[#1D5AA6] hover:bg-[#123B6D] text-white"
+                                  }`}
+                                >
+                                  <action.icon className="w-3.5 h-3.5 mr-1" />
+                                  {action.label}
+                                </Button>
+                              );
+                            })()}
                             <Button
                               variant="outline"
                               size="sm"
@@ -609,23 +739,27 @@ export function OperationalReportCenter({
 
                   {/* Action Button: Consistent Detail Button & Tindak Lanjut */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-end gap-2">
-                    {!isHoViewer && inc.status !== "closed" && inc.status !== "resolved" && (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          if (["pending_confirmation", "verifying", "clarification_requested", "pending_bm_approval"].includes(inc.status)) {
-                            setSelectedVerificationReport(inc);
-                          } else {
-                            setSelectedProgressReport(inc);
-                          }
-                        }}
-                        aria-label={`Tindak lanjut laporan ${inc.maintenanceTicket?.ticketId || inc.id}`}
-                        className="min-h-[44px] px-3.5 bg-[#1D5AA6] hover:bg-[#123B6D] text-white shadow-2xs font-semibold"
-                      >
-                        <Wrench className="w-3.5 h-3.5 mr-1.5" />
-                        Tindak Lanjut
-                      </Button>
-                    )}
+                    {(() => {
+                      const action = getContextualAction(inc);
+                      if (!action) return null;
+                      return (
+                        <Button
+                          size="sm"
+                          disabled={action.disabled}
+                          onClick={action.handler}
+                          title={action.disabled ? action.disabledReason : action.label}
+                          aria-label={`Tindak lanjut: ${action.label} laporan ${inc.maintenanceTicket?.ticketId || inc.id}`}
+                          className={`min-h-[44px] px-3.5 font-semibold shadow-2xs ${
+                            action.disabled
+                              ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 border border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-60"
+                              : "bg-[#1D5AA6] hover:bg-[#123B6D] text-white"
+                          }`}
+                        >
+                          <action.icon className="w-3.5 h-3.5 mr-1.5" />
+                          {action.label}
+                        </Button>
+                      );
+                    })()}
                     <Button
                       variant="outline"
                       size="sm"
@@ -677,19 +811,6 @@ export function OperationalReportCenter({
       )}
 
 
-      {/* Select Report Modal for Update Progress */}
-      <SelectReportModal
-        isOpen={selectReportPurpose !== null}
-        onClose={() => setSelectReportPurpose(null)}
-        purpose="PROGRESS"
-        incidents={incidents}
-        currentUser={identity}
-        onSelectReport={(rep) => {
-          setSelectedProgressReport(rep);
-          setSelectReportPurpose(null);
-        }}
-      />
-
       {/* Sub-modal: Update Progress */}
       <ProgressUpdateModal
         isOpen={selectedProgressReport !== null}
@@ -707,6 +828,19 @@ export function OperationalReportCenter({
         onClose={() => setSelectedVerificationReport(null)}
         onConfirmVerification={async () => {
           setSelectedVerificationReport(null);
+          if (onReportUpdated) {
+            await onReportUpdated();
+          }
+        }}
+      />
+
+      {/* Sub-modal: Completion Review & Case Close */}
+      <CompletionApprovalModal
+        incident={selectedApprovalReport}
+        isOpen={selectedApprovalReport !== null}
+        onClose={() => setSelectedApprovalReport(null)}
+        onUpdated={async () => {
+          setSelectedApprovalReport(null);
           if (onReportUpdated) {
             await onReportUpdated();
           }

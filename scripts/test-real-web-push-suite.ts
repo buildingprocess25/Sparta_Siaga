@@ -17,7 +17,7 @@ import webpush from 'web-push';
 
 async function runTestSuite() {
   console.log('===============================================================');
-  console.log('SPARTA SIAGA — PUSH-01: Real Background Web Push Test Suite');
+  console.log('SPARTA SIAGA - PUSH-01: Real Background Web Push Test Suite');
   console.log('===============================================================\n');
 
   let passed = 0;

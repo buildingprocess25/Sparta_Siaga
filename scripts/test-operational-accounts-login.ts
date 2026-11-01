@@ -35,7 +35,7 @@ const TEST_ACCOUNTS: AccountExpectation[] = [
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — UAT ACCOUNTS AUTHENTICATION & IDENTITY VERIFICATION");
+  console.log(" SPARTA SIAGA - UAT ACCOUNTS AUTHENTICATION & IDENTITY VERIFICATION");
   console.log("================================================================================\n");
 
   const credFilePath = path.join(process.cwd(), ".env.pilot-credentials.local");

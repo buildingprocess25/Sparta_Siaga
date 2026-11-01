@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — PHASE 4: COMPREHENSIVE END-TO-END BUSINESS FLOW & MULTI-ROLE UAT SUITE
+ * SPARTA SIAGA - PHASE 4: COMPREHENSIVE END-TO-END BUSINESS FLOW & MULTI-ROLE UAT SUITE
  * 
  * Target Environment: Aiven PostgreSQL (sparta_siaga_isolated)
  * Safety: Never connects to or modifies Dokploy production database (siaga).
@@ -53,7 +53,7 @@ function extractCookie(res: any): string | null {
 
 async function runPhase4Suite() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — PHASE 4: END-TO-END BUSINESS FLOW & MULTI-ROLE UAT SUITE");
+  console.log(" SPARTA SIAGA - PHASE 4: END-TO-END BUSINESS FLOW & MULTI-ROLE UAT SUITE");
   console.log(" Full Validation, Lifecycle Guards & Multi-Role Permission Matrix");
   console.log(" Target: Aiven sparta_siaga_isolated");
   console.log("================================================================================\n");
@@ -189,7 +189,7 @@ async function runPhase4Suite() {
   await pool.query(`DELETE FROM earthquake_events WHERE id LIKE 'bmkg_p4_test_%'`);
 
   // ============================================================================
-  // SECTION 2: E2E LIFECYCLE 1 — STORE / BMS / BMC / BNM MANAJER (FULL DAMAGED PATH)
+  // SECTION 2: E2E LIFECYCLE 1 - STORE / BMS / BMC / BNM MANAJER (FULL DAMAGED PATH)
   // ============================================================================
   console.log("\n--- SECTION 2: E2E LIFECYCLE 1: STORE / BMS / BMC / BNM MANAJER (DAMAGED PATH) ---");
 
@@ -475,7 +475,11 @@ async function runPhase4Suite() {
       `Handler: ${json.data?.handlerType}, Estimation Status: ${json.data?.status}`
     );
 
-    // Simulate work readiness confirmation to transition to READY_FOR_WORK and in_maintenance
+    // AUTOMATED TEST HARNESS STATE TRANSITION:
+    // In live operations, work readiness requirements are fulfilled via multipart uploads (POST /api/incidents/[id]/readiness).
+    // In this backend test harness, updateWorkStatus and dbUpdateIncident are invoked directly to transition state
+    // to READY_FOR_WORK and in_maintenance in order to isolate and verify milestone execution and non-auto-close guarantees.
+    // Note: This automated test script verifies backend API behavior and does not replace interactive browser-based UAT.
     await EstimationIntegrationService.updateWorkStatus(reportId1, "READY_FOR_WORK", { bypassReadinessValidation: true });
     await dbUpdateIncident(reportId1, { status: "in_maintenance" });
   }
@@ -702,7 +706,7 @@ async function runPhase4Suite() {
   }
 
   // ============================================================================
-  // SECTION 3: E2E LIFECYCLE 2 — NO-DAMAGE COMPLETION FLOW (TIDAK ADA KERUSAKAN)
+  // SECTION 3: E2E LIFECYCLE 2 - NO-DAMAGE COMPLETION FLOW (TIDAK ADA KERUSAKAN)
   // ============================================================================
   console.log("\n--- SECTION 3: E2E LIFECYCLE 2: NO-DAMAGE FLOW (TIDAK ADA KERUSAKAN) ---");
 
@@ -818,7 +822,7 @@ async function runPhase4Suite() {
   }
 
   // ============================================================================
-  // SECTION 4: E2E LIFECYCLE 3 — SPECIALIZED FACILITIES (DC & OFFICE)
+  // SECTION 4: E2E LIFECYCLE 3 - SPECIALIZED FACILITIES (DC & OFFICE)
   // ============================================================================
   console.log("\n--- SECTION 4: E2E LIFECYCLE 3: SPECIALIZED FACILITIES (DC & OFFICE) ---");
 
@@ -885,6 +889,7 @@ async function runPhase4Suite() {
       actor: { id: besUserCtx.id, name: besUserCtx.name, nik: "BES001" },
       report: dcIncident!,
     });
+    // Backend test harness helper: isolate DC milestone upload and verification
     await EstimationIntegrationService.updateWorkStatus(reportIdDc, "READY_FOR_WORK", { bypassReadinessValidation: true });
     await dbUpdateIncident(reportIdDc, { status: "in_maintenance" });
     await submitMilestoneFlexible({
@@ -982,6 +987,7 @@ async function runPhase4Suite() {
       actor: { id: bbsUserCtx.id, name: bbsUserCtx.name, nik: "BBS001" },
       report: officeIncident!,
     });
+    // Backend test harness helper: isolate Office milestone upload and verification
     await EstimationIntegrationService.updateWorkStatus(reportIdOffice, "READY_FOR_WORK", { bypassReadinessValidation: true });
     await dbUpdateIncident(reportIdOffice, { status: "in_maintenance" });
     await submitMilestoneFlexible({
@@ -1289,7 +1295,7 @@ async function runPhase4Suite() {
     const resHoCreate = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
       method: "POST",
       headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["ho"]}` },
-      body: JSON.stringify({ id: "INC-HO-BLOCKED", disasterType: "flood", storeId: "T001" }),
+      body: JSON.stringify({ id: "INC-HO-BLOCKED", disasterType: "flood", storeId: "T001", branch: "BANDUNG" }),
     }));
 
     record(
@@ -1298,6 +1304,229 @@ async function runPhase4Suite() {
       "HO users blocked from creating manual incidents with HTTP 403",
       resHoCreate.status === 403,
       `HTTP status: ${resHoCreate.status}`
+    );
+  }
+
+  // 7.4 Security: Unauthorized Report Overwrite Prevention (ID Collision)
+  {
+    const beforeIncident = await dbGetIncidentById(reportId1);
+    const resDuplicateId = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bms"]}` },
+      body: JSON.stringify({
+        id: reportId1,
+        disasterType: "fire",
+        storeId: "T-BDG-001",
+        storeName: "Spoofed Store Title",
+        branch: "BANDUNG",
+        status: "pending_confirmation",
+        progress: 0,
+      }),
+    }));
+    const afterIncident = await dbGetIncidentById(reportId1);
+    const jsonDuplicate = await resDuplicateId.json();
+
+    record(
+      "SEC-01",
+      "SECURITY_REGRESSION",
+      "Unauthorized report overwrite rejected with HTTP 409 Conflict (INCIDENT_ID_CONFLICT)",
+      resDuplicateId.status === 409 &&
+      jsonDuplicate.code === "INCIDENT_ID_CONFLICT" &&
+      afterIncident?.disasterType === beforeIncident?.disasterType &&
+      afterIncident?.storeName === beforeIncident?.storeName,
+      `HTTP status: ${resDuplicateId.status}, code: ${jsonDuplicate.code}`
+    );
+  }
+
+  // 7.5 Security: Status Spoofing Prevention
+  {
+    const resStatusSpoof = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bms"]}` },
+      body: JSON.stringify({
+        id: `INC-P4-SEC-SPOOF-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "T-BDG-001",
+        storeName: "Test Store",
+        branch: "BANDUNG",
+        status: "resolved",
+      }),
+    }));
+    const jsonSpoof = await resStatusSpoof.json();
+
+    record(
+      "SEC-02",
+      "SECURITY_REGRESSION",
+      "Status spoofing attempt ('resolved') rejected with HTTP 400 Bad Request",
+      resStatusSpoof.status === 400 && jsonSpoof.code === "INVALID_INITIAL_STATUS",
+      `HTTP status: ${resStatusSpoof.status}, code: ${jsonSpoof.code}`
+    );
+  }
+
+  // 7.6 Security: Progress Spoofing Prevention
+  {
+    const resProgressSpoof = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bms"]}` },
+      body: JSON.stringify({
+        id: `INC-P4-SEC-PROG-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "T-BDG-001",
+        storeName: "Test Store",
+        branch: "BANDUNG",
+        status: "pending_confirmation",
+        progress: 100,
+      }),
+    }));
+    const jsonProgSpoof = await resProgressSpoof.json();
+
+    record(
+      "SEC-03",
+      "SECURITY_REGRESSION",
+      "Progress spoofing attempt (progress: 100) rejected with HTTP 400 Bad Request",
+      resProgressSpoof.status === 400 && jsonProgSpoof.code === "INVALID_INITIAL_PROGRESS",
+      `HTTP status: ${resProgressSpoof.status}, code: ${jsonProgSpoof.code}`
+    );
+  }
+
+  // 7.7 Security: Role / Facility Mismatch - BMS creating DC report
+  {
+    const resBmsDc = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bms"]}` },
+      body: JSON.stringify({
+        id: `INC-P4-SEC-BMSDC-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "DC-BDG-01",
+        facilityId: "DC-BDG-01",
+        storeName: "DC Bandung",
+        branch: "BANDUNG",
+        tkpType: "dc",
+      }),
+    }));
+    const jsonBmsDc = await resBmsDc.json();
+
+    record(
+      "SEC-04",
+      "SECURITY_REGRESSION",
+      "Role-facility mismatch: BMS creating DC report rejected with HTTP 403 Forbidden",
+      resBmsDc.status === 403 && jsonBmsDc.code === "BMS_FACILITY_REPORT_FORBIDDEN",
+      `HTTP status: ${resBmsDc.status}, code: ${jsonBmsDc.code}`
+    );
+  }
+
+  // 7.8 Security: Role / Facility Mismatch - BES creating Store report
+  {
+    const resBesStore = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bes"]}` },
+      body: JSON.stringify({
+        id: `INC-P4-SEC-BESSTORE-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "T-BDG-001",
+        storeName: "Alfamart Store",
+        branch: "BANDUNG",
+        tkpType: "toko",
+      }),
+    }));
+    const jsonBesStore = await resBesStore.json();
+
+    record(
+      "SEC-05",
+      "SECURITY_REGRESSION",
+      "Role-facility mismatch: BES creating Store report rejected with HTTP 403 Forbidden",
+      resBesStore.status === 403 && jsonBesStore.code === "BES_STORE_REPORT_FORBIDDEN",
+      `HTTP status: ${resBesStore.status}, code: ${jsonBesStore.code}`
+    );
+  }
+
+  // 7.9 Security: Role / Facility Mismatch - BBS creating DC report
+  {
+    const resBbsDc = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bbs"]}` },
+      body: JSON.stringify({
+        id: `INC-P4-SEC-BBSDC-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "DC-BDG-01",
+        facilityId: "DC-BDG-01",
+        storeName: "DC Bandung",
+        branch: "BANDUNG",
+        tkpType: "dc",
+      }),
+    }));
+    const jsonBbsDc = await resBbsDc.json();
+
+    record(
+      "SEC-06",
+      "SECURITY_REGRESSION",
+      "Role-facility mismatch: BBS creating DC report rejected with HTTP 403 Forbidden",
+      resBbsDc.status === 403 && jsonBbsDc.code === "BBS_FACILITY_REPORT_FORBIDDEN",
+      `HTTP status: ${resBbsDc.status}, code: ${jsonBbsDc.code}`
+    );
+  }
+
+  // 7.10 Security: Unauthorized Creator Role (Coordinator attempting to create incident)
+  {
+    const resBmcCreate = await incidentsRoute.POST(new Request("http://localhost/api/incidents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", cookie: `siaga_session=${sessions["bmc"]}` },
+      body: JSON.stringify({
+        id: `INC-P4-SEC-BMCCREATE-${Date.now()}`,
+        disasterType: "flood",
+        storeId: "T-BDG-001",
+        storeName: "Alfamart Store",
+        branch: "BANDUNG",
+        tkpType: "toko",
+      }),
+    }));
+    const jsonBmcCreate = await resBmcCreate.json();
+
+    record(
+      "SEC-07",
+      "SECURITY_REGRESSION",
+      "Unauthorized creator role: BMC blocked from creating incidents with HTTP 403 Forbidden",
+      resBmcCreate.status === 403 && jsonBmcCreate.code === "UNAUTHORIZED_REPORT_CREATOR_ROLE",
+      `HTTP status: ${resBmcCreate.status}, code: ${jsonBmcCreate.code}`
+    );
+  }
+
+  // 7.11 Security: Outbox Access - Branch users strictly blocked from reading Approval Outbox
+  {
+    const resBmsOutbox = await outboxApi.GET(new Request("http://localhost/api/notifications/approval-outbox", {
+      headers: { cookie: `siaga_session=${sessions["bms"]}` },
+    }));
+    const resBmcOutbox = await outboxApi.GET(new Request("http://localhost/api/notifications/approval-outbox", {
+      headers: { cookie: `siaga_session=${sessions["bmc"]}` },
+    }));
+    const resBmOutbox = await outboxApi.GET(new Request("http://localhost/api/notifications/approval-outbox", {
+      headers: { cookie: `siaga_session=${sessions["bm"]}` },
+    }));
+
+    record(
+      "SEC-08",
+      "SECURITY_REGRESSION",
+      "Outbox access control: Branch users (BMS, BMC, BM) blocked from reading outbox (HTTP 403)",
+      resBmsOutbox.status === 403 && resBmcOutbox.status === 403 && resBmOutbox.status === 403,
+      `BMS: ${resBmsOutbox.status}, BMC: ${resBmcOutbox.status}, BM: ${resBmOutbox.status}`
+    );
+  }
+
+  // 7.12 Security: Outbox Access - Authorized HO and Admin access
+  {
+    const resHoOutbox = await outboxApi.GET(new Request("http://localhost/api/notifications/approval-outbox", {
+      headers: { cookie: `siaga_session=${sessions["ho"]}` },
+    }));
+    const resAdminOutbox = await outboxApi.GET(new Request("http://localhost/api/notifications/approval-outbox", {
+      headers: { cookie: `siaga_session=${sessions["admin"]}` },
+    }));
+
+    record(
+      "SEC-09",
+      "SECURITY_REGRESSION",
+      "Outbox access control: Head Office & System Admin granted read access with HTTP 200 OK",
+      resHoOutbox.status === 200 && resAdminOutbox.status === 200,
+      `HO: ${resHoOutbox.status}, Admin: ${resAdminOutbox.status}`
     );
   }
 

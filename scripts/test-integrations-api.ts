@@ -53,7 +53,7 @@ function logTest(no: number, name: string, status: "PASS" | "FAIL", detail: stri
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — SECURE OPEN API INTEGRATION CONTRACT TEST SUITE");
+  console.log(" SPARTA SIAGA - SECURE OPEN API INTEGRATION CONTRACT TEST SUITE");
   console.log("================================================================================\n");
 
   const dbInfo = setupIsolatedEnvironment();

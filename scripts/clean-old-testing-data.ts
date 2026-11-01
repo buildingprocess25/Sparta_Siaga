@@ -25,7 +25,7 @@ export async function cleanOldTestingData(isLive: boolean = false): Promise<Clea
   await assertIsolatedDatabase(pool);
 
   console.log("==============================================================");
-  console.log(`🧹 SPARTA SIAGA — CLEANUP OLD TESTING DATA [${isLive ? "LIVE EXECUTION" : "DRY RUN"}]`);
+  console.log(`🧹 SPARTA SIAGA - CLEANUP OLD TESTING DATA [${isLive ? "LIVE EXECUTION" : "DRY RUN"}]`);
   console.log("==============================================================");
 
   // 1. Verify and Protect Administrators

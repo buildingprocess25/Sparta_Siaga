@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — TASK T05B Regression Test Suite
+ * SPARTA SIAGA - TASK T05B Regression Test Suite
  * Pengujian 18 Skenario Wajib Aturan Visibilitas Laporan untuk Head Office (HO)
  */
 
@@ -18,7 +18,7 @@ import {
 import { IncidentRecord } from "../types/incident";
 
 console.log("==================================================================");
-console.log("  SPARTA SIAGA — TASK T05B: HO REPORT VISIBILITY 18 SCENARIOS     ");
+console.log("  SPARTA SIAGA - TASK T05B: HO REPORT VISIBILITY 18 SCENARIOS     ");
 console.log("==================================================================");
 
 // --- User Personas ---

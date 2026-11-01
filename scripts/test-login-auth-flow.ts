@@ -17,7 +17,7 @@ function record(name: string, passed: boolean, details: string) {
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — AUTHENTICATION & DEMO LOGIN TDD SUITE");
+  console.log(" SPARTA SIAGA - AUTHENTICATION & DEMO LOGIN TDD SUITE");
   console.log(" Target: sparta_siaga_isolated");
   console.log("================================================================================\n");
 

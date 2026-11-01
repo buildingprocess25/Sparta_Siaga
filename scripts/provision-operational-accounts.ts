@@ -32,7 +32,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BMS0001_PASSWORD",
-    roleDescription: "Branch Maintenance Support — Pemeriksaan lapangan & bukti foto",
+    roleDescription: "Branch Maintenance Support - Pemeriksaan lapangan & bukti foto",
   },
   {
     id: "usr_bmc_bdg_01",
@@ -45,7 +45,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BMC0001_PASSWORD",
-    roleDescription: "Branch Maintenance Coordinator — Verifikasi hasil & Serah Terima",
+    roleDescription: "Branch Maintenance Coordinator - Verifikasi hasil & Serah Terima",
   },
   {
     id: "usr_bes_bdg_01",
@@ -58,7 +58,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BES0001_PASSWORD",
-    roleDescription: "Branch Engineering Support — Pemeriksaan DC & fasilitas",
+    roleDescription: "Branch Engineering Support - Pemeriksaan DC & fasilitas",
   },
   {
     id: "usr_bec_bdg_01",
@@ -71,7 +71,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BEC0001_PASSWORD",
-    roleDescription: "Branch Engineering Coordinator — Verifikasi DC & fasilitas",
+    roleDescription: "Branch Engineering Coordinator - Verifikasi DC & fasilitas",
   },
   {
     id: "usr_bbs_bdg_01",
@@ -84,7 +84,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BBS0001_PASSWORD",
-    roleDescription: "Branch Building Support — Pemeriksaan bangunan fisik",
+    roleDescription: "Branch Building Support - Pemeriksaan bangunan fisik",
   },
   {
     id: "usr_bbc_bdg_01",
@@ -97,7 +97,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BBC0001_PASSWORD",
-    roleDescription: "Branch Building Coordinator — Verifikasi pekerjaan sipil bangunan",
+    roleDescription: "Branch Building Coordinator - Verifikasi pekerjaan sipil bangunan",
   },
   {
     id: "usr_bm_bdg_01",
@@ -110,7 +110,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "BANDUNG",
     status: "ACTIVE",
     envPasswordKey: "UAT_BM0001_PASSWORD",
-    roleDescription: "BnM Manajer Cabang — Konfirmasi kerusakan, approval & penutupan kasus",
+    roleDescription: "BnM Manajer Cabang - Konfirmasi kerusakan, approval & penutupan kasus",
   },
 
   // CIKOKOL (2 Accounts)
@@ -125,7 +125,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "CIKOKOL",
     status: "ACTIVE",
     envPasswordKey: "UAT_BMS0002_PASSWORD",
-    roleDescription: "Branch Maintenance Support — Petugas lapangan cabang Cikokol",
+    roleDescription: "Branch Maintenance Support - Petugas lapangan cabang Cikokol",
   },
   {
     id: "usr_bm_ckl_02",
@@ -138,7 +138,7 @@ export const OPERATIONAL_ACCOUNTS: OperationalAccountConfig[] = [
     branch: "CIKOKOL",
     status: "ACTIVE",
     envPasswordKey: "UAT_BM0002_PASSWORD",
-    roleDescription: "BnM Manajer Cabang — Pengambil keputusan cabang Cikokol",
+    roleDescription: "BnM Manajer Cabang - Pengambil keputusan cabang Cikokol",
   },
 ];
 
@@ -160,7 +160,7 @@ export async function provisionOperationalAccounts(): Promise<void> {
   const isApply = process.argv.includes("--apply");
 
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — OPERATIONAL TEST ACCOUNTS PROVISIONING (9 ACCOUNTS)");
+  console.log(" SPARTA SIAGA - OPERATIONAL TEST ACCOUNTS PROVISIONING (9 ACCOUNTS)");
   console.log(` Mode: ${isApply ? "🔴 LIVE EXECUTION (--apply)" : "🔍 DRY RUN (Preview only)"}`);
   console.log("================================================================================\n");
 

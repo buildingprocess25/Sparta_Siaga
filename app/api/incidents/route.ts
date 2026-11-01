@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { dbGetAllIncidents, dbCreateIncident } from "@/lib/incident-db";
+import { dbGetAllIncidents, dbCreateIncident, dbGetIncidentById } from "@/lib/incident-db";
 import { IncidentRecord, isActiveStatus, isHistoryStatus } from "@/types/incident";
 import { getSessionUser } from "@/lib/auth";
 import { ReportDistributionService } from "@/lib/distribution-service";
@@ -7,7 +7,7 @@ import { canAccessReport } from "@/lib/report-access-policy";
 import { isReportVisibleToHo } from "@/lib/report-permissions";
 import { checkUserPermission } from "@/lib/permission-service";
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   try {
     const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
@@ -91,45 +91,175 @@ export async function POST(request: Request) {
     }
 
     const body: IncidentRecord = await request.json();
-    if (!body.id || !body.disasterType || !body.storeId) {
+    if (!body.id || !body.disasterType || !body.storeId || !body.branch) {
       return NextResponse.json(
-        { error: "Data laporan tidak lengkap (id, disasterType, storeId wajib diisi)" },
+        { error: "Data laporan tidak lengkap (id, disasterType, storeId, branch wajib diisi)" },
         { status: 400 }
       );
     }
+
+    // 1. Guard against unauthorized overwrite / ID collision
+    const existingIncident = await dbGetIncidentById(body.id);
+    if (existingIncident) {
+      return NextResponse.json(
+        {
+          error: "Conflict: Laporan dengan ID tersebut sudah terdaftar di sistem. Pembuatan laporan baru tidak boleh menggunakan ID yang sudah ada.",
+          code: "INCIDENT_ID_CONFLICT",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 2. Validate initial lifecycle state server-side
+    const VALID_INITIAL_STATUSES = new Set([
+      "pending_confirmation",
+      "verifying",
+      "investigating",
+      "draft",
+    ]);
+
+    if (body.status && !VALID_INITIAL_STATUSES.has(body.status)) {
+      return NextResponse.json(
+        {
+          error: `Bad Request: Status awal '${body.status}' tidak valid. Laporan baru tidak dapat langsung melewati tahapan verifikasi atau approval.`,
+          code: "INVALID_INITIAL_STATUS",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (typeof body.progress === "number" && body.progress !== 0) {
+      return NextResponse.json(
+        {
+          error: "Bad Request: Progres laporan baru harus bernilai 0.",
+          code: "INVALID_INITIAL_PROGRESS",
+        },
+        { status: 400 }
+      );
+    }
+
+    body.status = body.status || "pending_confirmation";
+    body.progress = 0;
 
     const isAdmin = sessionUser.systemRole === "ADMIN";
     const isHO = sessionUser.scope === "HO" && !isAdmin;
     const r = (sessionUser.role || "").toLowerCase();
     const isBMM = !isAdmin && !isHO && r === "bm";
+    const isBMS = !isAdmin && !isHO && r === "bms";
     const isBES = !isAdmin && !isHO && r === "bes";
     const isBBS = !isAdmin && !isHO && r === "bbs";
-    const isBMS = !isAdmin && !isHO && !isBMM && !isBES && !isBBS;
 
-    const isFacilityReport =
-      body.locationKind === "FACILITY" ||
-      body.tkpType === "dc" ||
-      (body.tkpType as string) === "DC" ||
-      (body.storeId && (body.storeId.startsWith("FACILITY:") || body.storeId.startsWith("FAC-")));
-
-    if (isBMS && isFacilityReport) {
+    // 3. Reject unknown or unauthorized roles explicitly
+    if (!isAdmin && !isBMM && !isBMS && !isBES && !isBBS) {
       return NextResponse.json(
         {
-          error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Fasilitas/DC.",
-          code: "BMS_FACILITY_REPORT_FORBIDDEN",
+          error: "Akses ditolak: Peran pengguna tidak memiliki hak untuk membuat laporan kejadian baru. Hanya BMS (Toko), BES (DC), dan BBS (Gedung/Kantor) yang berwenang.",
+          code: "UNAUTHORIZED_REPORT_CREATOR_ROLE",
         },
         { status: 403 }
       );
     }
 
-    if (isBES && !isFacilityReport) {
-      return NextResponse.json(
-        {
-          error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Toko.",
-          code: "BES_STORE_REPORT_FORBIDDEN",
-        },
-        { status: 403 }
-      );
+    const isDcReport =
+      body.tkpType === "dc" ||
+      (body.tkpType as string) === "DC" ||
+      body.locationKind === "FACILITY" ||
+      (body.storeId && (body.storeId.startsWith("FACILITY:") || body.storeId.startsWith("FAC-") || body.storeId.startsWith("DC-")));
+
+    const isBuildingReport =
+      body.tkpType === "building" ||
+      (body.locationKind as string) === "BUILDING" ||
+      (body.storeId && (body.storeId.startsWith("KANTOR-") || body.storeId.startsWith("BLD-") || body.storeId.startsWith("OFFICE-")));
+
+    const isStoreReport = !isDcReport && !isBuildingReport;
+
+    // 4. Validate explicit facility-role mapping
+    if (!isAdmin) {
+      if (isStoreReport) {
+        if (isBES) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Toko.",
+              code: "BES_STORE_REPORT_FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        if (isBBS) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Toko.",
+              code: "BBS_STORE_REPORT_FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        if (!isBMS && !isBMM) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Hanya BMS cabang terkait yang berwenang membuat laporan untuk Toko.",
+              code: "BMS_STORE_REQUIRED",
+            },
+            { status: 403 }
+          );
+        }
+      } else if (isDcReport) {
+        if (isBMS) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Fasilitas/DC.",
+              code: "BMS_FACILITY_REPORT_FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        if (isBBS) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Fasilitas/DC.",
+              code: "BBS_FACILITY_REPORT_FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        if (!isBES && !isBMM) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Hanya BES cabang terkait yang berwenang membuat laporan untuk Fasilitas/DC.",
+              code: "BES_FACILITY_REQUIRED",
+            },
+            { status: 403 }
+          );
+        }
+      } else if (isBuildingReport) {
+        if (isBMS) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+              code: "BMS_OFFICE_REPORT_FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        if (isBES) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+              code: "BES_OFFICE_REPORT_FORBIDDEN",
+            },
+            { status: 403 }
+          );
+        }
+        if (!isBBS && !isBMM) {
+          return NextResponse.json(
+            {
+              error: "Akses ditolak: Hanya BBS cabang terkait yang berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+              code: "BBS_OFFICE_REQUIRED",
+            },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     if (body.disasterType === "strong_wind") {
@@ -154,14 +284,6 @@ export async function POST(request: Request) {
     // Default dates if omitted
     if (!body.date) {
       body.date = body.createdAt || new Date().toISOString();
-    }
-
-    // Default initial lifecycle status and progress for new incidents
-    if (!body.status) {
-      body.status = "pending_confirmation";
-    }
-    if (typeof body.progress !== "number") {
-      body.progress = 0;
     }
 
     // TASK T05E: Enforce manual origin for reports submitted through user endpoint.

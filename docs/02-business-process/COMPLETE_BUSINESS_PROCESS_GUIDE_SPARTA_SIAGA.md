@@ -4,7 +4,23 @@
 - **Modul:** SPARTA Siaga (`sparta-siaga`)
 - **Organisasi:** Alfamart (PT Sumber Alfaria Trijaya Tbk) - SPARTA Ecosystem
 - **Cakupan Aset:** 21.550 Gerai Toko Fisik & 28 Kantor Cabang / Distribution Center (DC)
-- **Status Operasional:** Active / Production Reference
+- **Status Operasional:** Active Canonical Guide
+
+> [!IMPORTANT] CANONICAL WORKFLOW & MULTI-ROLE ALIGNMENT
+> Dokumen ini memuat panduan lengkap arsitektur bisnis, SOP, dan logika matematis SPARTA SIAGA:
+> 1. **Alur Pelaporan & Penanganan Kerusakan:**
+>    - **Pelaporan:** Dibuat secara manual atau otomatis via BMKG/USGS dengan status awal `pending_confirmation` dan progres `0%`.
+>    - **Pemeriksaan Lapangan:** Spesialis Lapangan (BMS untuk Toko, BES untuk DC, BBS untuk Gedung) wajib mengunggah bukti foto nyata (minimal 1 foto).
+>    - **Konfirmasi Awal BnM Manajer:** BnM Manajer mengevaluasi laporan dan menentukan 1 dari 3 keputusan:
+>      - *Ada Kerusakan:* Menetapkan status `confirmed_affected`, mendistribusikan email outbox ke HO, dan membuka alur tracking milestone fisik.
+>      - *Tidak Ada Kerusakan:* Menetapkan status `confirmed_safe` dengan progres 100%, selesai langsung tanpa pekerjaan pemeliharaan.
+>      - *Perlu Klarifikasi:* Menetapkan status `clarification_requested`, mengembalikan tiket ke spesialis pemeriksa untuk revisi bukti.
+>    - **Pekerjaan & Milestone:** 5 milestone dokumen (Ceklis 10%, Estimasi 25%, Approve Proxy 30%, SPK 50%, Serah Terima 100%). Menjaga aturan non-auto-close: status berada di `awaiting_st`.
+>    - **Review Koordinator:** Koordinator wilayah (BMC untuk Toko, BEC untuk DC, BBC untuk Gedung) memverifikasi penyelesaian fisik. Upaya koordinasi silang ditolak (403 `COORDINATOR_MISMATCH`).
+>    - **Persetujuan Akhir & Case Close:** BnM Manajer memberikan persetujuan akhir dan menutup tiket resmi (`closed`).
+> 2. **Penyempurnaan Istilah "Duty Officer":** Penggunaan istilah historis "Duty Officer" pada dokumen ini dipetakan ke peran kanonikal: PIC Spesialis Lapangan (`bms`/`bes`/`bbs`), Koordinator (`bmc`/`bec`/`bbc`), BnM Manajer (`bmm`), dan Head Office (`ho`).
+> 3. **Head Office Strictly Read-Only:** Pemantauan nasional bersifat read-only setelah laporan dikonfirmasi BnM Manajer. HO diblokir dari seluruh aksi mutasi operasional.
+> 4. **Zero Operational Bypass:** System Administrator dilarang mengeksekusi konfirmasi lapangan atau Case Close.
 - **Dokumen Terkait:** [PROGRESS_LOG_AND_CHANGELOG.md](../04-progress-and-changelog/PROGRESS_LOG_AND_CHANGELOG.md)
 
 ---

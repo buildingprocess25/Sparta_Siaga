@@ -16,6 +16,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const isAdmin = sessionUser.systemRole === "ADMIN";
+    const isHO = sessionUser.scope === "HO";
+
+    // Branch users are strictly forbidden from viewing the global approval notification outbox to prevent cross-branch leaks
+    if (!isAdmin && !isHO) {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Akses antrean outbox approval hanya diizinkan untuk Head Office dan Administrator.",
+          code: "OUTBOX_ACCESS_FORBIDDEN",
+        },
+        { status: 403 }
+      );
+    }
+
     const url = new URL(request.url);
     const reportId = url.searchParams.get("reportId") || undefined;
 

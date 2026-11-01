@@ -56,7 +56,7 @@ function isExcludedByDockerignore(filePath: string, rules: string[]): boolean {
 
 async function runPackagingVerification() {
   console.log('================================================================================');
-  console.log(' SPARTA SIAGA — PROD-CLEAN-01: PRODUCTION PACKAGING VERIFICATION SUITE');
+  console.log(' SPARTA SIAGA - PROD-CLEAN-01: PRODUCTION PACKAGING VERIFICATION SUITE');
   console.log('================================================================================\n');
 
   const dockerignoreContent = fs.readFileSync('.dockerignore', 'utf8');

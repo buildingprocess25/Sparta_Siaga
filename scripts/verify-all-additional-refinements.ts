@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Automated Verification Suite for Additional Refinements (Tasks 1-6)
+ * SPARTA SIAGA - Automated Verification Suite for Additional Refinements (Tasks 1-6)
  */
 
 import assert from "node:assert";

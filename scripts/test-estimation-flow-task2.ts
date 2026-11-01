@@ -11,7 +11,7 @@ import path from "path";
 
 async function runTask2EstimationTests() {
   console.log("=====================================================================");
-  console.log("SPARTA SIAGA — TASK 2: REFACTOR FLOW ESTIMASI TEST SUITE");
+  console.log("SPARTA SIAGA - TASK 2: REFACTOR FLOW ESTIMASI TEST SUITE");
   console.log("Scenarios E1-E14 (Flow & Business Logic) & U1-U6 (UI & Entry Points)");
   console.log("=====================================================================\n");
 

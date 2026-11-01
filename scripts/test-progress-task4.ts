@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Task 4 Test Suite
+ * SPARTA SIAGA - Task 4 Test Suite
  * Module Update Progress Pekerjaan
  * 
  * Covers: P1-P30, U1-U12, Security tests
@@ -51,7 +51,7 @@ function logResult(id: string, title: string, success: boolean, detail?: string)
 
 function logSkip(id: string, title: string, reason: string) {
   skipped++;
-  console.log(`  ⏭️  ${id}: ${title} — SKIPPED: ${reason}`);
+  console.log(`  ⏭️  ${id}: ${title} - SKIPPED: ${reason}`);
 }
 
 // Generate a minimal valid JPEG buffer for testing
@@ -888,7 +888,7 @@ async function testPerm_BMAndStoreDoNotHaveUpdateProgress() {
 
 async function main() {
   console.log("\n╔═════════════════════════════════════════════════════╗");
-  console.log("║   SPARTA SIAGA — Task 4 Test Suite                 ║");
+  console.log("║   SPARTA SIAGA - Task 4 Test Suite                 ║");
   console.log("║   Module Update Progress Pekerjaan                 ║");
   console.log("╚═════════════════════════════════════════════════════╝\n");
 
@@ -953,7 +953,7 @@ async function main() {
     console.log("═".repeat(55));
 
     if (failed > 0) {
-      console.log("\n⚠️  SOME TESTS FAILED — Please review failures above.");
+      console.log("\n⚠️  SOME TESTS FAILED - Please review failures above.");
       process.exit(1);
     } else {
       console.log("\n🎉 ALL TASK 4 TESTS PASSED!");

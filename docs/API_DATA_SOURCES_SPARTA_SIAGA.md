@@ -2,6 +2,10 @@
 
 Dokumen ini mendeskripsikan secara komprehensif seluruh integrasi *External Data Source/API* yang digunakan oleh *system engine* SPARTA SIAGA untuk keperluan *autonomous situational awareness*.
 
+> [!IMPORTANT] ARSITEKTUR PEMISAHAN EARLY WARNING VS TIKET OPERASIONAL
+> Seluruh penyedia data eksternal dalam dokumen ini (BMKG, USGS, Open-Meteo, RainViewer, PetaBencana) berfungsi **hanya untuk subsistem Early Warning & Autonomous Situational Awareness** (pendeteksian potensi ancaman alam dan pemicu radar/peringatan dini).
+> Data peringatan dini ini **terpisah secara tegas** dari manajemen tiket insiden operasional (*Operational Incident Management*). Deteksi gempa otomatis menciptakan *draft event/alert*, namun pelaporan investigasi lapangan, penilaian kerusakan fisik (BMS/BES/BBS), konfirmasi BnM Manajer, perbaikan SPARTA Maintenance, hingga penutupan tiket (*Case Close*) berjalan dalam siklus kerja operasional berjenjang yang tidak dapat diotomasi atau ditutup oleh feed cuaca/seismik eksternal.
+
 ---
 
 ## RINGKASAN INTEGRASI

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — TASK T05E Regression Test Suite
+ * SPARTA SIAGA - TASK T05E Regression Test Suite
  * 
  * Verifies:
  * 1. Distinction between Disaster Type and Report Source (Manual vs Otomatis vs Belum diketahui).

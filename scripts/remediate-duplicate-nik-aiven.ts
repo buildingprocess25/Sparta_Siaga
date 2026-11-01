@@ -192,7 +192,7 @@ async function main() {
   const plan = await planRevisedRemediation();
 
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — REVISED NIK DUPLICATE REMEDIATION PLAN (DEV & UAT COEXISTENCE)");
+  console.log(" SPARTA SIAGA - REVISED NIK DUPLICATE REMEDIATION PLAN (DEV & UAT COEXISTENCE)");
   console.log(" Target: Aiven sparta_siaga_isolated (167.71.232.109)");
   console.log(" Mode:   " + (isApply ? "EXECUTE (APPLY)" : "DRY RUN (PROPOSAL ONLY)"));
   console.log("================================================================================\n");

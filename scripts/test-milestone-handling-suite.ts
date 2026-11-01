@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Comprehensive Milestone Handling & BM Final Approval Test Suite
+ * SPARTA SIAGA - Comprehensive Milestone Handling & BM Final Approval Test Suite
  * 
  * Menjalankan 16 pengujian wajib pada database terisolasi: sparta_siaga_isolated
  * STRICT SAFETY: Tidak boleh menyentuh defaultdb!
@@ -97,7 +97,7 @@ function createSampleJpegBuffer(): Buffer {
 
 async function runSuite() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — MAJOR DEVELOPMENT SPRINT INTEGRATION TEST SUITE");
+  console.log(" SPARTA SIAGA - MAJOR DEVELOPMENT SPRINT INTEGRATION TEST SUITE");
   console.log("================================================================================\n");
 
   const dbInfo = setupIsolatedEnvironment();

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Database Cleanup Script untuk Demo Rapat
+ * SPARTA SIAGA - Database Cleanup Script untuk Demo Rapat
  * 
  * Membersihkan seluruh data laporan pengujian lama dan hanya mempertahankan
  * tepat 5 laporan demonstrasi pada database development/staging.
@@ -158,7 +158,7 @@ async function verifyEnvironmentSafety(pool: ReturnType<typeof getDbPool>): Prom
 
 export async function runDemoCleanup(options: { dryRun: boolean; apply: boolean; confirm: boolean }) {
   console.log("================================================================================");
-  console.log("  SPARTA SIAGA — DATABASE CLEANUP UNTUK DEMO RAPAT (5 LAPORAN FINAL)");
+  console.log("  SPARTA SIAGA - DATABASE CLEANUP UNTUK DEMO RAPAT (5 LAPORAN FINAL)");
   console.log("================================================================================");
 
   const pool = getDbPool();
@@ -599,7 +599,7 @@ async function main() {
 
   if (!isDryRun && !isApply) {
     console.log("\n=================================================================");
-    console.log("  SPARTA SIAGA — SCRIPT DATABASE CLEANUP UNTUK DEMO RAPAT");
+    console.log("  SPARTA SIAGA - SCRIPT DATABASE CLEANUP UNTUK DEMO RAPAT");
     console.log("=================================================================");
     console.log("Penggunaan:");
     console.log("  1. Periksa daftar data yang akan dipertahankan dan dihapus (Dry-Run):");

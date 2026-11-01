@@ -20,7 +20,7 @@ import sharp from "sharp";
 
 async function runEstimationProgressTests() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — ESTIMASI & PROGRESS FLOW TEST SUITE");
+  console.log("SPARTA SIAGA - ESTIMASI & PROGRESS FLOW TEST SUITE");
   console.log("Scenarios E1-E7 (Estimasi) & P1-P12 (Progress & Close)");
   console.log("==================================================\n");
 

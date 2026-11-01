@@ -18,7 +18,7 @@ async function loginUser(identifier: string, password = "pass123"): Promise<stri
 
 async function run() {
   console.log("==================================================================");
-  console.log("  SPARTA SIAGA — HTTP API SECURITY & PERMISSION TESTS            ");
+  console.log("  SPARTA SIAGA - HTTP API SECURITY & PERMISSION TESTS            ");
   console.log("==================================================================\n");
 
   const reportId = "LAP-EQ-DEMO-BDG-001";

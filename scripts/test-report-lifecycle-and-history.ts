@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Report Lifecycle & Automatic History Test Suite
+ * SPARTA SIAGA - Report Lifecycle & Automatic History Test Suite
  * 
  * Verifies:
  * 1. Automatic 24-hour reminder to responsible branch (idempotent, single reminder)
@@ -22,7 +22,7 @@ import { getReportAccessSql } from "../lib/report-access-policy";
 
 async function runTestSuite() {
   console.log("==========================================================================");
-  console.log("SPARTA SIAGA — REPORT LIFECYCLE & AUTOMATIC HISTORY VALIDATION SUITE");
+  console.log("SPARTA SIAGA - REPORT LIFECYCLE & AUTOMATIC HISTORY VALIDATION SUITE");
   console.log("==========================================================================\n");
 
   const pool = getDbPool();
@@ -164,9 +164,9 @@ async function runTestSuite() {
     assert(!result2Repeat.expiredReportIds.includes(id48h), "E8", "Expiration transition is idempotent and concurrency-safe");
 
     // -------------------------------------------------------------------------
-    // TEST 4: Exception Guard — Valid Initial Inspection Submitted
+    // TEST 4: Exception Guard - Valid Initial Inspection Submitted
     // -------------------------------------------------------------------------
-    console.log("\n--- TEST 4: Exception Guard — Valid Initial Inspection Submitted ---");
+    console.log("\n--- TEST 4: Exception Guard - Valid Initial Inspection Submitted ---");
     const idInspected = "INC-TEST-LIFE-INSPECTED";
     testIds.push(idInspected);
     await dbDeleteIncident(idInspected);

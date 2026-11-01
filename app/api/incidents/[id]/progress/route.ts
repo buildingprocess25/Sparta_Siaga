@@ -151,6 +151,33 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
+    // 4b. Strict Facility Category vs Specialist Role Enforcement (Section 5)
+    // BMS for Stores, BES for Distribution Centers, BBS for Office/Buildings
+    const tkp = (incident.tkpType || (incident.locationKind === "FACILITY" ? "dc" : "toko")).toLowerCase();
+    const expectedRole = tkp === "dc" ? "bes" : tkp === "building" ? "bbs" : "bms";
+    const userRole = (sessionUser.role || "").toLowerCase();
+    if (userRole !== expectedRole) {
+      return NextResponse.json(
+        {
+          error: `Pembaruan progress untuk fasilitas '${tkp.toUpperCase()}' hanya dapat dilakukan oleh spesialis ${expectedRole.toUpperCase()} cabang terkait.`,
+          code: "FACILITY_ROLE_MISMATCH",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4c. Branch Scope Enforcement
+    const cleanBranch = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
+    if (sessionUser.systemRole !== "ADMIN" && cleanBranch(sessionUser.branch) !== cleanBranch(incident.branch)) {
+      return NextResponse.json(
+        {
+          error: `Aksi pembaruan progress hanya berlaku untuk cabang sendiri (${sessionUser.branch || "N/A"}), bukan cabang ${incident.branch}.`,
+          code: "BRANCH_MISMATCH",
+        },
+        { status: 403 }
+      );
+    }
+
     // 5. Cek status estimasi dan kesiapan kerja (Section D & I)
     // Update Progress HANYA boleh aktif jika Work Status = READY_FOR_WORK atau IN_PROGRESS.
     const estimationRoute = await EstimationIntegrationService.getRouteByReportId(id);
@@ -227,10 +254,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     // Monotonic check against latest progress
     const latestStatus = await ProgressService.getLatestProgress(id);
-    if (percentage < latestStatus.latestPercentage) {
+    const currentBaseProgress = Math.max(incident.progress || 0, latestStatus.latestPercentage);
+    if (percentage < currentBaseProgress) {
       return NextResponse.json(
         {
-          error: `Progress tidak boleh lebih kecil dari progress sebelumnya (${latestStatus.latestPercentage}%).`,
+          error: `Progress tidak boleh lebih kecil dari progress sebelumnya (${currentBaseProgress}%).`,
         },
         { status: 400 }
       );

@@ -103,6 +103,20 @@ export async function POST(request: Request, { params }: RouteContext) {
           { status: 403 }
         );
       }
+
+      // Facility category vs specialist role check for milestone uploads (Section 5)
+      const tkp = (incident.tkpType || (incident.locationKind === "FACILITY" ? "dc" : "toko")).toLowerCase();
+      const expectedRole = tkp === "dc" ? "bes" : tkp === "building" ? "bbs" : "bms";
+      const userRole = (sessionUser.role || "").toLowerCase();
+      if (userRole !== expectedRole) {
+        return NextResponse.json(
+          {
+            error: `Unggah berkas milestone untuk fasilitas '${tkp.toUpperCase()}' hanya dapat dilakukan oleh spesialis ${expectedRole.toUpperCase()} cabang terkait.`,
+            code: "FACILITY_ROLE_MISMATCH",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     // Operational Progress Gating Guard

@@ -63,13 +63,13 @@ function recordResult(no: number, name: string, pass: boolean, evidence: string)
   const status: "PASS" | "FAIL" = pass ? "PASS" : "FAIL";
   results.push({ no, name, status, evidence });
   const icon = pass ? "✅" : "❌";
-  console.log(`${icon} [${status}] Skenario ${no}: ${name} — ${evidence}`);
+  console.log(`${icon} [${status}] Skenario ${no}: ${name} - ${evidence}`);
 }
 
 async function runTestSuite() {
   const dbInfo = setupIsolatedEnvironment();
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — BMS/BES INSPECTION & BM APPROVAL QA TEST SUITE");
+  console.log(" SPARTA SIAGA - BMS/BES INSPECTION & BM APPROVAL QA TEST SUITE");
   console.log(" Target Database: " + dbInfo.dbName + " (" + dbInfo.host + ")");
   console.log(" Safety Guard: READ-ONLY on defaultdb enforced; running on isolated DB");
   console.log("================================================================================\n");

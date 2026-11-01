@@ -15,6 +15,7 @@ import {
   UploadCloud,
   FileCheck,
   ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { IncidentRecord } from "@/types/incident";
 import { UserIdentity } from "@/lib/identity";
@@ -65,7 +66,7 @@ export function ProgressUpdateModal({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<ProgressUpdateRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<"progress" | "milestone" | "inspection" | "approval">("progress");
+  const [activeTab, setActiveTab] = useState<"progress" | "milestone">("progress");
   const [workflowPermissions, setWorkflowPermissions] = useState<{
     canConfirm: boolean;
     canBmApprove: boolean;
@@ -80,6 +81,7 @@ export function ProgressUpdateModal({
     canClose: boolean;
     closeReason?: string;
   } | null>(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
   const [approval, setApproval] = useState<CompletionApprovalRecord | null>(null);
   const [approvalRoute, setApprovalRoute] = useState<ApprovalRouteResolution | null>(null);
   const [approvalHistory, setApprovalHistory] = useState<CompletionApprovalHistoryRecord[]>([]);
@@ -89,6 +91,7 @@ export function ProgressUpdateModal({
   const refreshWorkflow = async (selectInitialTab = false) => {
     if (!incident) return;
     try {
+      setWorkflowLoading(true);
       const [permissionResponse, completionResponse, progressResponse] = await Promise.all([
         fetch(`/api/incidents/${encodeURIComponent(incident.id)}/permissions`, { cache: "no-store" }),
         fetch(`/api/incidents/${encodeURIComponent(incident.id)}/completion`, { cache: "no-store" }),
@@ -106,29 +109,24 @@ export function ProgressUpdateModal({
       setPhysicalProgress(progressJson?.data?.latestProgress ?? incident.progress ?? 0);
       setHasFinalEvidence(Boolean(progressJson?.data?.hasFinalEvidence));
       if (selectInitialTab) {
-        const access = permissionJson?.data;
-        if (
-          (incident.status === "pending_bm_approval" && access?.canBmApprove) ||
-          (["pending_confirmation", "verifying", "clarification_requested"].includes(incident.status) && access?.canConfirm)
-        ) {
-          setActiveTab("inspection");
-        } else if (
-          (incident.progress ?? 0) >= 100 ||
-          incident.status === "pending_final_approval" ||
-          incident.status === "revision_requested"
-        ) {
-          setActiveTab("approval");
+        if ((incident.progress ?? 0) >= 100) {
+          setActiveTab("milestone");
+        } else {
+          setActiveTab("progress");
         }
       }
     } catch (error) {
       console.error("[Update Progress] Gagal memuat alur tindakan laporan:", error);
       setWorkflowPermissions(null);
+    } finally {
+      setWorkflowLoading(false);
     }
   };
 
   useEffect(() => {
     if (isOpen && incident) {
       setActiveTab("progress");
+      setWorkflowLoading(true);
       setWorkflowPermissions(null);
       setProgressValue(Math.max(latestProgress || 0, incident.progress || 0));
       setDescription("");
@@ -162,20 +160,6 @@ export function ProgressUpdateModal({
 
   if (!isOpen || !incident) return null;
 
-  if (activeTab === "inspection") {
-    return (
-      <StoreVerificationModal
-        incident={incident}
-        isOpen={isOpen}
-        onClose={() => setActiveTab("progress")}
-        onConfirmVerification={() => {
-          void refreshWorkflow();
-          void onUpdated?.();
-          setActiveTab("progress");
-        }}
-      />
-    );
-  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -204,6 +188,11 @@ export function ProgressUpdateModal({
     setErrorMessage(null);
 
     // Validasi input
+    if (isNaN(progressValue) || progressValue < 0 || progressValue > 100) {
+      setErrorMessage("Persentase progress harus berupa angka bulat antara 0 hingga 100.");
+      return;
+    }
+
     if (progressValue < (latestProgress || 0)) {
       setErrorMessage(`Progress baru tidak boleh lebih kecil dari progress sebelumnya (${latestProgress}%).`);
       return;
@@ -280,21 +269,12 @@ export function ProgressUpdateModal({
           </button>
         </div>
 
-        {/* Tindakan operasional tetap terpusat di Update Progress. */}
-        <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2 shrink-0">
-          {Boolean(workflowPermissions?.canConfirm || workflowPermissions?.canBmApprove) && (
-            <button
-              type="button"
-              onClick={() => setActiveTab("inspection")}
-              className="flex-1 min-w-[135px] py-2 px-3 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
-            >
-              Pemeriksaan & Konfirmasi
-            </button>
-          )}
+        {/* Tab navigasi terfokus spesialis lapangan */}
+        <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab("progress")}
-            className={`flex-1 min-w-[135px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
               activeTab === "progress"
                 ? "bg-[#1D5AA6] text-white shadow-xs"
                 : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
@@ -313,47 +293,13 @@ export function ProgressUpdateModal({
             }`}
           >
             <FileCheck className="w-3.5 h-3.5" />
-            <span>Berkas Milestone (10%-100%)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("approval")}
-            className={`flex-1 min-w-[135px] py-2 px-3 rounded-xl text-xs font-bold transition-all ${activeTab === "approval"
-              ? "bg-[#1D5AA6] text-white shadow-xs"
-              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700"
-            }`}
-          >
-            Persetujuan & Case Close
+            <span>2. Berkas Milestone (10%-100%)</span>
           </button>
         </div>
 
         {/* Modal Body (Scrollable Internal Only) */}
         <div className="p-6 overflow-y-auto overscroll-contain space-y-5 flex-1 min-h-0">
-          {activeTab === "approval" ? (
-            <CompletionApprovalCard
-              incident={incident}
-              approval={approval}
-              route={approvalRoute}
-              history={approvalHistory}
-              latestProgress={physicalProgress}
-              hasFinalEvidence={hasFinalEvidence}
-              userRole={identity?.role}
-              userBranch={identity?.branch}
-              userSystemRole={identity?.systemRole}
-              canSubmitCompletion={Boolean(workflowPermissions?.canSubmitCompletion)}
-              submitCompletionReason={workflowPermissions?.submitCompletionReason}
-              canApproveCoordinator={Boolean(workflowPermissions?.canApproveCoordinator)}
-              approveCoordinatorReason={workflowPermissions?.approveCoordinatorReason}
-              canFinalApprove={Boolean(workflowPermissions?.canFinalApprove ?? workflowPermissions?.canClose)}
-              finalApproveReason={workflowPermissions?.finalApproveReason ?? workflowPermissions?.closeReason}
-              canClose={Boolean(workflowPermissions?.canClose)}
-              closeReason={workflowPermissions?.closeReason}
-              onRefresh={() => {
-                void refreshWorkflow();
-                void onUpdated?.();
-              }}
-            />
-          ) : activeTab === "milestone" ? (
+          {activeTab === "milestone" ? (
             <div className="space-y-4">
               <MilestoneProgressionCard
                 incident={incident}
@@ -364,6 +310,11 @@ export function ProgressUpdateModal({
                   void onUpdated?.();
                 }}
               />
+            </div>
+          ) : workflowLoading || !workflowPermissions ? (
+            <div className="p-8 text-center flex flex-col items-center justify-center space-y-3">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+              <p className="text-xs text-slate-500">Memuat izin dan progres pekerjaan...</p>
             </div>
           ) : !workflowPermissions?.canUpdateProgress ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300">
@@ -419,7 +370,7 @@ export function ProgressUpdateModal({
                 <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-left text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
                   <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
                   <p className="text-[11px] leading-relaxed">
-                    Pekerjaan fisik telah mencapai <strong>100%</strong>. Jika bukti akhir (FINAL / HANDOVER) lengkap, laporan siap ditutup oleh pengguna yang memiliki hak <strong>REPORT_CLOSE</strong>.
+                    Pekerjaan fisik telah mencapai <strong>100%</strong>. Peninjauan kelayakan dan serah terima diajukan ke Koordinator melalui aksi terpisah <strong>Review Koordinator</strong>.
                   </p>
                 </div>
               )}
@@ -487,47 +438,74 @@ export function ProgressUpdateModal({
                 </div>
               </div>
 
-              {/* 2. PROGRESS SAAT INI (0 - 100%) */}
-              <div className="space-y-2">
+              {/* 2. PROGRESS SAAT INI (0 - 100%) - INPUT NUMERIK & PROGRESS BAR READ-ONLY */}
+              <div className="space-y-3 p-3.5 bg-slate-50/70 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    Progress Saat Ini:
-                  </label>
-                  <span className="text-base font-extrabold text-[#1D5AA6] dark:text-blue-400">
-                    {progressValue}%
-                  </span>
+                  <div>
+                    <label htmlFor="numeric-progress-input" className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Persentase Progress Fisik:
+                    </label>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Tersimpan saat ini: <strong className="text-slate-700 dark:text-slate-300 font-mono">{latestProgress}%</strong>
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-lg font-black text-[#1D5AA6] dark:text-blue-400 font-mono">
+                      {isNaN(progressValue) ? 0 : progressValue}%
+                    </span>
+                  </div>
                 </div>
 
-                {/* Range Slider */}
-                <input
-                  type="range"
-                  min={latestProgress || 0}
-                  max={100}
-                  step={5}
-                  value={progressValue}
-                  onChange={(e) => setProgressValue(Number(e.target.value))}
-                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[#1D5AA6]"
-                />
+                {/* Read-Only Visual Progress Bar */}
+                <div className="space-y-1">
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-[#1D5AA6] h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${Math.min(100, Math.max(0, isNaN(progressValue) ? 0 : progressValue))}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
 
-                {/* Quick Step Buttons */}
-                <div className="flex items-center gap-2 pt-1">
-                  {[25, 50, 75, 100].map((step) => (
-                    <button
-                      key={step}
-                      type="button"
-                      disabled={step < (latestProgress || 0)}
-                      onClick={() => setProgressValue(step)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                        progressValue === step
-                          ? "bg-[#1D5AA6] text-white border-[#1D5AA6] shadow-xs"
-                          : step < (latestProgress || 0)
-                          ? "bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed opacity-50"
-                          : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {step}%
-                    </button>
-                  ))}
+                {/* Numeric Input Field */}
+                <div className="pt-1">
+                  <div className="relative">
+                    <input
+                      id="numeric-progress-input"
+                      type="number"
+                      min={latestProgress || 0}
+                      max={100}
+                      step={1}
+                      value={isNaN(progressValue) ? "" : progressValue}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? NaN : parseInt(e.target.value, 10);
+                        setProgressValue(val);
+                      }}
+                      placeholder={`Nilai ${latestProgress || 0} - 100`}
+                      className="w-full px-3 py-2 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#1D5AA6] focus:border-transparent transition-all pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      %
+                    </span>
+                  </div>
+                  {!isNaN(progressValue) && progressValue < (latestProgress || 0) && (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Progress tidak boleh lebih kecil dari progress tersimpan ({latestProgress}%).
+                    </p>
+                  )}
+                  {!isNaN(progressValue) && progressValue > 100 && (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 flex items-center gap-1 font-medium">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Progress tidak boleh melebihi 100%.
+                    </p>
+                  )}
                 </div>
               </div>
 

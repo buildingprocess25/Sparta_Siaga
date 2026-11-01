@@ -191,7 +191,7 @@ export async function commitAtomicBmApprovalTransaction(params: {
 
     // 1. Concurrency protection: row-level lock on incident
     const checkRes = await client.query(
-      `SELECT id, status, verification, timeline, branch, store_id, store_name, location_city, disaster_type, report_origin
+      `SELECT id, status, progress, verification, timeline, branch, store_id, store_name, location_city, disaster_type, report_origin
        FROM incidents
        WHERE id = $1
        FOR UPDATE`,
@@ -221,18 +221,21 @@ export async function commitAtomicBmApprovalTransaction(params: {
       };
     }
 
-    // 2. Update incident record
+    // 2. Update incident record (confirmed_safe completes directly with progress = 100)
     const updatedTimeline = [...(current.timeline || []), params.timelineEntry];
+    const updatedProgress = params.newStatus === "confirmed_safe" ? 100 : (current.progress ?? 0);
     await client.query(
       `UPDATE incidents
        SET status = $2,
-           verification = $3::jsonb,
-           timeline = $4::jsonb,
+           progress = $3,
+           verification = $4::jsonb,
+           timeline = $5::jsonb,
            updated_at = NOW()
        WHERE id = $1`,
       [
         params.reportId,
         params.newStatus,
+        updatedProgress,
         JSON.stringify(params.updatedVerification),
         JSON.stringify(updatedTimeline),
       ]

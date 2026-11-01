@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Role Access & DC Search Regression Test Suite
+ * SPARTA SIAGA - Role Access & DC Search Regression Test Suite
  * 
  * Verifies strict server-side role separation, facility search scoping,
  * unmapped facility diagnostics, and incident mutation guards.
@@ -53,7 +53,7 @@ function record(no: number, name: string, passed: boolean, details: string) {
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — ROLE ACCESS & DC SEARCH SPECIFICATION TEST");
+  console.log(" SPARTA SIAGA - ROLE ACCESS & DC SEARCH SPECIFICATION TEST");
   console.log(" Target Database : sparta_siaga_isolated");
   console.log(" Safety Guard     : defaultdb STRICTLY UNTOUCHED");
   console.log("================================================================================\n");

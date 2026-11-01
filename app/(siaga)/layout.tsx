@@ -960,8 +960,8 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
             date: new Date().toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' }),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            status: "verifying",
-            progress: 15,
+            status: "pending_confirmation",
+            progress: 0,
             verification: {
               confirmedBy: "",
               confirmedAt: "",

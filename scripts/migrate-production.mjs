@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * SPARTA SIAGA — Production Migration Runner
+ * SPARTA SIAGA - Production Migration Runner
  *
  * Runs ordered, locked, repeatable, additive schema migrations.
  * Uses only runtime dependencies ('pg' and Node.js built-ins).

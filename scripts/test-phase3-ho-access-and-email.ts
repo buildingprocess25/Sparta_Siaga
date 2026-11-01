@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Phase 3 Comprehensive Verification Suite
+ * SPARTA SIAGA - Phase 3 Comprehensive Verification Suite
  * HO Access, Cross-Branch Monitoring & Automatic Email Distribution
  *
  * Target: Aiven PostgreSQL sparta_siaga_isolated
@@ -55,7 +55,7 @@ function record(id: string, name: string, passed: boolean, details?: string) {
 
 async function runPhase3TestSuite() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — PHASE 3 COMPREHENSIVE VERIFICATION SUITE");
+  console.log(" SPARTA SIAGA - PHASE 3 COMPREHENSIVE VERIFICATION SUITE");
   console.log(" Head Office (HO) Access, Cross-Branch Monitoring & Auto Email Distribution");
   console.log(" Target: Aiven sparta_siaga_isolated");
   console.log("================================================================================\n");

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Pre-Presentation Demo Data Cleanup Script
+ * SPARTA SIAGA - Pre-Presentation Demo Data Cleanup Script
  * 
  * Prepares a clean, safe, and presentation-ready database dataset.
  * 
@@ -591,7 +591,7 @@ async function run() {
   }
 
   console.log("====================================================");
-  console.log(" SPARTA SIAGA — PRE-PRESENTATION DEMO DATA CLEANUP");
+  console.log(" SPARTA SIAGA - PRE-PRESENTATION DEMO DATA CLEANUP");
   console.log(` Mode: ${isApply ? "⚠️ APPLY CLEANUP (MUTATION)" : "🔍 DRY-RUN ONLY (ZERO MUTATION)"}`);
   console.log("====================================================\n");
 
@@ -614,7 +614,7 @@ async function run() {
   console.log(`   Disaster Type: ${plan.retainedReport.disaster_type}`);
   console.log(`   Report Origin: ${plan.retainedReport.report_origin}`);
   console.log(`   Branch:        ${plan.retainedReport.branch}`);
-  console.log(`   Store:         ${plan.retainedReport.store_id} — ${plan.retainedReport.store_name}`);
+  console.log(`   Store:         ${plan.retainedReport.store_id} - ${plan.retainedReport.store_name}`);
   console.log(`   Status:        ${plan.retainedReport.status}`);
   console.log(`   Progress:      ${plan.retainedReport.progress}%`);
 
@@ -646,7 +646,7 @@ async function run() {
 
   if (isDryRun) {
     console.log("\n====================================================");
-    console.log("✅ DRY-RUN AUDIT COMPLETE — ZERO MUTATIONS PERFORMED");
+    console.log("✅ DRY-RUN AUDIT COMPLETE - ZERO MUTATIONS PERFORMED");
     console.log("====================================================");
     console.log("Safe to apply cleanup: YES");
     process.exit(0);

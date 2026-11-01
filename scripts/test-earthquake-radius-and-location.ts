@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — EQ-02: Earthquake Radius & Location Validation Test Suite
+ * SPARTA SIAGA - EQ-02: Earthquake Radius & Location Validation Test Suite
  * 
  * Verifies:
  * 1. Mathematical accuracy of Haversine distance formula & boundary conditions.
@@ -46,7 +46,7 @@ function recordComparison(row: Omit<ComparisonRow, "status"> & { status?: "PASS"
 
 async function runTestSuite() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — EQ-02: EARTHQUAKE RADIUS & LOCATION VALIDATION SUITE");
+  console.log(" SPARTA SIAGA - EQ-02: EARTHQUAKE RADIUS & LOCATION VALIDATION SUITE");
   console.log("================================================================================\n");
 
   let passed = 0;
@@ -54,10 +54,10 @@ async function runTestSuite() {
 
   function check(name: string, condition: boolean, detail: string) {
     if (condition) {
-      console.log(`✔ [PASS] ${name} — ${detail}`);
+      console.log(`✔ [PASS] ${name} - ${detail}`);
       passed++;
     } else {
-      console.error(`❌ [FAIL] ${name} — ${detail}`);
+      console.error(`❌ [FAIL] ${name} - ${detail}`);
       failed++;
     }
   }

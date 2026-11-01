@@ -32,7 +32,7 @@ import path from "path";
 
 async function runTask3WorkReadinessTests() {
   console.log("=====================================================================");
-  console.log("SPARTA SIAGA — TASK 3: WORK READINESS / SYARAT MULAI KERJA TEST SUITE");
+  console.log("SPARTA SIAGA - TASK 3: WORK READINESS / SYARAT MULAI KERJA TEST SUITE");
   console.log("Scenarios R1-R20 (Domain & Business Logic) & U1-U10 (UI Audits)");
   console.log("=====================================================================\n");
 

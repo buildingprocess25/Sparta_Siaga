@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Phase 2: Manual & Automatic Reporting Test Suite
+ * SPARTA SIAGA - Phase 2: Manual & Automatic Reporting Test Suite
  *
  * Validates:
  * 1. Manual-first reporting with automatic genuine BMKG/USGS reconciliation.
@@ -24,7 +24,7 @@ import { canApproveAsBmAsync } from "../lib/permission-service";
 import { IncidentRecord } from "../types/incident";
 
 console.log("==========================================================================");
-console.log("  SPARTA SIAGA — PHASE 2: MANUAL & AUTOMATIC REPORTING TEST SUITE        ");
+console.log("  SPARTA SIAGA - PHASE 2: MANUAL & AUTOMATIC REPORTING TEST SUITE        ");
 console.log("==========================================================================");
 
 const hoUser: UserContext = {

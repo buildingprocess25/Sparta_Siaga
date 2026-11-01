@@ -1,5 +1,9 @@
-# 🛡️ LAPORAN AKHIR INTEGRASI & AUDIT SISTEM — TASK 6
+# 🛡️ LAPORAN AKHIR INTEGRASI & AUDIT SISTEM - TASK 6
 **SPARTA Siaga: Final Integration, Operational RBAC & End-to-End Governance Audit**
+
+> [!WARNING] HISTORICAL MILESTONE REPORT: TASK 6 INTEGRATION AUDIT
+> Dokumen ini adalah catatan historis pengujian integrasi akhir Task 6 (2026-10-07).
+> Seluruh tata kelola peran, autentikasi, dan alur operasional aktif saat ini mengacu secara kanonik pada [BUSINESS_PROCESS_SPARTA_SIAGA.md](file:///c:/buildingprocess25/sparta-siaga/docs/02-business-process/BUSINESS_PROCESS_SPARTA_SIAGA.md) dan [COMPLETE_BUSINESS_PROCESS_GUIDE_SPARTA_SIAGA.md](file:///c:/buildingprocess25/sparta-siaga/docs/02-business-process/COMPLETE_BUSINESS_PROCESS_GUIDE_SPARTA_SIAGA.md).
 
 ---
 
@@ -95,7 +99,7 @@ Sistem dinyatakan **LULUS AUDIT TASK 6 (20 / 20 Scenarios Passed)** dan siap unt
 
 ---
 
-# Completion Patch — Final Verification (7 October 2026)
+# Completion Patch - Final Verification (7 October 2026)
 
 > Bagian ini menggantikan kesimpulan production-readiness di atas. Functional audit F1–F20 tetap PASS, tetapi gate typecheck, build, dan notification branch isolation belum lulus. Tidak ada business flow yang diubah dalam completion patch ini.
 
@@ -157,17 +161,17 @@ Fresh run menggunakan `pnpm dlx tsx scripts/<test-file>`:
 
 | Suite | Result |
 |---|---:|
-| `test-lifecycle-task1.ts` | PASS — 16/16 |
-| `test-estimation-flow-task2.ts` | PASS — 20/20 |
-| `test-work-readiness-task3.ts` | PASS — 52/52 |
-| `test-readiness-security-patch.ts` | PASS — 20/20 |
-| `test-progress-task4.ts` | PASS — 36/36 |
-| `test-progress-permission-patch.ts` | PASS — 10/10 |
-| `test-estimation-progress-flow.ts` | PASS — 24/24 |
-| `test-completion-approval-task5.ts` | PASS — 26/26 |
-| `test-final-integration-task6.ts` | PASS — 20/20 |
+| `test-lifecycle-task1.ts` | PASS - 16/16 |
+| `test-estimation-flow-task2.ts` | PASS - 20/20 |
+| `test-work-readiness-task3.ts` | PASS - 52/52 |
+| `test-readiness-security-patch.ts` | PASS - 20/20 |
+| `test-progress-task4.ts` | PASS - 36/36 |
+| `test-progress-permission-patch.ts` | PASS - 10/10 |
+| `test-estimation-progress-flow.ts` | PASS - 24/24 |
+| `test-completion-approval-task5.ts` | PASS - 26/26 |
+| `test-final-integration-task6.ts` | PASS - 20/20 |
 
-Total: **PASS — 224/224**, 0 failed, tidak ada skipped yang dilaporkan.
+Total: **PASS - 224/224**, 0 failed, tidak ada skipped yang dilaporkan.
 
 Catatan environment: `tsx` tidak tercantum di dependencies proyek, sehingga runner harus diperoleh melalui `pnpm dlx tsx`.
 
@@ -252,7 +256,7 @@ Catatan: tipe umum masih menyebut `sm_ho`, tetapi suite persona final Task 6 dan
 
 ## 9. Pre-Corrective Baseline Status (Superseded)
 
-Task: **TASK 6 — Final Integration & Website Audit**
+Task: **TASK 6 - Final Integration & Website Audit**
 
 Status at baseline: **PARTIAL**
 
@@ -271,11 +275,11 @@ Safe to Mark Task 6 DONE at baseline: **NO**
 
 Safe to Start Phase 2 / Task 7 at baseline: **NO**
 
-STOP — Task 7 tidak dimulai.
+STOP - Task 7 tidak dimulai.
 
 ---
 
-# Final Corrective Patch — Verified Completion (7 October 2026)
+# Final Corrective Patch - Verified Completion (7 October 2026)
 
 > Bagian ini menggantikan status PARTIAL/NOT READY pada Completion Patch sebelumnya. Corrective patch hanya menutup blocker TypeScript, build, notification branch isolation, dan technical debt yang aman; lifecycle bisnis F1–F20 tidak diubah.
 
@@ -303,7 +307,7 @@ STOP — Task 7 tidak dimulai.
 | Build failure | Next build berhenti pada TypeScript error pertama. | Seluruh type errors dibersihkan; build kemudian menyelesaikan compilation, TypeScript, page generation, dan optimization. |
 | Tooling warning/debt | Next.js 16 masih memakai `middleware.ts`; `turbopack.root` relatif; scripts memakai `tsx` yang tidak dideklarasikan. | Migrasi ke `proxy.ts`, root absolute dari `import.meta.url`, serta `tsx` devDependency + scoped `esbuild` build allowlist. |
 
-## File Created / Changed / Deleted — Corrective Patch
+## File Created / Changed / Deleted - Corrective Patch
 
 ### Created
 
@@ -365,11 +369,11 @@ Command: `pnpm exec tsx scripts/test-notification-branch-isolation.ts`
 | HO authorized melihat lintas cabang | PASS |
 | HO authorized mempersempit hasil ke branch pilihan | PASS |
 | System Admin monitoring lintas cabang | PASS |
-| Tanpa session | PASS — 401 |
-| Tanpa `NOTIFICATION_VIEW` | PASS — 403 |
-| Branch user tidak dapat acknowledge notification | PASS — 403 |
-| HO tidak dapat acknowledge notification | PASS — 403 |
-| System Admin tidak dapat acknowledge notification | PASS — 403 |
+| Tanpa session | PASS - 401 |
+| Tanpa `NOTIFICATION_VIEW` | PASS - 403 |
+| Branch user tidak dapat acknowledge notification | PASS - 403 |
+| HO tidak dapat acknowledge notification | PASS - 403 |
+| System Admin tidak dapat acknowledge notification | PASS - 403 |
 | Central resolver memberi System Admin monitoring-only `NOTIFICATION_VIEW` | PASS |
 
 Total: **12/12 PASS**.
@@ -380,15 +384,15 @@ Fresh full rerun dengan local devDependency `tsx`:
 
 | Suite | Result |
 |---|---:|
-| `test-lifecycle-task1.ts` | PASS — 16/16 |
-| `test-estimation-flow-task2.ts` | PASS — 20/20 |
-| `test-work-readiness-task3.ts` | PASS — 52/52 |
-| `test-readiness-security-patch.ts` | PASS — 20/20 |
-| `test-progress-task4.ts` | PASS — 36/36 |
-| `test-progress-permission-patch.ts` | PASS — 10/10 |
-| `test-estimation-progress-flow.ts` | PASS — 24/24 |
-| `test-completion-approval-task5.ts` | PASS — 26/26 |
-| `test-final-integration-task6.ts` | PASS — 20/20 |
+| `test-lifecycle-task1.ts` | PASS - 16/16 |
+| `test-estimation-flow-task2.ts` | PASS - 20/20 |
+| `test-work-readiness-task3.ts` | PASS - 52/52 |
+| `test-readiness-security-patch.ts` | PASS - 20/20 |
+| `test-progress-task4.ts` | PASS - 36/36 |
+| `test-progress-permission-patch.ts` | PASS - 10/10 |
+| `test-estimation-progress-flow.ts` | PASS - 24/24 |
+| `test-completion-approval-task5.ts` | PASS - 26/26 |
+| `test-final-integration-task6.ts` | PASS - 20/20 |
 
 Total regression: **224/224 PASS**, exit 0 seluruh suite.
 
@@ -421,7 +425,7 @@ Build tidak lagi mengeluarkan warning `middleware.ts` deprecated atau `turbopack
 
 ## Final Status
 
-Task: **TASK 6 — Final Integration & Website Audit**
+Task: **TASK 6 - Final Integration & Website Audit**
 
 Status: **DONE**
 
@@ -431,4 +435,4 @@ Safe to Mark Task 6 DONE: **YES**
 
 Safe to Start Task 7: **YES**
 
-STOP — Task 7 tidak dimulai otomatis.
+STOP - Task 7 tidak dimulai otomatis.

@@ -71,7 +71,7 @@ function groupNotificationsForHO(logs: NotificationLog[]) {
 
 async function runTestSuite() {
   console.log("=====================================================================");
-  console.log(" SPARTA SIAGA — NOTIFICATION RETENTION & MAP UI/UX VERIFICATION SUITE");
+  console.log(" SPARTA SIAGA - NOTIFICATION RETENTION & MAP UI/UX VERIFICATION SUITE");
   console.log("=====================================================================\n");
 
   let passed = 0;

@@ -7,6 +7,16 @@
 - **Status:** Active / In-Production Operation Reference
 - **Prinsip Utama:** *Setiap perubahan pada aturan atau alur di dokumen proses bisnis ini WAJIB diikuti dengan pembaruan pada implementasi kode program.*
 
+> [!IMPORTANT] CANONICAL GOVERNANCE & ARCHITECTURE ALIGNMENT
+> Dokumen ini merupakan Single Source of Truth (SSOT) untuk alur proses bisnis SPARTA SIAGA:
+> 1. **Pemisahan Notifikasi Bencana vs Laporan Insiden Operasional:**
+>    - **Sistem Peringatan Dini (Early Warning):** Mendeteksi gempa BMKG/USGS dan cuaca ekstrem secara otomatis, menghitung atenuasi seismik, dan memicu notifikasi peringatan. Notifikasi ini murni bersifat informasional dan terpisah dari siklus hidup laporan operasional.
+>    - **Siklus Hidup Laporan Insiden (Operational Workflow):** Pelaporan kejadian (manual/otomatis) -> Penugasan cabang -> Pemeriksaan lapangan wajib foto bukti (BMS Toko, BES DC, BBS Gedung) -> Konfirmasi awal BnM Manajer (Ada Kerusakan, Tidak Ada Kerusakan, Perlu Klarifikasi). Jika ada kerusakan, dilanjutkan ke milestone pemeliharaan (10% Ceklis, 25% Estimasi, 30% Approve Proxy, 50% SPK, 100% Serah Terima) -> Review koordinator (BMC Toko, BEC DC, BBC Gedung) -> Persetujuan akhir dan Case Close oleh BnM Manajer.
+> 2. **Penyempurnaan Peran Lapangan:** Istilah historis "Duty Officer DC" pada dokumen ini dipetakan secara kanonikal ke 8 peran operasional: Spesialis Lapangan (`bms`, `bes`, `bbs`), Koordinator Wilayah (`bmc`, `bec`, `bbc`), BnM Manajer (`bmm`), dan Head Office (`ho`).
+> 3. **Head Office Strictly Monitoring-Only:** Akun Head Office (HO) memiliki akses pemantauan nasional secara read-only setelah laporan dikonfirmasi BnM Manajer, dan diblokir dari seluruh aksi operasional cabang.
+> 4. **Zero Operational Bypass:** System Administrator dilarang melakukan aksi approval atau Case Close operasional lapangan.
+> 5. **Status Kesiapan Produksi:** Pengembangan dan pengujian UAT browser interaktif telah selesai dan terverifikasi di lingkungan pengujian Aiven (`sparta_siaga_isolated`). Deployment produksi Dokploy (Phase 5) berstatus terkunci (locked) menunggu persetujuan cutover resmi.
+
 ---
 
 ## 📌 1. Filosofi & Latar Belakang Proses Bisnis
@@ -172,4 +182,4 @@ Berikut diagram alur proses bisnis operasional SPARTA Siaga:
 Dokumen ini menetapkan standar baku operasional SPARTA Siaga v1.2.0. Seluruh sistem kini beroperasi dengan data riil 21.550 toko, kalkulasi ilmiah otomatis BMKG, kepatuhan etika privasi UU PDP, dan performa tinggi 60 FPS.
 
 > 💡 **KESIMPULAN BAGIAN 5:**  
-> SPARTA Siaga telah mencapai tingkat kesiapan produksi (*production-ready*) dengan pengujian fungsional dan visual 100% tervalidasi.
+> SPARTA Siaga telah menyelesaikan seluruh pengembangan inti dan verifikasi pengujian UAT browser interaktif 100% tervalidasi pada lingkungan pengujian Aiven (`sparta_siaga_isolated`). Pelaksanaan deployment ke infrastruktur produksi Dokploy (Phase 5) berstatus terkunci (locked) dan siap dijalankan setelah otorisasi cutover resmi.

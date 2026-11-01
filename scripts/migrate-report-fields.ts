@@ -1,8 +1,8 @@
 /**
- * SPARTA SIAGA — Safe Database Migration: Report Domain Fields
+ * SPARTA SIAGA - Safe Database Migration: Report Domain Fields
  * 
  * Adds new columns to existing `incidents` table.
- * Uses ADD COLUMN IF NOT EXISTS — safe to run multiple times.
+ * Uses ADD COLUMN IF NOT EXISTS - safe to run multiple times.
  * Does NOT drop or modify existing columns.
  * Does NOT truncate or reset data.
  * 

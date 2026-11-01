@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Test Admin Permission Logic, Canonical Scopes & Override Enforcement
+ * SPARTA SIAGA - Test Admin Permission Logic, Canonical Scopes & Override Enforcement
  * 
  * Tests:
  * 1. Scope Rule Catalog Integrity

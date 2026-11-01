@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — STORE / DC LOCATION SEARCH DETERMINISTIC TEST SUITE
+ * SPARTA SIAGA - STORE / DC LOCATION SEARCH DETERMINISTIC TEST SUITE
  * 
  * Verifies:
  *   1. Toko search by code
@@ -29,7 +29,7 @@ function assert(condition: boolean, testId: string, message: string) {
 
 async function run() {
   console.log("================================================================");
-  console.log(" SPARTA SIAGA — STORE & DC LOCATION SEARCH TEST SUITE");
+  console.log(" SPARTA SIAGA - STORE & DC LOCATION SEARCH TEST SUITE");
   console.log("================================================================\n");
 
   const pool = getDbPool();

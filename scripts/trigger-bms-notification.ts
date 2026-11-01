@@ -4,7 +4,7 @@ import { closeDbPool } from "../lib/db";
 
 async function main() {
   console.log("==================================================================");
-  console.log("  SPARTA SIAGA — TRIGGER NOTIFIKASI BMS (TERMINAL DEMO COMMAND)  ");
+  console.log("  SPARTA SIAGA - TRIGGER NOTIFIKASI BMS (TERMINAL DEMO COMMAND)  ");
   console.log("==================================================================");
 
   // 1. Guard against production environment

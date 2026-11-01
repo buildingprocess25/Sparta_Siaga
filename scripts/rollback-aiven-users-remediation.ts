@@ -5,7 +5,7 @@ import path from "path";
 async function rollback() {
   const isApply = process.argv.includes("--apply");
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — ROLLBACK AIVEN USER REMEDIATION");
+  console.log(" SPARTA SIAGA - ROLLBACK AIVEN USER REMEDIATION");
   console.log(" Target: Aiven sparta_siaga_isolated");
   console.log(" Mode:   " + (isApply ? "EXECUTE (APPLY ROLLBACK)" : "DRY RUN (PROPOSAL ONLY)"));
   console.log("================================================================================\n");

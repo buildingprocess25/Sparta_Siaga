@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Reset Seluruh Data Laporan (Database Development/Staging)
+ * SPARTA SIAGA - Reset Seluruh Data Laporan (Database Development/Staging)
  *
  * Menghapus SEMUA laporan kejadian, relasi turunan, dan notifikasi terkait laporan
  * pada database sparta_siaga_isolated, serta membersihkan file evidence terkait.
@@ -12,7 +12,7 @@ import { getRuntimeConfig } from "../lib/runtime-config";
 
 async function resetAllReports() {
   console.log("================================================================================");
-  console.log("  SPARTA SIAGA — RESET SELURUH DATA LAPORAN (DEVELOPMENT/STAGING)");
+  console.log("  SPARTA SIAGA - RESET SELURUH DATA LAPORAN (DEVELOPMENT/STAGING)");
   console.log("================================================================================");
 
   // 1. Validasi Lingkungan Database

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — COMPREHENSIVE EARTHQUAKE WORKER & API E2E TEST SUITE
+ * SPARTA SIAGA - COMPREHENSIVE EARTHQUAKE WORKER & API E2E TEST SUITE
  * 
  * Membuktikan secara nyata:
  * BMKG/USGS -> Autonomous Worker -> Radius -> Validasi Toko -> Dedup -> PostgreSQL (isolated) -> API -> BMS / HO Access
@@ -85,7 +85,7 @@ function recordTest(no: number, section: string, name: string, condition: boolea
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — END-TO-END EARTHQUAKE AUTOMATION & API VALIDATION SUITE");
+  console.log(" SPARTA SIAGA - END-TO-END EARTHQUAKE AUTOMATION & API VALIDATION SUITE");
   console.log("================================================================================\n");
 
   const dbConfig = setupIsolatedEnvironment();
@@ -240,7 +240,7 @@ async function run() {
     await client.query("DELETE FROM notification_logs WHERE disaster_id LIKE 'EQ-E2E-%';");
 
     // -------------------------------------------------------------------------
-    // TEST 2: Siklus 1 — Pembuatan Laporan Otomatis Per Toko & Antar Cabang
+    // TEST 2: Siklus 1 - Pembuatan Laporan Otomatis Per Toko & Antar Cabang
     // -------------------------------------------------------------------------
     const cycle1 = await processEarthquakeAlertsAndReports([testEarthquake1], multiStores, true);
     recordTest(
@@ -280,7 +280,7 @@ async function run() {
     );
 
     // -------------------------------------------------------------------------
-    // TEST 4: Siklus 2 — Deduplikasi Gempa yang Sama (Zero Duplikasi)
+    // TEST 4: Siklus 2 - Deduplikasi Gempa yang Sama (Zero Duplikasi)
     // -------------------------------------------------------------------------
     const cycle2 = await processEarthquakeAlertsAndReports([testEarthquake1], multiStores, true);
     const afterCycle2Res = await client.query(
@@ -427,7 +427,7 @@ async function run() {
     );
 
     // -------------------------------------------------------------------------
-    // TEST 10: E2E API — BMS Bandung Hanya Melihat Laporan Cabangnya
+    // TEST 10: E2E API - BMS Bandung Hanya Melihat Laporan Cabangnya
     // -------------------------------------------------------------------------
     const bmsBdgReq = new Request("http://localhost/api/incidents", {
       headers: {
@@ -452,7 +452,7 @@ async function run() {
     );
 
     // -------------------------------------------------------------------------
-    // TEST 11: E2E API — BMS Cirebon Hanya Melihat Laporan Cirebon
+    // TEST 11: E2E API - BMS Cirebon Hanya Melihat Laporan Cirebon
     // -------------------------------------------------------------------------
     const bmsCrbReq = new Request("http://localhost/api/incidents", {
       headers: {
@@ -476,7 +476,7 @@ async function run() {
     );
 
     // -------------------------------------------------------------------------
-    // TEST 12: E2E API — Detail Laporan & Hak Akses Silang (Forbidden 403)
+    // TEST 12: E2E API - Detail Laporan & Hak Akses Silang (Forbidden 403)
     // -------------------------------------------------------------------------
     // BMS Bandung meminta detail laporan Bandung (Dago)
     const detailBdgReq = new Request(`http://localhost/api/incidents/${reportDago.id}`, {
@@ -502,7 +502,7 @@ async function run() {
     );
 
     // -------------------------------------------------------------------------
-    // TEST 13: E2E API — HO Admin Memiliki Akses Nasional Read-Only
+    // TEST 13: E2E API - HO Admin Memiliki Akses Nasional Read-Only
     // -------------------------------------------------------------------------
     const hoReq = new Request("http://localhost/api/incidents", {
       headers: { Cookie: `siaga_session=${hoAdminToken}` },

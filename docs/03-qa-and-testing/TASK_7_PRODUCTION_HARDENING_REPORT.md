@@ -1,10 +1,10 @@
-# SPARTA SIAGA — TASK 7: PRODUCTION HARDENING VERIFICATION & AUDIT REPORT
+# SPARTA SIAGA  -  TASK 7: PRODUCTION HARDENING VERIFICATION & AUDIT REPORT
 
 **Date**: 2026-10-07  
 **Branch**: `task-7-production-hardening`  
 **Target Baseline**: `46952b87a67ee63fd67c68a56f20142ae36e5dd8` (Pre-Task-7 Baseline)  
 **Execution Environment**: Dokploy Docker / Node.js 24 LTS / PostgreSQL / Linux  
-**Status**: **PASSED (100% GREEN — READY FOR PRODUCTION DEPLOYMENT)**  
+**Status**: **PASSED (100% GREEN  -  READY FOR PRODUCTION DEPLOYMENT)**  
 
 ---
 
@@ -28,7 +28,7 @@ pnpm exec tsx scripts/test-production-readiness-task7.ts
 Output:
 ```text
 ============================================================
-SPARTA SIAGA — TASK 7 PRODUCTION READINESS VERIFICATION
+SPARTA SIAGA  -  TASK 7 PRODUCTION READINESS VERIFICATION
 ============================================================
 [Process Lifecycle] Received SIGTERM, starting graceful shutdown...
 [Process Lifecycle] Graceful shutdown completed.

@@ -31,7 +31,7 @@ async function loadGeneratedCredentials(): Promise<Map<string, string>> {
 
 export async function verifyHoPilotRelease(): Promise<void> {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — VERIFICATION SUITE: HO PILOT RELEASE & DATA INTEGRITY");
+  console.log(" SPARTA SIAGA - VERIFICATION SUITE: HO PILOT RELEASE & DATA INTEGRITY");
   console.log("================================================================================\n");
 
   const pool = getDbPool();

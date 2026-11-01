@@ -1,4 +1,4 @@
-# Integrasi Gempa dan Master Fasilitas — Design
+# Integrasi Gempa dan Master Fasilitas  -  Design
 
 ## Tujuan
 
@@ -64,7 +64,7 @@ Alur import:
 
 ## Canonical event dan pembuatan laporan
 
-Korelasi sumber memakai time window configurable, toleransi jarak episentrum, magnitudo, dan kedalaman. Match menghubungkan source event ke canonical event; tidak mengubah identitas canonical yang sudah dipakai laporan. Event berbeda—termasuk susulan dalam 15 menit—tetap terpisah bila tidak memenuhi seluruh toleransi korelasi.
+Korelasi sumber memakai time window configurable, toleransi jarak episentrum, magnitudo, dan kedalaman. Match menghubungkan source event ke canonical event; tidak mengubah identitas canonical yang sudah dipakai laporan. Event berbeda - termasuk susulan dalam 15 menit - tetap terpisah bila tidak memenuhi seluruh toleransi korelasi.
 
 Worker memuat Toko dan fasilitas aktif yang telah memiliki mapping cabang terverifikasi. Evaluasi radius memakai rule existing. Pembuatan laporan berjalan per lokasi dalam transaksi dan menggunakan constraint generik serta conflict handling agar dua worker menghasilkan satu record. Retry hanya memperbarui metadata source/correlation yang aman; laporan `CLOSED` tidak dibuka atau ditimpa.
 

@@ -22,7 +22,7 @@ import path from "path";
 
 async function runTask1LifecycleTests() {
   console.log("=====================================================================");
-  console.log("SPARTA SIAGA — TASK 1 LIFECYCLE & WORK READINESS TEST SUITE");
+  console.log("SPARTA SIAGA - TASK 1 LIFECYCLE & WORK READINESS TEST SUITE");
   console.log("Scenarios L1-L12 (Domain & Lifecycle) and M1-M3 (Map Controls UI Fix)");
   console.log("=====================================================================\n");
 
@@ -415,7 +415,7 @@ async function runTask1LifecycleTests() {
     // M1 - M3: MAP CONTROLS UI FIX AUDIT
     // =============================================================
     console.log("\n--------------------------------------------------");
-    console.log("SECTION 3: MINOR UI FIX — KONTROL PETA MINIMIZE (M1 - M3)");
+    console.log("SECTION 3: MINOR UI FIX - KONTROL PETA MINIMIZE (M1 - M3)");
     console.log("--------------------------------------------------");
 
     const mapControlsPath = path.resolve(process.cwd(), "components/map/map-controls.tsx");

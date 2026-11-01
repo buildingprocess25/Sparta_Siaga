@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Dummy Data Audit Script (Requirement 17)
+ * SPARTA SIAGA - Dummy Data Audit Script (Requirement 17)
  * 
  * Usage:
  *   npx tsx scripts/audit-dummy-data.ts           # DRY RUN (Default)
@@ -25,7 +25,7 @@ const TEST_PATTERNS = [
 async function runAudit() {
   const isApply = process.argv.includes("--apply");
   console.log(`====================================================`);
-  console.log(` SPARTA SIAGA — DUMMY & TEST DATA AUDIT`);
+  console.log(` SPARTA SIAGA - DUMMY & TEST DATA AUDIT`);
   console.log(` Mode: ${isApply ? "⚠️ APPLY DELETION" : "🔍 DRY RUN ONLY (Safe Inspection)"}`);
   console.log(`====================================================\n`);
 

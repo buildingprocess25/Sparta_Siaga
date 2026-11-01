@@ -12,7 +12,7 @@ import {
 } from "@/lib/session-service";
 import { dbRevokeAllUserSessions } from "@/lib/user-db";
 
-export async function POST(req?: Request) {
+export async function POST(req: Request) {
   let allDevices = false;
   let refreshToken: string | undefined;
 

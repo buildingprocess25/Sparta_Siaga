@@ -12,7 +12,7 @@ import { UserContext } from "../lib/report-permissions";
 
 async function main() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — UI/UX PERMISSION REFINEMENT TESTS (A–K)");
+  console.log("SPARTA SIAGA - UI/UX PERMISSION REFINEMENT TESTS (A–K)");
   console.log("==================================================");
 
   const pool = getDbPool();

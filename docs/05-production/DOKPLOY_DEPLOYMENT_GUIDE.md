@@ -1,4 +1,4 @@
-# SPARTA SIAGA — Dokploy Deployment Guide
+# SPARTA SIAGA - Dokploy Deployment Guide
 
 This guide provides end-to-end instructions for deploying, configuring, and maintaining SPARTA SIAGA on Dokploy.
 
@@ -62,12 +62,12 @@ PRIVATE_STORAGE_ROOT=/app/storage
 TZ=Asia/Jakarta
 
 # Database connection to managed PostgreSQL instance
-DATABASE_URL=postgresql://sparta_user:SECURE_PASSWORD@db.internal:5432/sparta_siaga?sslmode=require
+DATABASE_URL=postgresql://<DB_USER>:<SECURE_PASSWORD>@<DB_HOST>:5432/<DB_NAME>?sslmode=require
 DATABASE_SSL_MODE=require
 
 # Application Secrets (Must be at least 32 characters)
-JWT_SECRET=production_random_jwt_secret_minimum_32_characters_long
-SPARTA_INTERNAL_WORKER_SECRET=production_random_worker_secret_minimum_32_characters
+JWT_SECRET=<STRONG_RANDOM_JWT_SECRET_MIN_32_CHARS>
+SPARTA_INTERNAL_WORKER_SECRET=<STRONG_RANDOM_WORKER_SECRET_MIN_32_CHARS>
 
 # Domain & URL settings (HTTPS mandatory in production)
 NEXT_PUBLIC_APP_URL=https://siaga.sparta.co.id

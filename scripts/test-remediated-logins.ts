@@ -24,7 +24,7 @@ function record(res: TestResult) {
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — POST-REMEDIATION AUTHENTICATION & MULTI-ROLE VERIFICATION");
+  console.log(" SPARTA SIAGA - POST-REMEDIATION AUTHENTICATION & MULTI-ROLE VERIFICATION");
   console.log(" Target: Aiven sparta_siaga_isolated");
   console.log("================================================================================\n");
 

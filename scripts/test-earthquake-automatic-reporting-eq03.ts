@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — EQ-03: Automatic Earthquake Reporting Comprehensive Validation Suite
+ * SPARTA SIAGA - EQ-03: Automatic Earthquake Reporting Comprehensive Validation Suite
  *
  * Verifies:
  * 1. End-to-end tracing: detection -> radius evaluation -> location selection -> report creation -> branch visibility.
@@ -47,15 +47,15 @@ function record(code: string, name: string, condition: boolean, evidence: string
   const status = condition ? "PASS" : "FAIL";
   testResults.push({ code, name, status, evidence });
   if (condition) {
-    console.log(`✔ [PASS] [${code}] ${name} — ${evidence}`);
+    console.log(`✔ [PASS] [${code}] ${name} - ${evidence}`);
   } else {
-    console.error(`❌ [FAIL] [${code}] ${name} — ${evidence}`);
+    console.error(`❌ [FAIL] [${code}] ${name} - ${evidence}`);
   }
 }
 
 async function runEQ03Suite() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — EQ-03: AUTOMATIC EARTHQUAKE REPORTING VALIDATION SUITE");
+  console.log(" SPARTA SIAGA - EQ-03: AUTOMATIC EARTHQUAKE REPORTING VALIDATION SUITE");
   console.log("================================================================================\n");
 
   const pool = getDbPool();

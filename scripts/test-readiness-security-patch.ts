@@ -26,7 +26,7 @@ import path from "path";
 
 async function runReadinessSecurityPatchTests() {
   console.log("=====================================================================");
-  console.log("SPARTA SIAGA — TASK 3: READINESS SECURITY & PERMISSION PATCH SUITE");
+  console.log("SPARTA SIAGA - TASK 3: READINESS SECURITY & PERMISSION PATCH SUITE");
   console.log("Dedicated Test Suite for S1-S11 (Security) & P1-P9 (Permission Mapping)");
   console.log("=====================================================================\n");
 

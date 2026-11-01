@@ -1,4 +1,4 @@
-# SPARTA SIAGA — Final Corrective Audit & UAT Readiness Implementation Plan
+# SPARTA SIAGA  -  Final Corrective Audit & UAT Readiness Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -28,7 +28,7 @@
 
 ## Task Breakdown
 
-### Task 1: Detail Laporan — Absolute Read-Only Enforcement
+### Task 1: Detail Laporan  -  Absolute Read-Only Enforcement
 **Files:**
 - Modify: `components/incident/maintenance-tracking-modal.tsx`
 - Modify: `components/dashboard/active-incidents-table.tsx`
@@ -64,7 +64,7 @@
     * Short description textarea.
     * Submit button: "Kirim Hasil Pemeriksaan".
     * Remove category selector, severity selector, and operational status selector.
-  - Keep separate tab/mode for "Informasi Awal — Belum Terverifikasi" when direct visit is not feasible.
+  - Keep separate tab/mode for "Informasi Awal  -  Belum Terverifikasi" when direct visit is not feasible.
   - Simplify BnM Manajer decision view:
     * Clean summary card of field inspection result & photos.
     * Decision buttons: Setujui (Ada Kerusakan) / Kondisi Aman / Tolak Laporan (Manual only) / Minta Klarifikasi.

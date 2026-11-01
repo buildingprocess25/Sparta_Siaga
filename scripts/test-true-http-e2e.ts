@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — TRUE HTTP END-TO-END TEST SUITE
+ * SPARTA SIAGA - TRUE HTTP END-TO-END TEST SUITE
  * 
  * Runs Next.js HTTP Server against sparta_siaga_isolated on dedicated test port 3005.
  * Executes all 14 scenarios via real HTTP socket requests with valid JWT cookies.
@@ -100,7 +100,7 @@ async function sleep(ms: number) {
 // =============================================================================
 async function runTrueHttpSuite() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — TRUE HTTP END-TO-END VERIFICATION SUITE");
+  console.log(" SPARTA SIAGA - TRUE HTTP END-TO-END VERIFICATION SUITE");
   console.log(" Target Database : sparta_siaga_isolated");
   console.log(` HTTP Wire Port   : ${TEST_PORT} (${BASE_URL})`);
   console.log(" Safety Guard     : defaultdb STRICTLY UNTOUCHED");

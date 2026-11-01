@@ -1,4 +1,4 @@
-# SPARTA SIAGA — Production Rollback Procedure
+# SPARTA SIAGA - Production Rollback Procedure
 
 This runbook defines the criteria, steps, and validation checks for safely executing a rollback in production.
 
@@ -68,7 +68,7 @@ If data corruption has occurred requiring a complete restore to pre-deployment s
 3. Run the guarded restore script:
    ```bash
    CONFIRM_RESTORE=YES \
-   DATABASE_URL="postgresql://user:pass@db:5432/sparta" \
+   DATABASE_URL="postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:5432/<DB_NAME>" \
    PRIVATE_STORAGE_ROOT="/app/storage" \
    bash ops/restore-production.sh /backups/sparta_backup_PRE_DEPLOY
    ```

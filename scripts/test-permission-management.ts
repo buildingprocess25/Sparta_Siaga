@@ -17,7 +17,7 @@ import { IncidentRecord } from "../types/incident";
 
 async function runTestSuite() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — SYSTEM ADMIN & ESTIMATION PERMISSIONS");
+  console.log("SPARTA SIAGA - SYSTEM ADMIN & ESTIMATION PERMISSIONS");
   console.log("==================================================\n");
 
   const pool = getDbPool();

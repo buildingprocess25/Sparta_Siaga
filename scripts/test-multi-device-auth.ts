@@ -24,7 +24,7 @@ function extractCookie(res: Response): string | null {
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — TASK T11: MULTI-DEVICE AUTHENTICATION & REVOCATION TEST");
+  console.log(" SPARTA SIAGA - TASK T11: MULTI-DEVICE AUTHENTICATION & REVOCATION TEST");
   console.log(" Target: sparta_siaga_isolated");
   console.log("================================================================================\n");
 

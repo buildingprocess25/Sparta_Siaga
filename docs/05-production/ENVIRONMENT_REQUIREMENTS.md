@@ -1,4 +1,4 @@
-# SPARTA SIAGA — Environment & Infrastructure Requirements
+# SPARTA SIAGA - Environment & Infrastructure Requirements
 
 This document details the environment specifications, secrets, system resources, and upstream services required to run SPARTA SIAGA in production.
 

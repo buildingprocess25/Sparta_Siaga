@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Database Isolation & Earthquake Data Integrity Safety Test
+ * SPARTA SIAGA - Database Isolation & Earthquake Data Integrity Safety Test
  *
  * Verifies:
  * 1. Fail-closed rejection: getProductionDbPool() throws in test execution context.
