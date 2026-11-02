@@ -297,6 +297,21 @@ export async function submitMilestoneDocument(params: SubmitMilestoneParams): Pr
     throw new Error("Laporan sudah ditutup/selesai. Tidak dapat mengunggah dokumen milestone lagi.");
   }
 
+  const inReviewStatuses = ["awaiting_st", "pending_final_approval", "approved_pending_close"];
+  if (inReviewStatuses.includes(incident.status)) {
+    const stageName =
+      incident.status === "awaiting_st"
+        ? "review koordinator"
+        : "persetujuan akhir BnM Manajer";
+    const error: any = new Error(
+      `Dokumen milestone terkunci selama proses ${stageName}. Perubahan berkas hanya dapat dilakukan jika ada permintaan revisi resmi (revision_requested).`
+    );
+    error.status = 422;
+    error.statusCode = 422;
+    error.code = "MILESTONE_UPLOAD_LOCKED_IN_REVIEW";
+    throw error;
+  }
+
   const isSystemAdmin = actor.systemRole === "ADMIN";
 
   // 3. Operational Gating Check (Must apply to all, including System Admin)
@@ -435,7 +450,9 @@ export async function submitMilestoneDocument(params: SubmitMilestoneParams): Pr
 
   // Section 1: Upload milestone SERAH_TERIMA tidak boleh otomatis mengubah status laporan ke awaiting_st.
   // Status awaiting_st hanya boleh diberikan setelah PIC resmi melakukan submitCompletion.
-  const nextStatus = ["revision_requested", "in_maintenance"].includes(incident.status)
+  const nextStatus = incident.status === "revision_requested"
+    ? "revision_requested"
+    : inReviewStatuses.includes(incident.status)
     ? incident.status
     : "in_maintenance";
 

@@ -66,6 +66,7 @@ async function runRefinementSuite() {
   const approvalRoute = await import("../app/api/incidents/[id]/approval/route");
   const compSubmitRoute = await import("../app/api/incidents/[id]/completion/submit/route");
   const compApproveRoute = await import("../app/api/incidents/[id]/completion/approve/route");
+  const compRejectRoute = await import("../app/api/incidents/[id]/completion/reject/route");
   const compCloseRoute = await import("../app/api/incidents/[id]/completion/close/route");
   const { submitMilestoneFlexible } = await import("../lib/milestone-service");
   const { EstimationIntegrationService } = await import("../lib/estimation-service");
@@ -904,6 +905,93 @@ async function runRefinementSuite() {
       `Status: ${compSubmitRes.status}, incident status: ${submittedInc?.status}`
     );
 
+    // Helper to upload milestone document on approvalReportId
+    async function postMilestoneDoc(cookie: string, stageKey = "SERAH_TERIMA") {
+      const boundary = "----WebKitFormBoundary" + Math.random().toString(36).substring(2);
+      const parts: Buffer[] = [
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="stage_key"\r\n\r\n${stageKey}\r\n`),
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="notes"\r\n\r\nMilestone upload review lock test\r\n`),
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="test.pdf"\r\nContent-Type: application/pdf\r\n\r\n`),
+        Buffer.from("%PDF-1.4 test document content %EOF"),
+        Buffer.from(`\r\n--${boundary}--\r\n`)
+      ];
+
+      const req = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/milestones`, {
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          cookie: `siaga_session=${cookie}`,
+        },
+        body: Buffer.concat(parts),
+      });
+
+      return await milestonesRoute.POST(req, { params: Promise.resolve({ id: approvalReportId }) });
+    }
+
+    // Milestone upload locked during coordinator review (awaiting_st)
+    const mileLockAwaitingRes = await postMilestoneDoc(bmsCookie, "SERAH_TERIMA");
+    const mileLockAwaitingJson = await mileLockAwaitingRes.json();
+    const incDuringAwaiting = await dbGetIncidentById(approvalReportId);
+    record(
+      "MILE-LOCK-01",
+      "Milestone Review Lock",
+      "Milestone upload is locked with HTTP 422 while incident is under coordinator review (awaiting_st)",
+      mileLockAwaitingRes.status === 422 &&
+        mileLockAwaitingJson.code === "MILESTONE_UPLOAD_LOCKED_IN_REVIEW" &&
+        incDuringAwaiting?.status === "awaiting_st",
+      `Status: ${mileLockAwaitingRes.status}, code: ${mileLockAwaitingJson.code}, incident status: ${incDuringAwaiting?.status}`
+    );
+
+    // Coordinator (BMC) requests revision -> incident status transitions to revision_requested
+    const coordRejectReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/reject`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `siaga_session=${bmcCookie}`,
+      },
+      body: JSON.stringify({ reason: "Dokumen serah terima belum ditandatangani toko, mohon perbaiki." }),
+    });
+    const coordRejectRes = await compRejectRoute.POST(coordRejectReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const incAfterRevisionReq = await dbGetIncidentById(approvalReportId);
+    record(
+      "REVISION-REQ-01",
+      "Revision Lifecycle",
+      "Coordinator revision request transitions incident status to revision_requested without closing report",
+      coordRejectRes.status === 200 && incAfterRevisionReq?.status === "revision_requested",
+      `Status: ${coordRejectRes.status}, incident status: ${incAfterRevisionReq?.status}`
+    );
+
+    // PIC (BMS) uploads revised milestone during revision_requested -> Allowed, preserves revision_requested
+    const mileRevisionRes = await postMilestoneDoc(bmsCookie, "SERAH_TERIMA");
+    const mileRevisionJson = await mileRevisionRes.json();
+    const incAfterMilestoneRevision = await dbGetIncidentById(approvalReportId);
+    record(
+      "MILE-REVISION-01",
+      "Revision Document Update",
+      "PIC is allowed to upload revised milestone during revision_requested, status remains revision_requested",
+      mileRevisionRes.status === 200 && incAfterMilestoneRevision?.status === "revision_requested",
+      `Status: ${mileRevisionRes.status}, incident status: ${incAfterMilestoneRevision?.status}`
+    );
+
+    // PIC re-submits completion after revising documents -> Transitions back to awaiting_st
+    const compResubmitReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/submit`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        cookie: `siaga_session=${bmsCookie}`,
+      },
+      body: JSON.stringify({ notes: "Dokumen ST revisi dengan tanda tangan lengkap toko telah diunggah." }),
+    });
+    const compResubmitRes = await compSubmitRoute.POST(compResubmitReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const resubmittedInc = await dbGetIncidentById(approvalReportId);
+    record(
+      "RESUBMIT-SYNC-01",
+      "Lifecycle Synchronization",
+      "After revising documents, PIC resubmission returns incident status to awaiting_st",
+      compResubmitRes.status === 200 && resubmittedInc?.status === "awaiting_st",
+      `Status: ${compResubmitRes.status}, incident status: ${resubmittedInc?.status}`
+    );
+
     // Helper: Coordinator approval request
     async function postCoordApproval(cookie: string) {
       const req = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/approve`, {
@@ -944,6 +1032,20 @@ async function runRefinementSuite() {
       "After coordinator approves, incident status transitions to pending_final_approval for BnM Manajer",
       bmcTokoRes.status === 200 && coordApprovedInc?.status === "pending_final_approval",
       `Status: ${bmcTokoRes.status}, incident status: ${coordApprovedInc?.status}`
+    );
+
+    // Milestone upload locked during manager final approval (pending_final_approval)
+    const mileLockFinalRes = await postMilestoneDoc(bmsCookie, "SERAH_TERIMA");
+    const mileLockFinalJson = await mileLockFinalRes.json();
+    const incDuringPendingFinal = await dbGetIncidentById(approvalReportId);
+    record(
+      "MILE-LOCK-02",
+      "Milestone Review Lock",
+      "Milestone upload is locked with HTTP 422 while incident is in pending_final_approval",
+      mileLockFinalRes.status === 422 &&
+        mileLockFinalJson.code === "MILESTONE_UPLOAD_LOCKED_IN_REVIEW" &&
+        incDuringPendingFinal?.status === "pending_final_approval",
+      `Status: ${mileLockFinalRes.status}, code: ${mileLockFinalJson.code}, incident status: ${incDuringPendingFinal?.status}`
     );
 
     // 6.3 Coordinator cannot execute Case Close
@@ -992,6 +1094,27 @@ async function runRefinementSuite() {
       body: JSON.stringify({ notes: "Persetujuan final serah terima pekerjaan diberikan oleh BnM Manajer Bandung." }),
     });
     await compApproveRoute.POST(bmmApproveReq, { params: Promise.resolve({ id: approvalReportId }) });
+    const incDuringPendingClose = await dbGetIncidentById(approvalReportId);
+    record(
+      "MANAGER-SYNC-01",
+      "Lifecycle Synchronization",
+      "After BnM Manajer approves, incident status transitions to approved_pending_close",
+      incDuringPendingClose?.status === "approved_pending_close",
+      `Incident status: ${incDuringPendingClose?.status}`
+    );
+
+    // Milestone upload locked during approved_pending_close
+    const mileLockPendingCloseRes = await postMilestoneDoc(bmsCookie, "SERAH_TERIMA");
+    const mileLockPendingCloseJson = await mileLockPendingCloseRes.json();
+    record(
+      "MILE-LOCK-03",
+      "Milestone Review Lock",
+      "Milestone upload is locked with HTTP 422 while incident is in approved_pending_close",
+      mileLockPendingCloseRes.status === 422 &&
+        mileLockPendingCloseJson.code === "MILESTONE_UPLOAD_LOCKED_IN_REVIEW" &&
+        incDuringPendingClose?.status === "approved_pending_close",
+      `Status: ${mileLockPendingCloseRes.status}, code: ${mileLockPendingCloseJson.code}, incident status: ${incDuringPendingClose?.status}`
+    );
 
     // 6.5 BnM Manajer executes official Case Close
     const bmmCloseReq = new Request(`http://localhost:3004/api/incidents/${approvalReportId}/completion/close`, {
