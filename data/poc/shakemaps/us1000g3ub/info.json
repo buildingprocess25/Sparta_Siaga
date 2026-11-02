@@ -1,0 +1,446 @@
+{
+  "multigmpe": {
+    "PGA": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "subduction_crustal"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SSlab]",
+            "[AtkinsonBoore2003SSlabCascadia]",
+            "[ZhaoEtAl2016SSlab]",
+            "[AbrahamsonEtAl2015SSlab]"
+          ],
+          "weights": [
+            0.1667,
+            0.1667,
+            0.3333,
+            0.3333
+          ],
+          "name": "subduction_slab_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.3399999999999999,
+        0.15,
+        0.5100000000000001
+      ],
+      "name": "gmpe_us1000g3ub_custom"
+    },
+    "SA(0.3)": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "subduction_crustal"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SSlab]",
+            "[AtkinsonBoore2003SSlabCascadia]",
+            "[ZhaoEtAl2016SSlab]",
+            "[AbrahamsonEtAl2015SSlab]"
+          ],
+          "weights": [
+            0.1667,
+            0.1667,
+            0.3333,
+            0.3333
+          ],
+          "name": "subduction_slab_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.3399999999999999,
+        0.15,
+        0.5100000000000001
+      ],
+      "name": "gmpe_us1000g3ub_custom"
+    },
+    "SA(1.0)": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "subduction_crustal"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SSlab]",
+            "[AtkinsonBoore2003SSlabCascadia]",
+            "[ZhaoEtAl2016SSlab]",
+            "[AbrahamsonEtAl2015SSlab]"
+          ],
+          "weights": [
+            0.1667,
+            0.1667,
+            0.3333,
+            0.3333
+          ],
+          "name": "subduction_slab_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.3399999999999999,
+        0.15,
+        0.5100000000000001
+      ],
+      "name": "gmpe_us1000g3ub_custom"
+    },
+    "SA(3.0)": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "subduction_crustal"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SSlab]",
+            "[AtkinsonBoore2003SSlabCascadia]",
+            "[ZhaoEtAl2016SSlab]",
+            "[AbrahamsonEtAl2015SSlab]"
+          ],
+          "weights": [
+            0.1667,
+            0.1667,
+            0.3333,
+            0.3333
+          ],
+          "name": "subduction_slab_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.3399999999999999,
+        0.15,
+        0.5100000000000001
+      ],
+      "name": "gmpe_us1000g3ub_custom"
+    },
+    "PGV": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "subduction_crustal"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SSlab]",
+            "[AtkinsonBoore2003SSlabCascadia]",
+            "[ZhaoEtAl2016SSlab]",
+            "[AbrahamsonEtAl2015SSlab]"
+          ],
+          "weights": [
+            0.1667,
+            0.1667,
+            0.3333,
+            0.3333
+          ],
+          "name": "subduction_slab_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.3399999999999999,
+        0.15,
+        0.5100000000000001
+      ],
+      "name": "gmpe_us1000g3ub_custom"
+    }
+  },
+  "input": {
+    "event_information": {
+      "depth": "34.0",
+      "event_id": "us1000g3ub",
+      "eventsource": "us",
+      "netid": "us",
+      "eventsourcecode": "1000g3ub",
+      "id": "us1000g3ub",
+      "productcode": "us1000g3ub",
+      "productsource": "atlas",
+      "producttype": "shakemap",
+      "event_ref": " InSAR model from Bill Barnhart (8.7.18). Southwest dipping fault",
+      "fault_ref": " InSAR model from Bill Barnhart (8.7.18). Southwest dipping fault",
+      "intensity_observations": "72",
+      "latitude": "-8.2581",
+      "longitude": "116.4375",
+      "location": "0km SW of Loloan, Indonesia",
+      "magnitude": "6.9",
+      "origin_time": "2018-08-05T11:46:38.000000Z",
+      "seismic_stations": "0",
+      "src_mech": "RS",
+      "event_description": "ShakeMap Atlas v4",
+      "event_type": "ACTUAL"
+    }
+  },
+  "strec": {
+    "TectonicRegion": "Subduction",
+    "FocalMechanism": "RS",
+    "TensorType": "Mww",
+    "TensorSource": "us_1000g3ub",
+    "KaganAngle": 16.69150887642555,
+    "CompositeVariability": null,
+    "NComposite": 0,
+    "DistanceToStable": null,
+    "DistanceToActive": 221.85257676225925,
+    "DistanceToSubduction": 0,
+    "DistanceToVolcanic": null,
+    "Oceanic": false,
+    "DistanceToOceanic": null,
+    "DistanceToContinental": 0,
+    "SlabModelRegion": "Sumatra-Java",
+    "SlabModelDepth": 144.1956787109375,
+    "SlabModelDepthUncertainty": 31.38717269897461,
+    "SlabModelDip": 47.739437103271484,
+    "SlabModelStrike": 272.9781494140625,
+    "SlabModelMaximumDepth": 53
+  },
+  "output": {
+    "ground_motions": {
+      "MMI": {
+        "units": "intensity",
+        "bias": "0.192",
+        "max_grid": "8.221",
+        "max": "8.052"
+      },
+      "SA(0.3)": {
+        "units": "g",
+        "bias": "-0.061",
+        "max_grid": "1.294",
+        "max": "1.287"
+      },
+      "SA(3.0)": {
+        "units": "g",
+        "bias": "0.166",
+        "max_grid": "0.128",
+        "max": "0.123"
+      },
+      "PGA": {
+        "units": "g",
+        "bias": "0.142",
+        "max_grid": "0.746",
+        "max": "0.744"
+      },
+      "SA(1.0)": {
+        "units": "g",
+        "bias": "0.242",
+        "max_grid": "0.745",
+        "max": "0.707"
+      },
+      "PGV": {
+        "units": "cms",
+        "bias": "0.139",
+        "max_grid": "4.167",
+        "max": "4.11"
+      }
+    },
+    "map_information": {
+      "grid_points": {
+        "longitude": "625",
+        "latitude": "607",
+        "units": ""
+      },
+      "grid_spacing": {
+        "longitude": "0.0083333",
+        "latitude": "0.0083333",
+        "units": "degrees"
+      },
+      "grid_span": {
+        "longitude": "5.2",
+        "latitude": "5.05",
+        "units": "degrees"
+      },
+      "min": {
+        "longitude": "113.717",
+        "latitude": "-10.7",
+        "units": "degrees"
+      },
+      "max": {
+        "longitude": "118.917",
+        "latitude": "-5.65",
+        "units": "degrees"
+      }
+    },
+    "uncertainty": {
+      "grade": "C",
+      "mean_uncertainty_ratio": "1.012",
+      "total_flagged_mi": "1",
+      "total_flagged_pgm": "0"
+    }
+  },
+  "processing": {
+    "ground_motion_modules": {
+      "gmpe": {
+        "module": "gmpe_us1000g3ub_custom",
+        "reference": ""
+      },
+      "ipe": {
+        "module": "VirtualIPE",
+        "reference": ""
+      },
+      "gmice": {
+        "module": "WGRW12",
+        "reference": ""
+      },
+      "ccf": {
+        "module": "LothBaker2013",
+        "reference": ""
+      },
+      "basin_correction": {
+        "module": "None",
+        "reference": ""
+      },
+      "directivity": {
+        "module": "None",
+        "reference": ""
+      }
+    },
+    "miscellaneous": {
+      "bias_max_dsigma": "1.5",
+      "bias_max_mag": "7.7",
+      "bias_max_range": "120.0",
+      "median_dist": "True",
+      "do_outliers": true,
+      "outlier_deviation_level": "3.0",
+      "outlier_max_mag": "7.0"
+    },
+    "shakemap_versions": {
+      "shakemap_revision": "4.0.2+335.gcbad862.dirty",
+      "shakemap_revision_id": "cbad8622bd520e1936447620edfb3a4feea1a8d9",
+      "process_time": "2020-06-06T16:07:00Z",
+      "map_version": 1,
+      "map_comment": "ShakeMap Atlas v4",
+      "map_data_history": [
+        [
+          "2020-06-06T16:05:53Z",
+          "atlas",
+          1,
+          "ShakeMap Atlas v4"
+        ]
+      ],
+      "map_status": "automatic"
+    },
+    "site_response": {
+      "vs30default": "760.0",
+      "site_correction": "GMPE native"
+    }
+  }
+}

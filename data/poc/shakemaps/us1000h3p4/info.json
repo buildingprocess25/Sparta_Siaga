@@ -1,0 +1,366 @@
+{
+  "multigmpe": {
+    "PGA": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "active_crustal_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.5386792200366224,
+        0.46132077996337756
+      ],
+      "name": "gmpe_us1000h3p4_custom"
+    },
+    "SA(0.3)": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "active_crustal_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.5386792200366224,
+        0.46132077996337756
+      ],
+      "name": "gmpe_us1000h3p4_custom"
+    },
+    "SA(1.0)": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "active_crustal_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.5386792200366224,
+        0.46132077996337756
+      ],
+      "name": "gmpe_us1000h3p4_custom"
+    },
+    "SA(3.0)": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "active_crustal_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.5386792200366224,
+        0.46132077996337756
+      ],
+      "name": "gmpe_us1000h3p4_custom"
+    },
+    "PGV": {
+      "gmpes": [
+        {
+          "gmpes": [
+            "[AbrahamsonEtAl2014]",
+            "[BooreEtAl2014]",
+            "[CampbellBozorgnia2014]",
+            "[ChiouYoungs2014]"
+          ],
+          "weights": [
+            0.25,
+            0.25,
+            0.25,
+            0.25
+          ],
+          "name": "active_crustal_nshmp2014"
+        },
+        {
+          "gmpes": [
+            "[AtkinsonBoore2003SInter]",
+            "[ZhaoEtAl2016SInter]",
+            "[AbrahamsonEtAl2015SInter]"
+          ],
+          "weights": [
+            0.2,
+            0.4,
+            0.4
+          ],
+          "name": "subduction_interface_nshmp2014"
+        }
+      ],
+      "weights": [
+        0.5386792200366224,
+        0.46132077996337756
+      ],
+      "name": "gmpe_us1000h3p4_custom"
+    }
+  },
+  "input": {
+    "event_information": {
+      "depth": "20.0",
+      "event_id": "us1000h3p4",
+      "eventsource": "us",
+      "netid": "us",
+      "eventsourcecode": "1000h3p4",
+      "id": "us1000h3p4",
+      "productcode": "us1000h3p4",
+      "productsource": "atlas",
+      "producttype": "shakemap",
+      "event_ref": " Based on initial Hayes fault, plus optical surface imaging from Bill Barnhardt",
+      "fault_ref": " Based on initial Hayes fault, plus optical surface imaging from Bill Barnhardt",
+      "intensity_observations": "2",
+      "latitude": "-0.2556",
+      "longitude": "119.8451",
+      "location": "70km N of Palu, Indonesia",
+      "magnitude": "7.5",
+      "origin_time": "2018-09-28T10:02:45.000000Z",
+      "seismic_stations": "0",
+      "src_mech": "ALL",
+      "event_description": "ShakeMap Atlas v4",
+      "event_type": "ACTUAL"
+    }
+  },
+  "strec": {
+    "TectonicRegion": "Active",
+    "FocalMechanism": "ALL",
+    "TensorType": "Mww",
+    "TensorSource": "us_1000h3p4",
+    "KaganAngle": null,
+    "CompositeVariability": null,
+    "NComposite": 0,
+    "DistanceToStable": null,
+    "DistanceToActive": 0,
+    "DistanceToSubduction": 13.729371588980753,
+    "DistanceToVolcanic": null,
+    "Oceanic": false,
+    "DistanceToOceanic": null,
+    "DistanceToContinental": 0,
+    "SlabModelRegion": "Halmahera",
+    "SlabModelDepth": null,
+    "SlabModelDepthUncertainty": null,
+    "SlabModelDip": null,
+    "SlabModelStrike": null,
+    "SlabModelMaximumDepth": null
+  },
+  "output": {
+    "ground_motions": {
+      "PGA": {
+        "units": "g",
+        "bias": "0.039",
+        "max_grid": "0.903",
+        "max": "0.903"
+      },
+      "MMI": {
+        "units": "intensity",
+        "bias": "0.112",
+        "max_grid": "8.367",
+        "max": "8.367"
+      },
+      "SA(3.0)": {
+        "units": "g",
+        "bias": "0.013",
+        "max_grid": "0.29",
+        "max": "0.29"
+      },
+      "SA(1.0)": {
+        "units": "g",
+        "bias": "0.035",
+        "max_grid": "1.121",
+        "max": "1.121"
+      },
+      "PGV": {
+        "units": "cms",
+        "bias": "0.017",
+        "max_grid": "4.678",
+        "max": "4.678"
+      },
+      "SA(0.3)": {
+        "units": "g",
+        "bias": "-0.011",
+        "max_grid": "1.986",
+        "max": "1.986"
+      }
+    },
+    "map_information": {
+      "grid_points": {
+        "longitude": "454",
+        "latitude": "514",
+        "units": ""
+      },
+      "grid_spacing": {
+        "longitude": "0.0166667",
+        "latitude": "0.0166667",
+        "units": "degrees"
+      },
+      "grid_span": {
+        "longitude": "7.55",
+        "latitude": "8.55",
+        "units": "degrees"
+      },
+      "min": {
+        "longitude": "116.117",
+        "latitude": "-5.033",
+        "units": "degrees"
+      },
+      "max": {
+        "longitude": "123.667",
+        "latitude": "3.517",
+        "units": "degrees"
+      }
+    },
+    "uncertainty": {
+      "grade": "C",
+      "mean_uncertainty_ratio": "1.013",
+      "total_flagged_mi": "0",
+      "total_flagged_pgm": "0"
+    }
+  },
+  "processing": {
+    "ground_motion_modules": {
+      "gmpe": {
+        "module": "gmpe_us1000h3p4_custom",
+        "reference": ""
+      },
+      "ipe": {
+        "module": "VirtualIPE",
+        "reference": ""
+      },
+      "gmice": {
+        "module": "WGRW12",
+        "reference": ""
+      },
+      "ccf": {
+        "module": "LothBaker2013",
+        "reference": ""
+      },
+      "basin_correction": {
+        "module": "None",
+        "reference": ""
+      },
+      "directivity": {
+        "module": "None",
+        "reference": ""
+      }
+    },
+    "miscellaneous": {
+      "bias_max_dsigma": "1.5",
+      "bias_max_mag": "7.7",
+      "bias_max_range": "120.0",
+      "median_dist": "True",
+      "do_outliers": true,
+      "outlier_deviation_level": "3.0",
+      "outlier_max_mag": "7.0"
+    },
+    "shakemap_versions": {
+      "shakemap_revision": "4.0.2+335.gcbad862.dirty",
+      "shakemap_revision_id": "cbad8622bd520e1936447620edfb3a4feea1a8d9",
+      "process_time": "2020-06-06T16:43:05Z",
+      "map_version": 1,
+      "map_comment": "ShakeMap Atlas v4",
+      "map_data_history": [
+        [
+          "2020-06-06T16:42:29Z",
+          "atlas",
+          1,
+          "ShakeMap Atlas v4"
+        ]
+      ],
+      "map_status": "automatic"
+    },
+    "site_response": {
+      "vs30default": "760.0",
+      "site_correction": "GMPE native"
+    }
+  }
+}
