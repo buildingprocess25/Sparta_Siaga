@@ -8,6 +8,11 @@ import { fetchDisasterFeed } from './disaster-service';
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
 import { dbUpsertEarthquakeEvent } from './earthquake-db';
 import { ensureEarthquakeReport } from './earthquake-report-service';
+import { isEarthquakeIntensityEnabled } from './earthquake-intensity-config';
+import {
+  dispatchStageOneNationalNotification,
+  checkAndEscalateShakeMapFallback,
+} from './earthquake-intensity-service';
 import { createReconciliationCase } from './reconciliation-service';
 import {
   hasEventAlreadyBeenProcessed,
@@ -244,7 +249,7 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
                 }));
 
                 const ticketNumber = `FL-${b.cabang.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-                const rainTitle = `SIAGA HUJAN LEBAT — POTENSI BANJIR: Cabang ${b.cabang}`;
+                const rainTitle = `SIAGA HUJAN LEBAT - POTENSI BANJIR: Cabang ${b.cabang}`;
                 const rainMessage = `Model cuaca menunjukkan potensi curah hujan lebat (${precipitation.toFixed(1)} mm/jam) di sekitar cabang ${b.cabang}. Bersiap aktifkan SOP pencegahan genangan.`;
 
                 await recordNotificationLog({
@@ -517,6 +522,22 @@ export async function processEarthquakeAlertsAndReports(
     // Guarantee canonical event recording in earthquake_events table
     await dbUpsertEarthquakeEvent(eq);
 
+    // Stage 1: Instant nationwide informational notification (when earthquake intensity system is active)
+    if (isEarthquakeIntensityEnabled() && isAlertEligible) {
+      await dispatchStageOneNationalNotification({
+        canonicalEventId: eq.id,
+        title: eq.title,
+        magnitude: eq.magnitude,
+        depthKm: eq.depthKm,
+        latitude: eq.latitude,
+        longitude: eq.longitude,
+        occurredAt: new Date(eventTimestamp),
+        sourceProvider: eq.source,
+      }).catch((err) => {
+        console.warn('[Autonomous Daemon] Error in Stage 1 national notification:', err);
+      });
+    }
+
     const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(eq.magnitude, eq.depthKm);
 
     // 1. Evaluate Active Verified Facilities (DCs, Warehouses, Regional Offices)
@@ -594,7 +615,9 @@ export async function processEarthquakeAlertsAndReports(
       }
       affectedFacilitiesByBranch.get(branchKey)!.push(facilitySummary);
 
-      if (distanceKm <= priorityRadiusKm) {
+      // In legacy mode, priority radius generates facility reports.
+      // In intensity mode, reports are generated strictly by Stage 2 ShakeMap evaluation when MMI >= 6.0.
+      if (distanceKm <= priorityRadiusKm && !isEarthquakeIntensityEnabled()) {
         const reportHash = crypto
           .createHash('sha256')
           .update(`${eq.id}:FACILITY:${facility.id}`)
@@ -764,7 +787,9 @@ export async function processEarthquakeAlertsAndReports(
       }
 
       // Operational Reports for stores in Priority Monitoring Zone
-      for (const store of priorityStores) {
+      // When intensity mode is active, circular radius auto-report loop is stopped.
+      if (!isEarthquakeIntensityEnabled()) {
+        for (const store of priorityStores) {
         const existingAuto = await dbFindAutoEarthquakeReport(eq.id, store.kode_toko, branch);
         if (existingAuto) {
           await dbUpdateIncident(existingAuto.id, {
@@ -888,7 +913,7 @@ export async function processEarthquakeAlertsAndReports(
                   ? `Laporan gempa dipulihkan pasca-downtime (usia event ${Math.round(eventAgeMinutes)} menit). Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi lapangan.`
                   : `Gempa M${eq.magnitude} terdeteksi oleh ${eq.source || 'UNVERIFIED'}. Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas pantau (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi kondisi lapangan.`,
                 timestamp: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
-                actor: 'SPARTA Siaga — Autonomous Engine',
+                actor: 'SPARTA Siaga - Autonomous Engine',
                 notes: `Event ID: ${eq.id}`,
               },
             ],
@@ -913,6 +938,22 @@ export async function processEarthquakeAlertsAndReports(
     }
   }
 
-  return { dispatchedAlerts, createdReports };
+  if (isEarthquakeIntensityEnabled()) {
+    // Intensity mode active: circular radius auto-reports are disabled!
+    // Stage 2 ShakeMap evaluation handles candidate report creation when MMI >= 6.0.
+    // Fallback check triggers informational advisory if ShakeMap is pending > 30 minutes.
+    await checkAndEscalateShakeMapFallback({
+      canonicalEventId: eq.id,
+      title: eq.title,
+      magnitude: eq.magnitude,
+      depthKm: eq.depthKm,
+      eventOccurredAt: new Date(eventTimestamp),
+    }).catch((fallbackErr) => {
+      console.warn('[Autonomous Daemon] Error during ShakeMap fallback check:', fallbackErr);
+    });
+  }
+}
+
+return { dispatchedAlerts, createdReports };
 }
 

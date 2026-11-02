@@ -22,6 +22,9 @@ export type PolicyDecision = "CANDIDATE_AUTO_REPORT" | "NOTIFICATION_ONLY" | "UN
 export type DiscrepancyClassification =
   | "CONCORDANT_HIGH_RISK"
   | "CONCORDANT_LOW_RISK"
+  | "RADIUS_OVERPREDICTION_VS_MMI"
+  | "RADIUS_UNDERPREDICTION_VS_MMI"
+  | "OUT_OF_SHAKEMAP_COVERAGE"
   | "FALSE_POSITIVE_RADIUS"
   | "FALSE_NEGATIVE_RADIUS"
   | "DATA_UNAVAILABLE";
@@ -37,6 +40,8 @@ export interface ShakeMapGrid {
   numY: number;
   values: number[];
   maxMmi: number;
+  axisNames?: string[];
+  shape?: number[];
 }
 
 export interface ShakeMapContour {
@@ -70,6 +75,7 @@ export interface BmkgFeltReport {
 export interface IntensityDecisionResult {
   decision: PolicyDecision;
   mmi: number | null;
+  mmiRounded: number | null;
   mmiRoman: string;
   categoryLabel: string;
   potentialDamageDescription: string;
@@ -92,6 +98,7 @@ export interface RadiusVsMmiComparisonRow {
   monitoringRadiusKm: number;
   radiusZone: SpatialRisk;
   mmi: number | null;
+  mmiRounded: number | null;
   mmiRoman: string;
   mmiDecision: PolicyDecision;
   discrepancyType: DiscrepancyClassification;
@@ -199,30 +206,124 @@ export function parseBmkgDirasakan(dirasakanStr: string): BmkgFeltReport[] {
 }
 
 /**
- * Parses a USGS ShakeMap CovJSON (Coverage JSON) into a memory-efficient grid.
+ * Validates a grid cell value. Returns true only if value is a finite number in physical MMI range [0.5, 12].
+ */
+export function isValidGridValue(val: unknown): val is number {
+  return typeof val === "number" && Number.isFinite(val) && val >= 0.5 && val <= 12;
+}
+
+/**
+ * Parses and strictly validates a USGS ShakeMap CovJSON (Coverage JSON) into a memory-efficient grid.
+ * Validates:
+ * - Domain object and axes (x, y) with finite ranges
+ * - Ranges object containing MMI data
+ * - axisNames (ensures spatial coordinates x, y / lat, lon)
+ * - shape dimensions matching values array length
+ * - NoData / null / NaN handling
  */
 export function parseShakeMapCovJson(
   covJson: any,
   meta: { eventId?: string; name?: string } = {}
 ): ShakeMapGrid {
-  if (!covJson || !covJson.domain || !covJson.ranges) {
-    throw new Error("Invalid CovJSON: Missing domain or ranges object.");
+  if (!covJson || typeof covJson !== "object") {
+    throw new Error("Invalid CovJSON: Input must be a valid JSON object.");
   }
 
-  const x = covJson.domain.axes?.x;
-  const y = covJson.domain.axes?.y;
+  if (!covJson.domain || typeof covJson.domain !== "object") {
+    throw new Error("Invalid CovJSON: Missing or invalid domain object.");
+  }
+
+  if (!covJson.ranges || typeof covJson.ranges !== "object") {
+    throw new Error("Invalid CovJSON: Missing or invalid ranges object.");
+  }
+
+  const axes = covJson.domain.axes;
+  if (!axes || typeof axes !== "object") {
+    throw new Error("Invalid CovJSON: Missing domain.axes object.");
+  }
+
+  const x = axes.x || axes.longitude || axes.lon;
+  const y = axes.y || axes.latitude || axes.lat;
 
   if (!x || !y) {
-    throw new Error("Invalid CovJSON: Missing x or y axis.");
+    throw new Error("Invalid CovJSON: Missing x (longitude) or y (latitude) axis.");
+  }
+
+  // Validate axis parameters
+  if (
+    !Number.isFinite(x.start) ||
+    !Number.isFinite(x.stop) ||
+    !Number.isInteger(x.num) ||
+    x.num < 2 ||
+    x.start >= x.stop
+  ) {
+    throw new Error(`Invalid CovJSON: Malformed x axis (start: ${x.start}, stop: ${x.stop}, num: ${x.num}).`);
+  }
+
+  if (
+    !Number.isFinite(y.start) ||
+    !Number.isFinite(y.stop) ||
+    !Number.isInteger(y.num) ||
+    y.num < 2 ||
+    y.start >= y.stop
+  ) {
+    throw new Error(`Invalid CovJSON: Malformed y axis (start: ${y.start}, stop: ${y.stop}, num: ${y.num}).`);
+  }
+
+  // Geographic bounds validation
+  if (x.start < -180 || x.stop > 360 || y.start < -90 || y.stop > 90) {
+    throw new Error(`Invalid CovJSON: Axis coordinates out of valid geographic range (x: [${x.start}, ${x.stop}], y: [${y.start}, ${y.stop}]).`);
   }
 
   const mmiRange = covJson.ranges.MMI || covJson.ranges.mmi;
-  if (!mmiRange || !Array.isArray(mmiRange.values)) {
-    throw new Error("Invalid CovJSON: Missing MMI values array.");
+  if (!mmiRange || typeof mmiRange !== "object") {
+    throw new Error("Invalid CovJSON: Missing MMI range object.");
+  }
+
+  if (!Array.isArray(mmiRange.values)) {
+    throw new Error("Invalid CovJSON: MMI values must be an array.");
   }
 
   const values: number[] = mmiRange.values;
-  const maxMmi = values.length > 0 ? Math.max(...values) : 0;
+  const expectedLength = x.num * y.num;
+
+  // Validate values length against grid dimensions
+  if (values.length !== expectedLength) {
+    throw new Error(
+      `Invalid CovJSON: Grid length mismatch. Expected ${expectedLength} (${x.num} x ${y.num}), received ${values.length}.`
+    );
+  }
+
+  // Validate axisNames (mandatory in CovJSON NdArray for spatial grid)
+  if (!mmiRange.axisNames || !Array.isArray(mmiRange.axisNames) || mmiRange.axisNames.length !== 2) {
+    throw new Error("Invalid CovJSON: axisNames must be a 2-element array.");
+  }
+  const cleanAxes = mmiRange.axisNames.map((a: string) => String(a).toLowerCase().trim());
+  const hasY = cleanAxes.includes("y") || cleanAxes.includes("latitude") || cleanAxes.includes("lat");
+  const hasX = cleanAxes.includes("x") || cleanAxes.includes("longitude") || cleanAxes.includes("lon");
+  if (!hasY || !hasX) {
+    throw new Error(`Invalid CovJSON: axisNames must contain spatial coordinates (received: ${JSON.stringify(mmiRange.axisNames)}).`);
+  }
+
+  // Validate shape (mandatory in CovJSON NdArray)
+  if (!mmiRange.shape || !Array.isArray(mmiRange.shape) || mmiRange.shape.length !== 2) {
+    throw new Error("Invalid CovJSON: shape must be a 2-element array.");
+  }
+  const [s0, s1] = mmiRange.shape;
+  if (s0 * s1 !== expectedLength) {
+    throw new Error(`Invalid CovJSON: shape dimensions [${s0}, ${s1}] (${s0 * s1}) do not match grid length (${expectedLength}).`);
+  }
+
+  // Verify shape dimensions match axis order
+  const firstAxisIsY = cleanAxes[0] === "y" || cleanAxes[0] === "latitude" || cleanAxes[0] === "lat";
+  const expectedShape = firstAxisIsY ? [y.num, x.num] : [x.num, y.num];
+  if (s0 !== expectedShape[0] || s1 !== expectedShape[1]) {
+    throw new Error(`Invalid CovJSON: shape [${s0}, ${s1}] does not match axis dimensions [${expectedShape[0]}, ${expectedShape[1]}].`);
+  }
+
+  // Calculate maxMmi safely ignoring nulls, NaNs, and negative NoData sentinels
+  const validValues = values.filter(isValidGridValue);
+  const maxMmi = validValues.length > 0 ? Math.max(...validValues) : 0;
 
   return {
     eventId: meta.eventId || "unknown-event",
@@ -235,12 +336,18 @@ export function parseShakeMapCovJson(
     numY: y.num,
     values,
     maxMmi,
+    axisNames: mmiRange.axisNames,
+    shape: mmiRange.shape,
   };
 }
 
 /**
  * Performs bilinear interpolation of MMI from a ShakeMapGrid at target (lat, lon).
- * Returns null if target coordinates are outside grid boundaries or invalid.
+ * 
+ * Precision & NoData Rules:
+ * 1. Returns exact, unrounded floating-point number (full precision for threshold evaluation).
+ * 2. Returns null (which maps to UNKNOWN) if coordinates are outside bounds, invalid, or if grid data is missing (NoData, null, NaN).
+ * 3. Never returns 0 for missing data.
  */
 export function interpolateMmiFromGrid(
   grid: ShakeMapGrid,
@@ -258,7 +365,7 @@ export function interpolateMmiFromGrid(
     return null;
   }
 
-  // Bounding box check
+  // Bounding box check: strictly out of grid coverage returns null
   if (lon < grid.xMin || lon > grid.xMax || lat < grid.yMin || lat > grid.yMax) {
     return null;
   }
@@ -286,45 +393,97 @@ export function interpolateMmiFromGrid(
   const idx10 = r1 * grid.numX + c0;
   const idx11 = r1 * grid.numX + c1;
 
-  const v00 = grid.values[idx00] ?? 0;
-  const v01 = grid.values[idx01] ?? v00;
-  const v10 = grid.values[idx10] ?? v00;
-  const v11 = grid.values[idx11] ?? v00;
+  const v00 = grid.values[idx00];
+  const v01 = grid.values[idx01];
+  const v10 = grid.values[idx10];
+  const v11 = grid.values[idx11];
 
-  // Bilinear interpolation formula:
-  // f(u,v) = (1-u)(1-v)v00 + u(1-v)v01 + (1-u)v v10 + uv v11
-  const interpolated =
-    (1 - u) * (1 - v) * v00 +
-    u * (1 - v) * v01 +
-    (1 - u) * v * v10 +
-    u * v * v11;
+  // Check valid values for all 4 surrounding grid nodes
+  const val00Valid = isValidGridValue(v00);
+  const val01Valid = isValidGridValue(v01);
+  const val10Valid = isValidGridValue(v10);
+  const val11Valid = isValidGridValue(v11);
 
-  return Math.round(interpolated * 100) / 100;
+  // If all 4 corner nodes are missing or NoData, data is unavailable at this point -> return null
+  if (!val00Valid && !val01Valid && !val10Valid && !val11Valid) {
+    return null;
+  }
+
+  // Standard bilinear interpolation when all 4 nodes are valid
+  if (val00Valid && val01Valid && val10Valid && val11Valid) {
+    const interpolated =
+      (1 - u) * (1 - v) * (v00 as number) +
+      u * (1 - v) * (v01 as number) +
+      (1 - u) * v * (v10 as number) +
+      u * v * (v11 as number);
+
+    // Return unrounded full precision float
+    return interpolated;
+  }
+
+  // Partial node interpolation (edge of valid data mask)
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  if (val00Valid) {
+    const w = (1 - u) * (1 - v);
+    weightedSum += (v00 as number) * w;
+    totalWeight += w;
+  }
+  if (val01Valid) {
+    const w = u * (1 - v);
+    weightedSum += (v01 as number) * w;
+    totalWeight += w;
+  }
+  if (val10Valid) {
+    const w = (1 - u) * v;
+    weightedSum += (v10 as number) * w;
+    totalWeight += w;
+  }
+  if (val11Valid) {
+    const w = u * v;
+    weightedSum += (v11 as number) * w;
+    totalWeight += w;
+  }
+
+  if (totalWeight <= 0) {
+    return null;
+  }
+
+  return weightedSum / totalWeight;
 }
 
 /**
  * Candidate decision policy based on instrumental intensity:
  * - MMI < 6.0: NOTIFICATION_ONLY
- * - MMI >= 6.0: CANDIDATE_AUTO_REPORT (threshold of potential non-structural and structural damage)
- * - null: UNKNOWN (data missing or out of coverage)
+ * - MMI >= 6.0: CANDIDATE_AUTO_REPORT (candidate threshold of potential non-structural and structural damage)
+ * - null / out of coverage: UNKNOWN (data missing or out of coverage)
+ * 
+ * Uses full unrounded precision for the >= 6.0 threshold evaluation.
+ * Returns mmiRounded for display formatting.
  */
 export function evaluateIntensityDecision(mmi: number | null): IntensityDecisionResult {
   if (mmi == null || !Number.isFinite(mmi)) {
     return {
       decision: "UNKNOWN",
       mmi: null,
+      mmiRounded: null,
       mmiRoman: "-",
-      categoryLabel: "Tidak Terjangkau / Data Tidak Tersedia",
+      categoryLabel: "Di Luar Cakupan / Data Tidak Tersedia",
       potentialDamageDescription: "Data ShakeMap tidak mencakup koordinat atau belum tersedia.",
     };
   }
 
+  // Full precision threshold evaluation
+  const decision: PolicyDecision = mmi >= 6.0 ? "CANDIDATE_AUTO_REPORT" : "NOTIFICATION_ONLY";
+  const mmiRounded = Math.round(mmi * 100) / 100;
   const mmiRoman = numberToRoman(mmi);
 
   if (mmi < 3.5) {
     return {
-      decision: "NOTIFICATION_ONLY",
+      decision,
       mmi,
+      mmiRounded,
       mmiRoman,
       categoryLabel: "Getaran Ringan (Light - MMI I-III)",
       potentialDamageDescription: "Dirasakan oleh beberapa orang di dalam ruangan. Tidak ada potensi kerusakan fisik.",
@@ -333,8 +492,9 @@ export function evaluateIntensityDecision(mmi: number | null): IntensityDecision
 
   if (mmi < 6.0) {
     return {
-      decision: "NOTIFICATION_ONLY",
+      decision,
       mmi,
+      mmiRounded,
       mmiRoman,
       categoryLabel: "Getaran Sedang (Moderate - MMI IV-V)",
       potentialDamageDescription: "Dirasakan banyak orang hingga hampir semua penduduk. Barang kecil bergeser. Belum ada kerusakan fisik/struktural.",
@@ -343,27 +503,30 @@ export function evaluateIntensityDecision(mmi: number | null): IntensityDecision
 
   if (mmi < 7.0) {
     return {
-      decision: "CANDIDATE_AUTO_REPORT",
+      decision,
       mmi,
+      mmiRounded,
       mmiRoman,
       categoryLabel: "Getaran Kuat (Strong - MMI VI - BMKG SIG III)",
-      potentialDamageDescription: "Semua orang terkejut keluar. Plester dinding retak/jatuh. Ambang awal potensi kerusakan fisik/non-struktural.",
+      potentialDamageDescription: "Semua orang terkejut keluar. Plester dinding retak/jatuh. Ambang kandidat kebijakan inspeksi fisik.",
     };
   }
 
   if (mmi < 8.0) {
     return {
-      decision: "CANDIDATE_AUTO_REPORT",
+      decision,
       mmi,
+      mmiRounded,
       mmiRoman,
       categoryLabel: "Sangat Kuat (Very Strong - MMI VII - BMKG SIG IV)",
-      potentialDamageDescription: "Kerusakan ringan pada bangunan kokoh, retak pada bangunan biasa. Wajib inspeksi fisik.",
+      potentialDamageDescription: "Kerusakan ringan pada bangunan kokoh, retak pada bangunan biasa. Prioritas inspeksi fisik.",
     };
   }
 
   return {
-    decision: "CANDIDATE_AUTO_REPORT",
+    decision,
     mmi,
+    mmiRounded,
     mmiRoman,
     categoryLabel: "Destruktif / Parah (Destructive - MMI VIII+ - BMKG SIG V)",
     potentialDamageDescription: "Kerusakan berat pada bangunan, rangka bergeser, fondasi retak. Sangat prioritas penanganan darurat.",
@@ -372,6 +535,10 @@ export function evaluateIntensityDecision(mmi: number | null): IntensityDecision
 
 /**
  * Compares current SPARTA circular radius model with ShakeMap MMI for a single location.
+ * 
+ * Rules:
+ * 1. Locations outside ShakeMap coverage strictly yield UNKNOWN and OUT_OF_SHAKEMAP_COVERAGE. Never SAFE!
+ * 2. Terminology clarifies that discrepancies are comparisons against ShakeMap model estimates, not ground-truth damage.
  */
 export function compareRadiusVsMmi(params: {
   locationCode: string;
@@ -417,30 +584,30 @@ export function compareRadiusVsMmi(params: {
   const intensityResult = evaluateIntensityDecision(mmi);
   const mmiDecision = intensityResult.decision;
 
-  let discrepancyType: DiscrepancyClassification = "DATA_UNAVAILABLE";
+  let discrepancyType: DiscrepancyClassification = "OUT_OF_SHAKEMAP_COVERAGE";
   let notes = "";
 
-  if (mmiDecision === "UNKNOWN") {
-    discrepancyType = "DATA_UNAVAILABLE";
-    notes = "ShakeMap tidak mencakup koordinat fasilitas.";
+  if (mmiDecision === "UNKNOWN" || mmi == null) {
+    discrepancyType = "OUT_OF_SHAKEMAP_COVERAGE";
+    notes = "Di luar cakupan grid ShakeMap numerik: Estimasi intensitas tidak tersedia (UNKNOWN), evaluasi mengandalkan parameter gempa awal.";
   } else if (radiusZone === "PRIORITY_MONITOR" && mmiDecision === "CANDIDATE_AUTO_REPORT") {
     discrepancyType = "CONCORDANT_HIGH_RISK";
-    notes = "Keduanya sepakat: Risiko kerusakan fisik tinggi, laporan darurat tepat dipicu.";
+    notes = "Konsisten risiko tinggi: Radius prioritas dan estimasi ShakeMap sama-sama memproyeksikan potensi dampak signifikan (Radius Priority & MMI >= VI).";
   } else if (
     (radiusZone === "MONITOR" || radiusZone === "SAFE") &&
     mmiDecision === "NOTIFICATION_ONLY"
   ) {
     discrepancyType = "CONCORDANT_LOW_RISK";
-    notes = "Keduanya sepakat: Getaran ringan hingga sedang, cukup notifikasi tanpa tiket operasional.";
+    notes = "Konsisten risiko rendah: Radius melingkar dan estimasi ShakeMap sama-sama memproyeksikan intensitas rendah (Radius Monitor/Safe & MMI < VI).";
   } else if (radiusZone === "PRIORITY_MONITOR" && mmiDecision === "NOTIFICATION_ONLY") {
-    discrepancyType = "FALSE_POSITIVE_RADIUS";
-    notes = "Kelemahan radius: Radius melingkar memicu laporan darurat, padahal intensitas MMI < VI (tidak ada kerusakan fisik).";
+    discrepancyType = "RADIUS_OVERPREDICTION_VS_MMI";
+    notes = "Radius overprediction vs MMI: Radius melingkar memicu zona prioritas (<= 35km), padahal estimasi ShakeMap menunjukkan intensitas non-destruktif MMI < VI. Draf tiket inspeksi darurat palsu dihindarkan.";
   } else if (
     (radiusZone === "MONITOR" || radiusZone === "SAFE") &&
     mmiDecision === "CANDIDATE_AUTO_REPORT"
   ) {
-    discrepancyType = "FALSE_NEGATIVE_RADIUS";
-    notes = "Kelemahan radius: Radius lingkaran melewatkan atau mendowngrade fasilitas yang mengalami MMI >= VI akibat amplifikasi tanah / arah patahan.";
+    discrepancyType = "RADIUS_UNDERPREDICTION_VS_MMI";
+    notes = "Radius underprediction vs MMI: Radius melingkar mengklasifikasikan aman/monitor, padahal estimasi ShakeMap memproyeksikan intensitas tinggi MMI >= VI akibat amplifikasi tanah lokal atau directivity sesar.";
   }
 
   return {
@@ -460,6 +627,7 @@ export function compareRadiusVsMmi(params: {
     monitoringRadiusKm,
     radiusZone,
     mmi,
+    mmiRounded: intensityResult.mmiRounded,
     mmiRoman: intensityResult.mmiRoman,
     mmiDecision,
     discrepancyType,
@@ -516,9 +684,9 @@ export async function loadShakeMapFromDirectory(
     const depthKm = coords[2] ?? 10;
     const mag = p.mag ?? 0;
     const title = p.title || `Earthquake ${eventId}`;
-    const maxMmi = p.mmi ?? (covJson ? Math.max(...(covJson.ranges?.MMI?.values || [0])) : 0);
 
     const grid = covJson ? parseShakeMapCovJson(covJson, { eventId, name: title }) : null;
+    const maxMmi = p.mmi ?? (grid ? grid.maxMmi : 0);
 
     const contours: ShakeMapContour[] = [];
     if (contJson && Array.isArray(contJson.features)) {
