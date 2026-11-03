@@ -276,6 +276,55 @@ export function parseShakeMapCovJson(
 }
 
 /**
+ * Fetches official ShakeMap CovJSON from USGS detail API or local cached directory.
+ */
+export async function fetchOfficialShakeMapCovJson(
+  eventId: string,
+  options: { sourceProvider?: string; timeoutMs?: number; localFallbackDir?: string } = {}
+): Promise<any> {
+  const { sourceProvider = "USGS", timeoutMs = 10000, localFallbackDir } = options;
+  const isUsgs = sourceProvider.toUpperCase() === "USGS";
+
+  if (isUsgs) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      // USGS detail GeoJSON endpoint
+      const detailUrl = `https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/${eventId}.geojson`;
+      const detailRes = await fetch(detailUrl, { signal: controller.signal });
+      clearTimeout(timer);
+
+      if (detailRes.ok) {
+        const detailJson = await detailRes.json();
+        const shakemapProduct = detailJson?.properties?.products?.shakemap?.[0];
+        const covJsonUrl = shakemapProduct?.contents?.["download/coverage_mmi.covjson"]?.url;
+
+        if (covJsonUrl) {
+          const covRes = await fetch(covJsonUrl, { signal: controller.signal });
+          if (covRes.ok) {
+            return await covRes.json();
+          }
+        }
+      }
+    } catch {
+      // In testing, offline, or fallback mode, continue to local cache
+    }
+  }
+
+  // Local dataset fallback for authentic offline / staging UAT
+  if (localFallbackDir) {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const filePath = path.join(localFallbackDir, "coverage_mmi.covjson");
+    const raw = await fs.readFile(filePath, "utf-8");
+    return JSON.parse(raw);
+  }
+
+  return null;
+}
+
+/**
  * Performs bilinear interpolation of MMI from a ShakeMapGrid at target (lat, lon).
  * Returns exact unrounded full-precision float.
  */
@@ -567,30 +616,21 @@ export async function dbSaveFacilityIntensities(
 ): Promise<void> {
   if (intensities.length === 0) return;
 
-  for (const item of intensities) {
-    await clientOrPool.query(
-      `INSERT INTO earthquake_facility_intensities (
-        shakemap_id, canonical_event_id, facility_kind, facility_id,
-        facility_code, facility_name, branch, latitude, longitude,
-        distance_km, mmi_raw, mmi_rounded, mmi_roman, decision_policy,
-        discrepancy_vs_radius, shakemap_version, incident_id, notes, evaluated_at
-      ) VALUES (
-        $1, $2, $3, $4,
-        $5, $6, $7, $8, $9,
-        $10, $11, $12, $13, $14,
-        $15, $16, $17, $18, NOW()
-      )
-      ON CONFLICT (shakemap_id, facility_kind, facility_id, shakemap_version)
-      DO UPDATE SET
-        mmi_raw = EXCLUDED.mmi_raw,
-        mmi_rounded = EXCLUDED.mmi_rounded,
-        mmi_roman = EXCLUDED.mmi_roman,
-        decision_policy = EXCLUDED.decision_policy,
-        discrepancy_vs_radius = EXCLUDED.discrepancy_vs_radius,
-        incident_id = COALESCE(EXCLUDED.incident_id, earthquake_facility_intensities.incident_id),
-        notes = EXCLUDED.notes,
-        evaluated_at = NOW();`,
-      [
+  const chunkSize = 50;
+  for (let i = 0; i < intensities.length; i += chunkSize) {
+    const chunk = intensities.slice(i, i + chunkSize);
+    const valuePlaceholders: string[] = [];
+    const values: any[] = [];
+
+    chunk.forEach((item, idx) => {
+      const offset = idx * 18;
+      valuePlaceholders.push(
+        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, ` +
+        `$${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, ` +
+        `$${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, ` +
+        `$${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, NOW())`
+      );
+      values.push(
         item.shakemapId,
         item.canonicalEventId,
         item.facilityKind,
@@ -608,9 +648,30 @@ export async function dbSaveFacilityIntensities(
         item.discrepancyVsRadius,
         item.shakemapVersion,
         item.incidentId || null,
-        item.notes,
-      ]
-    );
+        item.notes
+      );
+    });
+
+    const query = `
+      INSERT INTO earthquake_facility_intensities (
+        shakemap_id, canonical_event_id, facility_kind, facility_id,
+        facility_code, facility_name, branch, latitude, longitude,
+        distance_km, mmi_raw, mmi_rounded, mmi_roman, decision_policy,
+        discrepancy_vs_radius, shakemap_version, incident_id, notes, evaluated_at
+      ) VALUES ${valuePlaceholders.join(", ")}
+      ON CONFLICT (shakemap_id, facility_kind, facility_id, shakemap_version)
+      DO UPDATE SET
+        mmi_raw = EXCLUDED.mmi_raw,
+        mmi_rounded = EXCLUDED.mmi_rounded,
+        mmi_roman = EXCLUDED.mmi_roman,
+        decision_policy = EXCLUDED.decision_policy,
+        discrepancy_vs_radius = EXCLUDED.discrepancy_vs_radius,
+        incident_id = COALESCE(EXCLUDED.incident_id, earthquake_facility_intensities.incident_id),
+        notes = EXCLUDED.notes,
+        evaluated_at = NOW();
+    `;
+
+    await clientOrPool.query(query, values);
   }
 }
 
@@ -653,6 +714,18 @@ export async function dispatchStageOneNationalNotification(params: {
       title: notificationTitle,
       message: notificationMessage,
       affectedStores: [],
+    });
+
+    // Also dispatch background Web Push to registered PWA devices across branches & HO
+    await dispatchEarthquakePushNotifications({
+      title: notificationTitle,
+      body: notificationMessage,
+      branch: "NATIONAL",
+      eventId: canonicalEventId,
+      magnitude,
+      url: `/monitoring?disasterId=${encodeURIComponent(canonicalEventId)}`,
+    }).catch((pushErr) => {
+      console.warn("[Stage 1] Background Web Push dispatch warning:", pushErr);
     });
 
     return {

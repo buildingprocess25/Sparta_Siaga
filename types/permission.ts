@@ -342,6 +342,12 @@ export function isFixedScopePermission(key: PermissionKey): boolean {
 // merupakan hak bawaan role tersebut dan dapat dikelola (ON/OFF) oleh Admin.
 // Permission di luar katalog role TIDAK BOLEH tampil di tab Hak Akses Role.
 export const ROLE_PERMISSION_CATALOG: Record<string, readonly PermissionKey[]> = {
+  admin: [
+    "REPORT_VIEW_ALL",
+    "NOTIFICATION_VIEW",
+    "MANAGEMENT_INSTRUCTION_CREATE",
+    "ESTIMATION_VIEW",
+  ],
   ho_admin: [
     "REPORT_VIEW_ALL",
     "NOTIFICATION_VIEW",
@@ -448,6 +454,12 @@ export function isPermissionInRoleCatalog(role: string, permission: PermissionKe
 
 // Default State per Catalog Permission (All inherent permissions default to ALLOW unless toggled OFF)
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, Partial<Record<PermissionKey, PermissionEffect>>> = {
+  admin: {
+    REPORT_VIEW_ALL: "ALLOW",
+    NOTIFICATION_VIEW: "ALLOW",
+    MANAGEMENT_INSTRUCTION_CREATE: "ALLOW",
+    ESTIMATION_VIEW: "ALLOW",
+  },
   ho_admin: {
     REPORT_VIEW_ALL: "ALLOW",
     NOTIFICATION_VIEW: "ALLOW",

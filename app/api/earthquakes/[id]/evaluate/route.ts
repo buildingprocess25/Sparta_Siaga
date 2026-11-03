@@ -79,22 +79,30 @@ export async function POST(request: Request, { params }: RouteContext) {
       }
     }
 
-    // Load stores sample from stores table
+    // Load candidate stores within and surrounding ShakeMap grid bounding box
+    const latMin = grid.yMin - 0.5;
+    const latMax = grid.yMax + 0.5;
+    const lonMin = grid.xMin - 0.5;
+    const lonMax = grid.xMax + 0.5;
+
     const storeRes = await pool.query(
-      `SELECT id::text, code, name, branch, latitude, longitude
+      `SELECT kode_toko, nama_toko, cabang, latitude, longitude, fr_type
          FROM stores
-        LIMIT 5000`
+        WHERE latitude BETWEEN $1 AND $2
+          AND longitude BETWEEN $3 AND $4
+        LIMIT 2000`,
+      [latMin, latMax, lonMin, lonMax]
     );
 
     for (const r of storeRes.rows) {
-      if (r.latitude != null && r.longitude != null && r.branch) {
+      if (r.latitude != null && r.longitude != null && r.cabang) {
         facilities.push({
           kind: "STORE",
-          id: r.code,
-          code: r.code,
-          name: r.name,
-          type: "store",
-          branch: r.branch,
+          id: r.kode_toko,
+          code: r.kode_toko,
+          name: r.nama_toko,
+          type: r.fr_type || "store",
+          branch: r.cabang,
           latitude: Number(r.latitude),
           longitude: Number(r.longitude),
         });

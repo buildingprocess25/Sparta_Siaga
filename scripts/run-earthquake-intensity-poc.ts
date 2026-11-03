@@ -5,7 +5,7 @@
  * retail store networks across 5 authentic Indonesian earthquakes
  * comparing SPARTA SIAGA's circular radius model against ShakeMap MMI.
  * 
- * Generates: radius_vs_mmi_comparison.csv
+ * Generates: data/poc/radius_vs_mmi_comparison.csv
  * Safety: Read-only, no database writes.
  * Rule: Zero em dashes.
  */
@@ -352,13 +352,10 @@ async function runBenchmark() {
   }
 
   const csvContent = csvRows.join("\n");
-  const rootCsvPath = path.resolve(process.cwd(), "radius_vs_mmi_comparison.csv");
   const dataCsvPath = path.resolve(process.cwd(), "data/poc/radius_vs_mmi_comparison.csv");
 
-  await fs.writeFile(rootCsvPath, csvContent, "utf8");
   await fs.writeFile(dataCsvPath, csvContent, "utf8");
   console.log(`CSV Report generated:`);
-  console.log(`  - ${rootCsvPath}`);
   console.log(`  - ${dataCsvPath}`);
 
   // Print sample representative comparison cases

@@ -1,0 +1,125 @@
+[
+  {
+    "employeeId": "SPARTA_BMS_BDG_01",
+    "fullName": "Agus Pratama",
+    "email": "agus.pratama@sparta.local",
+    "branchName": "Bandung",
+    "role": "BMS",
+    "system": "MAINTENANCE",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_BMC_BDG_01",
+    "fullName": "Bambang Supriyadi",
+    "email": "bambang.s@sparta.local",
+    "branchName": "Bandung",
+    "role": "BMC",
+    "system": "MAINTENANCE",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_BM_BDG_01",
+    "fullName": "Cahyo Utomo (BnM)",
+    "email": "cahyo.utomo@sparta.local",
+    "branchName": "Bandung",
+    "role": "BNM_MANAJER",
+    "system": "MAINTENANCE",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_BES_CKL_01",
+    "fullName": "Deddy Kurniawan",
+    "email": "deddy.k@sparta.local",
+    "branchName": "Cikokol",
+    "role": "ES",
+    "system": "ENGINEERING",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_BEC_CKL_01",
+    "fullName": "Eko Prasetyo",
+    "email": "eko.p@sparta.local",
+    "branchName": "Cikokol",
+    "role": "COORD",
+    "system": "ENGINEERING",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_ENG_MGR_01",
+    "fullName": "Engineering Manager Test",
+    "email": "eng.mgr@sparta.local",
+    "branchName": "Cikokol",
+    "role": "MANAGER",
+    "system": "ENGINEERING",
+    "status": "ACTIVE"
+  },
+  {
+    "email_sat": "fajar.hidayat@sat.co.id",
+    "nama_lengkap": "Fajar Hidayat (Building - No NIK)",
+    "cabang": "Sidoarjo",
+    "jabatan": "BBS",
+    "system": "BUILDING",
+    "status": "ACTIVE"
+  },
+  {
+    "email_sat": "guruh.wicaksono@sat.co.id",
+    "nama_lengkap": "Guruh Wicaksono (Building - No NIK)",
+    "cabang": "Sidoarjo",
+    "jabatan": "BBC",
+    "system": "BUILDING",
+    "status": "ACTIVE"
+  },
+  {
+    "email_sat": "building.bm@sat.co.id",
+    "nama_lengkap": "Building Branch Manager Test",
+    "cabang": "Sidoarjo",
+    "jabatan": "BRANCH MANAGER",
+    "system": "BUILDING",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_HO_ADM_01",
+    "fullName": "Hendra Wijaya",
+    "email": "hendra.w@sparta.local",
+    "branchName": "HEAD OFFICE",
+    "role": "HO_ADMIN",
+    "system": "MAINTENANCE",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_GM_HO_01",
+    "fullName": "Irawan Hartono",
+    "email": "irawan.h@sparta.local",
+    "branchName": "HEAD OFFICE",
+    "role": "GM_HO",
+    "system": "MAINTENANCE",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeId": "SPARTA_SOFT_DELETE_01",
+    "fullName": "Mantan Staff Maintenance",
+    "email": "mantan.staff@sparta.local",
+    "branchName": "Bandung",
+    "role": "BMS",
+    "system": "MAINTENANCE",
+    "isActive": false
+  },
+  {
+    "employeeId": "SPARTA_UNKNOWN_STATUS_01",
+    "fullName": "Staff Pending Review",
+    "email": "pending.staff@sparta.local",
+    "branchName": "Bandung",
+    "role": "BMS",
+    "system": "MAINTENANCE",
+    "status": "PENDING_HR_VERIFICATION"
+  },
+  {
+    "employeeId": "SPARTA_EDGE_ADMIN",
+    "fullName": "Unapproved Super Admin Escalate",
+    "email": "bad.actor@sparta.local",
+    "branchName": "HEAD OFFICE",
+    "role": "SUPER_ADMIN",
+    "system": "MAINTENANCE",
+    "status": "ACTIVE"
+  }
+]

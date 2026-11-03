@@ -39,13 +39,11 @@ export interface SessionRefreshResult {
   user: UserModel;
 }
 
-let tableEnsured = false;
-
 /**
- * Ensures the user_sessions table exists with appropriate indexes and columns.
+ * Staging schema preparation utility for user_sessions table and token_version column.
+ * Strictly decoupled from runtime authentication/session flows to ensure ZERO runtime DDL execution.
  */
 export async function ensureUserSessionsTable(): Promise<void> {
-  if (tableEnsured) return;
   const pool = getDbPool();
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;
@@ -76,7 +74,6 @@ export async function ensureUserSessionsTable(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_user_sessions_prev_token_grace ON user_sessions(previous_refresh_token_hash, previous_token_expires_at);
   `);
-  tableEnsured = true;
 }
 
 /**
@@ -150,7 +147,6 @@ export async function createDeviceSession(params: {
   ipAddress?: string | null;
   tokenVersion?: number;
 }): Promise<SessionCreationResult | null> {
-  await ensureUserSessionsTable();
   const pool = getDbPool();
 
   const user = await dbGetUserById(params.userId);
@@ -220,7 +216,6 @@ export async function rotateDeviceSession(
     return null;
   }
 
-  await ensureUserSessionsTable();
   const pool = getDbPool();
   const tokenHash = hashToken(rawRefreshToken);
   const allowGrace = options.allowGracePeriod ?? false;
@@ -376,7 +371,6 @@ export async function rotateDeviceSession(
  */
 export async function revokeSessionByRefreshToken(rawRefreshToken: string): Promise<boolean> {
   if (!rawRefreshToken) return false;
-  await ensureUserSessionsTable();
   const pool = getDbPool();
   const tokenHash = hashToken(rawRefreshToken);
 
@@ -394,7 +388,6 @@ export async function revokeSessionByRefreshToken(rawRefreshToken: string): Prom
  * Also increments user token_version.
  */
 export async function revokeAllUserSessions(userId: string): Promise<number> {
-  await ensureUserSessionsTable();
   const pool = getDbPool();
 
   await pool.query(
@@ -425,7 +418,6 @@ export async function getUserActiveSessions(userId: string): Promise<Array<{
   lastUsedAt: string;
   expiresAt: string;
 }>> {
-  await ensureUserSessionsTable();
   const pool = getDbPool();
 
   const { rows } = await pool.query<DeviceSessionRecord>(

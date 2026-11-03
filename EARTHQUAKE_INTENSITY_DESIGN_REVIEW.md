@@ -1,11 +1,12 @@
 # SPARTA SIAGA: Earthquake Intensity Design Review
+
 **Rancangan Arsitektur Final Integrasi ShakeMap MMI Dua Tahap sebagai Pengganti Model Radius Lingkaran**
 
 - **Dokumen**: Final Technical Design Review (TDR)
 - **Status Dokumen**: FINALIZED (READY FOR IMPLEMENTATION)
 - **Branch Target**: `dev`
 - **Referensi Hasil Validasi**: [`EARTHQUAKE_INTENSITY_POC_REPORT.md`](file:///c:/buildingprocess25/sparta-siaga/EARTHQUAKE_INTENSITY_POC_REPORT.md)
-- **Artifact Komparasi**: [`radius_vs_mmi_comparison.csv`](file:///c:/buildingprocess25/sparta-siaga/radius_vs_mmi_comparison.csv)
+- **Artifact Komparasi**: [`data/poc/radius_vs_mmi_comparison.csv`](file:///c:/buildingprocess25/sparta-siaga/data/poc/radius_vs_mmi_comparison.csv)
 - **Aturan Ketat**: Zero Em Dashes. Seluruh pemisah menggunakan tanda hubung `-` atau titik dua `:`.
 
 ---
@@ -17,6 +18,7 @@ Berdasarkan Proof of Concept (POC) yang telah tervalidasi pada branch `dev`, pem
 Dokumen ini merupakan **rancangan arsitektur final yang telah diselaraskan** untuk mengintegrasikan evaluasi intensitas gempa ShakeMap ke dalam siklus operasional SPARTA SIAGA. Seluruh kebijakan operasional, batasan visibilitas peran, protokol safe fallback, serta aturan penanganan data telah disepakati dan siap menjadi acuan langsung implementasi.
 
 ### Rangkuman Keputusan Desain Final:
+
 1. **Notifikasi Siaga Nasional**: Notifikasi gempa Tahap 1 bersifat nasional tanpa pembatasan radius atau cabang, dengan deduplikasi kejadian ketat.
 2. **Laporan Otomatis Cabang & Visibilitas HO Cepat**: Laporan gempa otomatis hanya dibuat untuk cabang terdampak, namun akun Head Office (HO) dapat melihatnya secara read-only sejak awal draf terbuat tanpa menunggu konfirmasi BnM Manajer.
 3. **Visibilitas Bertahap Laporan Manual**: Laporan manual lokal tetap mempertahankan aturan keamanan Fase 1-4, yaitu baru terlihat oleh HO setelah adanya konfirmasi resmi awal dari BnM Manajer cabang.
@@ -37,36 +39,38 @@ flowchart TD
     B --> C["Ingestion Parameter Awal (Magnitudo, Kedalaman, Episenter)"]
     C --> D["Broadcast Notifikasi Siaga Nasional ke Seluruh Pengguna SPARTA SIAGA"]
     D --> E["Status: VIGILANCE_MONITORING (Deduplikasi Event Key, Tanpa Tiket Insiden)"]
-    
+
     E --> F["Tahap 2: Evaluasi Presisi ShakeMap (Menit 5 - 15)"]
     F --> G{"Produk ShakeMap Numerik Tersedia?"}
-    
+
     G -- "Tersedia (CovJSON / Grid XML)" --> H["Interpolasi Bilinear Presisi Penuh per Titik Fasilitas"]
     H --> I{"Evaluasi Nilai MMI Numerik"}
-    
+
     I -- "MMI >= 6.0000" --> J["CANDIDATE_AUTO_REPORT: Buat Draf Laporan Cabang (pending_confirmation)"]
     J --> J1["Akses Operasional: BMS/BES/BBS Cabang Terdampak"]
     J --> J2["Akses Monitoring: HO Read-Only Langsung Sejak Draf Dibuat"]
-    
+
     I -- "MMI < 6.0000" --> K["NOTIFICATION_ONLY: Informasi Guncangan di Bawah Ambang Kandidat"]
     I -- "Di Luar Grid / NoData" --> L["UNKNOWN: Catat OUT_OF_SHAKEMAP_COVERAGE (Monitoring Cabang)"]
-    
+
     G -- "Belum Tersedia (> 30 Menit)" --> M["Safe Fallback: Eskalasi Informatif 30 Menit & Retry Terkontrol"]
     M --> N["Dilarang Buat Tiket Otomatis Berbasis Radius Lama"]
 ```
 
 ### Rincian Tahap 1: Deteksi Cepat & Notifikasi Nasional (Menit 0 - 2)
+
 - **Cakupan Pengguna**: **Bersifat Nasional**. Seluruh pengguna terautentikasi SPARTA SIAGA di seluruh cabang dan Head Office menerima informasi siaga gempa.
-- **Tujuan**: Membangun kesadaran situasional dini (*instant situational awareness*) bagi seluruh jajaran manajemen dan operasional tanpa sekat wilayah.
+- **Tujuan**: Membangun kesadaran situasional dini (_instant situational awareness_) bagi seluruh jajaran manajemen dan operasional tanpa sekat wilayah.
 - **Sumber Data**: BMKG Realtime Feed (`autogempa.json`) dan USGS Earthquake Notification Service (ENS).
 - **Deduplikasi**: Notifikasi dikunci menggunakan `canonical_event_key` untuk mencegah pengiriman ganda pada revisi parameter awal gempa.
 - **Batasan Ketat**: Pada tahap ini, sistem **TIDAK MEMBUAT** draf tiket insiden pada tabel `incidents`.
 
 ### Rincian Tahap 2: Evaluasi Presisi ShakeMap (Menit 5 - 15)
+
 - **Cakupan Laporan**: **Khusus Cabang Terkait**. Draf tiket pemeriksaan lapangan hanya dibuat untuk toko/DC pada cabang yang fasilitasnya berada dalam zona intensitas tinggi.
 - **Sumber Data**: Grid numerik resmi USGS ShakeMap CovJSON atau BMKG ShakeMap Grid XML.
 - **Metode Komputasi**: Interpolasi bilinear float presisi penuh tanpa pemotongan desimal dini untuk menentukan apakah nilai berada pada $\text{MMI} \ge 6.0000$.
-- **Hak Akses Langsung Head Office**: Khusus laporan otomatis hasil evaluasi ShakeMap ini, akun Head Office (HO) dapat langsung melihatnya pada dashboard monitoring secara *read-only* sejak draf terbuat, guna memantau sebaran dampak gempa secara langsung.
+- **Hak Akses Langsung Head Office**: Khusus laporan otomatis hasil evaluasi ShakeMap ini, akun Head Office (HO) dapat langsung melihatnya pada dashboard monitoring secara _read-only_ sejak draf terbuat, guna memantau sebaran dampak gempa secara langsung.
 
 ---
 
@@ -100,6 +104,7 @@ flowchart TD
 ```
 
 ### Landasan Ilmiah Ambang Batas MMI VI:
+
 - Skala MMI VI (Strong Shaking) pada standar BMKG SIG Tingkat III merepresentasikan ambang batas potensi kerusakan fisik non-struktural (plester dinding rontok, rak toko bergeser, barang dagangan berjatuhan, retak rambut dinding).
 - Nilai MMI $\ge 6.0000$ berfungsi sebagai **kandidat ambang pemeriksaan operasional** untuk mempercepat inspeksi personil spesialis. Bangunan dengan standar rekayasa gempa yang baik dapat bertahan utuh pada MMI VI, sehingga laporan otomatis berstatus kandidat hingga diverifikasi langsung dengan foto lapangan.
 - Nilai MMI $< 6.0000$ merepresentasikan getaran ringan hingga sedang. Sistem tidak boleh melabeli kondisi ini sebagai jaminan mutlak ketiadaan kerusakan karena kualitas bangunan non-standar atau kondisi perabotan interior lokal tetap memiliki kerentanan minor.
@@ -140,7 +145,7 @@ Ketika data ShakeMap numerik belum dapat diakses, sistem menerapkan prinsip **Sa
 
 ```
                                   PROTOKOL SAFE FALLBACK
-                                  
+
   Gempa Terjadi (Menit 0) ---> Status: SHAKEMAP_PENDING (Evaluasi: UNKNOWN)
                                      |
                                      +---> Polling Berkala (Menit 5, 10, 15, 20, 25)
@@ -151,16 +156,17 @@ Ketika data ShakeMap numerik belum dapat diakses, sistem menerapkan prinsip **Sa
   1. ESKALASI INFORMATIF:
      Kirim Advisory Digest ke Koordinator Cabang (BMC/BEC/BBC) dan BnM Manajer:
      "Data intensitas ShakeMap belum tersedia (>30 mnt). Parameter awal: M 6.2 Kedalaman 10 km."
-     
+
   2. RETRY TERKONTROL BERKELANJUTAN:
      Lanjutkan polling terjadwal setiap 15 menit hingga batas backfill 24 jam.
-     
+
   3. LARANGAN KERAS RADIUS LAMA:
      Sistem DILARANG OTOMATIS membuat draf tiket massal menggunakan rumus radius lama.
      Koordinator Cabang dapat menginstruksikan inspeksi manual jika menerima laporan lokal.
 ```
 
 ### Prosedur Penanganan Kegagalan:
+
 1. **Status Evaluasi Awal**: Selama berkas ShakeMap belum berhasil diunduh dan divalidasi, seluruh fasilitas pada area kejadian berstatus `UNKNOWN`.
 2. **Eskalasi 30 Menit**: Apabila setelah 30 menit data ShakeMap belum tersedia, sistem memicu notifikasi eskalasi informatif kepada Koordinator Cabang dan BnM Manajer. Notifikasi ini memberikan ringkasan parameter gempa dan daftar toko terdekat dari episenter sebagai bahan koordinasi visual, tanpa membuat tiket insiden otomatis.
 3. **Retry Terkontrol**: Worker tidak mematikan proses, melainkan beralih ke interval polling 15 menit hingga data resmi diterbitkan atau mencapai batas waktu backfill 24 jam.
@@ -173,6 +179,7 @@ Ketika data ShakeMap numerik belum dapat diakses, sistem menerapkan prinsip **Sa
 Penerbitan ShakeMap sering mengalami pembaruan versi (misalnya Version 1 terbit menit ke-8, Version 2 terbit menit ke-25 setelah ada penambahan sensor gempa).
 
 ### Kebijakan Penanganan Revisi:
+
 1. **Revisi yang Menaikkan Intensitas ($MMI < 6.0 \rightarrow MMI \ge 6.0$)**:
    Sistem membuat draf laporan `CANDIDATE_AUTO_REPORT` baru secara idempotent untuk fasilitas terkait melalui fungsi `ensureEarthquakeReport`.
 2. **Revisi yang Menurunkan Intensitas ($MMI \ge 6.0 \rightarrow MMI < 6.0$)**:
@@ -180,8 +187,8 @@ Penerbitan ShakeMap sering mengalami pembaruan versi (misalnya Version 1 terbit 
    > **Prinsip Non-Pembatalan Otomatis:**
    > Jika revisi ShakeMap menurunkan nilai estimasi MMI menjadi di bawah 6.0, sistem **DILARANG MEMBATALKAN SECARA OTOMATIS** laporan yang sudah dibuat.
    - **Alasan Keselamatan**: Personil PIC lapangan mungkin sudah bergerak menuju lokasi atau bersiap melakukan pemeriksaan. Pembatalan sepihak berisiko mengabaikan kerusakan lokal aktual.
-   - **Aksi Sistem**: Sistem mencatat riwayat penurunan intensitas ke dalam audit trail insiden (`timeline`), memperbarui data pada tabel `earthquake_facility_intensities`, dan menampilkan tanda informatif pada antarmuka PIC: *"Estimasi intensitas ShakeMap direvisi turun ke MMI [X.XX]"*.
-   - **Penyelesaian**: Verifikasi fisik lapangan tetap diselesaikan oleh PIC. Keputusan akhir penutupan laporan tanpa kerusakan dilakukan secara resmi oleh BnM Manajer melalui tombol konfirmasi *'Tidak Ada Kerusakan'* (`confirmed_safe`).
+   - **Aksi Sistem**: Sistem mencatat riwayat penurunan intensitas ke dalam audit trail insiden (`timeline`), memperbarui data pada tabel `earthquake_facility_intensities`, dan menampilkan tanda informatif pada antarmuka PIC: _"Estimasi intensitas ShakeMap direvisi turun ke MMI [X.XX]"_.
+   - **Penyelesaian**: Verifikasi fisik lapangan tetap diselesaikan oleh PIC. Keputusan akhir penutupan laporan tanpa kerusakan dilakukan secara resmi oleh BnM Manajer melalui tombol konfirmasi _'Tidak Ada Kerusakan'_ (`confirmed_safe`).
 
 ---
 
@@ -209,6 +216,7 @@ Sistem menegakkan batasan peran operasional dan aturan visibilitas laporan:
 ```
 
 ### Penjelasan Khusus Aturan Visibilitas Head Office (HO):
+
 1. **Laporan Gempa Otomatis**: HO dapat melihat draf laporan otomatis sejak pertama kali dibuat oleh sistem, karena pemicunya adalah data resmi BMKG/USGS yang bersifat objektif. Hal ini memungkinkan HO memantau eskalasi dampak bencana secara real-time nasional.
 2. **Laporan Manual Cabang**: HO baru dapat melihat laporan manual setelah BnM Manajer memberikan konfirmasi awal (`confirmed_affected` atau `confirmed_safe`). Ini mempertahankan prinsip keamanan Fase 1-4 untuk menyaring laporan manual lokal yang belum divalidasi oleh pimpinan cabang.
 
@@ -219,7 +227,9 @@ Sistem menegakkan batasan peran operasional dan aturan visibilitas laporan:
 ### A. Skema Tabel Basis Data
 
 #### 1. Tabel `earthquake_shakemaps`
+
 Menyimpan riwayat berkas dan versi ShakeMap numerik:
+
 ```sql
 CREATE TABLE IF NOT EXISTS earthquake_shakemaps (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -247,7 +257,9 @@ CREATE INDEX IF NOT EXISTS idx_shakemaps_event ON earthquake_shakemaps(canonical
 ```
 
 #### 2. Tabel `earthquake_facility_intensities`
+
 Menyimpan riwayat evaluasi presisi float per fasilitas dan audit versinya:
+
 ```sql
 CREATE TABLE IF NOT EXISTS earthquake_facility_intensities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -288,6 +300,7 @@ CREATE INDEX IF NOT EXISTS idx_facility_intensities_lookup ON earthquake_facilit
 ## 9. Analisis Ketidakpastian Saintifik & Batasan Model
 
 SPARTA SIAGA secara konsisten mengedepankan transparansi teknis:
+
 1. **Estimasi Model, Bukan Bukti Fisik**: Nilai ShakeMap MMI adalah estimasi matematis gelombang permukaan, bukan sensor kerusakan pondasi. Penetapan status kerusakan riil wajib mengandalkan inspeksi visual lapangan PIC.
 2. **Ketidakpastian Atenuasi (GMPE)**: Rumus empiris atenuasi gelombang memiliki deviasi standar $\sigma \approx 0.5 - 0.7$ MMI.
 3. **Proxy Geologi $V_{s30}$**: Estimasi amplifikasi tanah turunan topografi global memiliki potensi perbedaan pada cekungan aluvial tebal (seperti Cekungan Bandung atau dataran pantai Jakarta).
@@ -315,7 +328,7 @@ Pelaksanaan implementasi modul wajib memenuhi 8 kriteria penerimaan berikut:
 Dokumen ini secara resmi menutup seluruh opsi terbuka sebelumnya menjadi **tiga keputusan arsitektural final**:
 
 1. **Keputusan Final 1 (Timeout Fallback & Eskalasi)**:
-   Sistem menerapkan batas waktu tunggu **30 Menit**. Jika ShakeMap belum tersedia pada menit ke-30, sistem mengirimkan *Advisory Digest* kepada Koordinator Cabang dan BnM Manajer, melanjutkan retry terjadwal setiap 15 menit, serta melarang keras pembuatan tiket otomatis dengan radius lama.
+   Sistem menerapkan batas waktu tunggu **30 Menit**. Jika ShakeMap belum tersedia pada menit ke-30, sistem mengirimkan _Advisory Digest_ kepada Koordinator Cabang dan BnM Manajer, melanjutkan retry terjadwal setiap 15 menit, serta melarang keras pembuatan tiket otomatis dengan radius lama.
 2. **Keputusan Final 2 (Kebijakan Revisi ShakeMap)**:
    Sistem **mempertahankan seluruh laporan yang telah dibuat** meskipun revisi ShakeMap menurunkan intensitas ke MMI $< 6.0$. Seluruh perubahan dicatat pada audit trail, verifikasi lapangan PIC tetap berlangsung, dan keputusan penutupan diserahkan kepada BnM Manajer.
 3. **Keputusan Final 3 (Cakupan Notifikasi Siaga Awal)**:

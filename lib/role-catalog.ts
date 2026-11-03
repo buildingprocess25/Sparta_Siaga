@@ -24,31 +24,40 @@ export interface BusinessRoleDefinition {
 export const CANONICAL_HUMAN_ROLES: readonly BusinessRoleDefinition[] = [
   // --- HEAD OFFICE ---
   {
-    key: "ho_admin",
-    label: "HO Admin",
+    key: "admin",
+    label: "Admin",
     fullLabel: "Head Office Administrator",
     scope: "HO",
     category: "HO",
     selectable: true,
-    description: "Pemantau nasional lintas cabang dan administrasi operasional HO (bukan System Admin teknik).",
+    description: "Administrator Head Office pemantau nasional seluruh cabang SPARTA SIAGA.",
+  },
+  {
+    key: "ho_admin",
+    label: "HO Admin",
+    fullLabel: "Head Office Administrator",
+    scope: "HO",
+    category: "LEGACY",
+    selectable: false,
+    description: "Pemantau nasional lintas cabang dan administrasi operasional HO (Legacy — dikonsolidasi ke Admin).",
   },
   {
     key: "gm_ho",
     label: "GM HO",
     fullLabel: "General Manager Head Office",
     scope: "HO",
-    category: "HO",
-    selectable: true,
-    description: "Manajemen eksekutif HO, pemantau nasional dan penerbit Instruksi Manajemen tanggap darurat.",
+    category: "LEGACY",
+    selectable: false,
+    description: "Manajemen eksekutif HO (Legacy — dikonsolidasi ke Admin).",
   },
   {
     key: "sm_ho",
     label: "SM HO",
     fullLabel: "Senior Manager Head Office",
     scope: "HO",
-    category: "HO",
-    selectable: true,
-    description: "Senior Manajemen HO, pemantau nasional dan penerbit Instruksi Manajemen tanggap darurat.",
+    category: "LEGACY",
+    selectable: false,
+    description: "Senior Manajemen HO (Legacy — dikonsolidasi ke Admin).",
   },
 
   // --- BRANCH ---
@@ -251,8 +260,13 @@ export function getRoleDisplayLabel(role?: string | null): string {
   const r = role.toLowerCase();
 
   // Khusus System Admin
-  if (r === "admin" || r === "sys_admin" || r === "system_admin") {
+  if (r === "sys_admin" || r === "system_admin") {
     return "Admin SPARTA SIAGA";
+  }
+
+  // Admin HO
+  if (r === "admin") {
+    return "Admin";
   }
 
   // BnM Manajer

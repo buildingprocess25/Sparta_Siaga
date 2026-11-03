@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ShieldAlert, Loader2 } from "lucide-react";
+import { ShieldAlert, Loader2, LogIn } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,6 +11,35 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const spartaLoginUrl =
+    process.env.NEXT_PUBLIC_SPARTA_LOGIN_URL ||
+    "https://login.sparta-alfamart.web.id";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err) {
+      const errorMap: Record<string, string> = {
+        MissingToken: "Token SSO tidak ditemukan. Silakan masuk kembali melalui Portal SPARTA.",
+        InvalidToken: "Token SSO tidak valid atau telah kedaluwarsa. Silakan coba kembali.",
+        TokenExpired: "Sesi token peluncuran SSO telah kedaluwarsa (batas 2 menit). Silakan buka kembali dari Portal SPARTA.",
+        TokenConsumed: "Token peluncuran SSO telah digunakan. Silakan luncurkan modul SIAGA kembali dari Portal SPARTA.",
+        ModuleMismatch: "Token SSO tidak diperuntukkan bagi modul SPARTA SIAGA.",
+        UnauthorizedModule: "Akun Anda tidak memiliki hak otorisasi untuk mengakses modul SPARTA SIAGA.",
+        InvalidPayload: "Data autentikasi pengguna dari Portal SPARTA tidak lengkap atau tidak valid.",
+        UserNotFound: "Akun Anda belum terdaftar di database pengguna SIAGA. Hubungi Administrator untuk sinkronisasi.",
+        InactiveAccount: "Akun Anda berstatus nonaktif di database SIAGA. Hubungi Administrator.",
+        AmbiguousIdentity: "Konflik identitas terdeteksi pada akun Anda. Hubungi Administrator.",
+        DeactivatedRole: "Peran pengguna Anda telah dinonaktifkan dari sistem SIAGA.",
+        SessionCreationFailed: "Gagal membuat sesi login perangkat SIAGA. Silakan coba beberapa saat lagi.",
+        SsoServiceUnavailable: "Layanan autentikasi SPARTA Portal sedang tidak dapat dihubungi.",
+        ServerError: "Terjadi kesalahan internal saat memproses autentikasi SSO.",
+      };
+      setError(errorMap[err] || `Autentikasi SSO gagal (${err}). Silakan coba kembali.`);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +110,28 @@ export default function LoginPage() {
               </div>
             </div>
           )}
+
+          {/* Masuk via Portal SPARTA SSO */}
+          <a
+            href={spartaLoginUrl}
+            data-testid="sso-portal-login-button"
+            className="w-full py-3 px-4 bg-[#123B6D] hover:bg-[#0e2e56] text-white font-bold rounded-xl shadow-sm hover:shadow-md transition-all flex justify-center items-center gap-2 text-sm group focus:outline-hidden focus:ring-2 focus:ring-[#123B6D] focus:ring-offset-2"
+          >
+            <LogIn className="w-4 h-4 text-blue-200 group-hover:translate-x-0.5 transition-transform" />
+            <span>Masuk via Portal SPARTA (SSO)</span>
+          </a>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-[11px] uppercase">
+              <span className="bg-white px-3 text-slate-400 font-semibold tracking-wider">
+                Atau Kredensial Khusus
+              </span>
+            </div>
+          </div>
 
           <form action="#" onSubmit={handleSubmit} className="space-y-5">
             <div>

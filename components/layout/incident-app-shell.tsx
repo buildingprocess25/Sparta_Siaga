@@ -91,6 +91,7 @@ export function IncidentAppShell({
   const pathname = usePathname();
 
   const businessRoleDisplayMap: Record<string, string> = {
+    admin: "Admin",
     ho_admin: "HO Admin",
     gm_ho: "GM HO",
     sm_ho: "SM HO",
@@ -100,6 +101,7 @@ export function IncidentAppShell({
     bmc: "BMC",
     bec: "BEC",
     bes: "BES",
+    bbs: "BBS",
     bms: "BMS",
     tim_toko: "Tim Toko",
     tim_maintenance: "Sparta Maintenance",
