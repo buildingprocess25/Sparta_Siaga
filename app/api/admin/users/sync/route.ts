@@ -87,6 +87,11 @@ export async function POST(request: Request) {
       recordsToSync = loadStagingDataset();
     }
 
+    let ssoReferenceUsers = body.ssoReferenceUsers;
+    if (!ssoReferenceUsers && body.ssoCsvContent && typeof body.ssoCsvContent === "string") {
+      ssoReferenceUsers = parseSpartaUserCsv(body.ssoCsvContent, "SSO");
+    }
+
     if (recordsToSync.length === 0) {
       return NextResponse.json(
         { error: "Tidak ada data user yang disediakan untuk disinkronkan." },
@@ -99,6 +104,7 @@ export async function POST(request: Request) {
       sourceModule,
       allowUpdates,
       allowProductionSync: body.allowProductionSync === true,
+      ssoReferenceUsers,
     });
 
     return NextResponse.json({ data: report });

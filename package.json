@@ -20,7 +20,7 @@
     "db:deploy": "node scripts/migrate-production.mjs",
     "seed": "tsx scripts/seed-incidents.ts",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --incremental false",
     "seed:admin": "pnpm dlx tsx scripts/seed-admin.ts"
   },
   "dependencies": {

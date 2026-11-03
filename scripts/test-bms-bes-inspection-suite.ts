@@ -360,6 +360,7 @@ async function runTestSuite() {
           confirmedBy: `${bmsBandung.name} (BMS)`,
           confirmedAt: new Date().toISOString(),
           isDamaged: true,
+          photos: ["/api/incidents/test-photo.jpg"],
         } as any,
       });
       const bmAuth = await canApproveAsBmAsync(bmBandung, storeReport);

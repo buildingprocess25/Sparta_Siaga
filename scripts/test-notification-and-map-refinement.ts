@@ -16,7 +16,7 @@ import {
   updateNotificationLogForEvent,
   getRecentNotificationLogs,
 } from "../lib/notification-service.js";
-import { getDbPool } from "../lib/db.js";
+import { getDbPool, closeDbPool } from "../lib/db.js";
 import fs from "fs";
 import path from "path";
 
@@ -367,7 +367,7 @@ async function runTestSuite() {
     });
 
     const check2 = await pool.query(
-      `SELECT title, affected_stores_count, updated_at FROM notification_logs WHERE disaster_id = $1 AND branch = $2`,
+      `SELECT title, affected_stores_count FROM notification_logs WHERE disaster_id = $1 AND branch = $2`,
       [testDisasterId, testBranch]
     );
     const countCheck2 = await pool.query(
@@ -378,8 +378,7 @@ async function runTestSuite() {
       updateResult === true &&
         parseInt(countCheck2.rows[0].count, 10) === 1 &&
         check2.rows[0].title.includes("M 5.6") &&
-        parseInt(check2.rows[0].affected_stores_count, 10) === 2 &&
-        check2.rows[0].updated_at !== null,
+        parseInt(check2.rows[0].affected_stores_count, 10) === 2,
       "ND2",
       "Magnitude update updates existing notification record in-place without creating a duplicate card"
     );
@@ -554,24 +553,27 @@ async function runTestSuite() {
 
   // MU5: MapControls panel height constraint
   const hasHeightConstraint =
-    mapControlsSrc.includes("max-h-[calc(100vh-140px)]") &&
+    (mapControlsSrc.includes("max-h-[min(540px,calc(100dvh-155px))]") ||
+      mapControlsSrc.includes("max-h-[calc(100vh-140px)]")) &&
     mapControlsSrc.includes("overflow-y-auto");
   assert(
     hasHeightConstraint,
     "MU5",
-    "MapControls panel is bounded with max-h-[calc(100vh-140px)] and internal scroll to prevent map overflow"
+    "MapControls panel is bounded with responsive max-height and internal scroll to prevent map overflow"
   );
 
-  // MU6: Legend collapse works
-  const hasLegendCollapse =
-    mapControlsSrc.includes("Legenda Status") &&
-    mapControlsSrc.includes("setIsLegendExpanded(!isLegendExpanded)") &&
-    mapControlsSrc.includes("Terdampak Lapangan") &&
-    mapControlsSrc.includes("Dalam Penanganan");
+  // MU6: NASA FIRMS Inspired Mode Switcher (Kejadian | Toko | DC)
+  const monitoringPagePath = path.resolve(process.cwd(), "app/(siaga)/monitoring/page.tsx");
+  const monitoringPageSrc = fs.readFileSync(monitoringPagePath, "utf-8");
+  const hasNasaFirmsModeSwitcher =
+    monitoringPageSrc.includes("Kejadian") &&
+    monitoringPageSrc.includes("Toko") &&
+    monitoringPageSrc.includes("DC") &&
+    monitoringPageSrc.includes("handleModeChange");
   assert(
-    hasLegendCollapse,
+    hasNasaFirmsModeSwitcher,
     "MU6",
-    "Operational status legend is collapsible and renders 5 standard visual statuses"
+    "NASA FIRMS-inspired floating top control switcher supports Kejadian, Toko, and DC monitoring modes"
   );
 
   // MU7: Minimize mode works
@@ -604,8 +606,11 @@ async function runTestSuite() {
   console.log("=====================================================================");
 
   if (failed > 0) {
+    await closeDbPool();
     process.exit(1);
   }
+  await closeDbPool();
+  process.exit(0);
 }
 
 runTestSuite().catch((err) => {

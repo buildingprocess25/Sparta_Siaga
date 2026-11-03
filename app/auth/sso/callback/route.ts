@@ -69,7 +69,9 @@ export async function GET(request: Request) {
           ? "USER_INACTIVE"
           : matchResult.status === "AMBIGUOUS"
           ? "AMBIGUOUS_IDENTITY"
-          : "DEACTIVATED_ROLE"
+          : matchResult.status === "DEACTIVATED_ROLE"
+          ? "DEACTIVATED_ROLE"
+          : matchResult.status
       );
       return NextResponse.redirect(new URL(`/login?error=${redirectCode}`, baseUrl));
     }

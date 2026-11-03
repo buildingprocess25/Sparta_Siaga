@@ -14,10 +14,18 @@ import {
   calculateBssa14Pga,
   calculateAb03IntraslabPga,
   calculateZhao06IntraslabPga,
+  calculateZhao06InterfacePga,
+  calculateAb03InterfacePga,
+  estimateFaultDimensions,
+  convertPointSourceToFiniteRuptureDistance,
+  runVs30SensitivityAnalysis,
+  runTectonicRegimeComparison,
   gmiceWorden2012PgaToMmi,
   mmiToRomanNumeral,
   evaluateGmpeGroundMotion,
   runGmpeDistanceBenchmark,
+  runM4SensitivityAnalysis,
+  computeContingencyMetrics,
 } from "../lib/gmpe-fallback-service";
 import {
   parseShakeMapCovJson,
@@ -230,6 +238,99 @@ async function runTestSuite() {
 
       assert.equal(malangEpiGmpe.decision, "NOTIFICATION_ONLY");
       assert.ok(malangEpiGmpe.mmi < 6.0);
+    });
+
+    await test("Sensitivity: Ultra-shallow M4.5 on soft soil at +1s/+2s can reach MMI >= VI", async () => {
+      const rows = runM4SensitivityAnalysis();
+      const shallowSoftCases = rows.filter((r) => r.canExceedMmi6);
+      // Confirms that localized shallow soft-soil events can exceed MMI VI under positive uncertainty
+      assert.ok(shallowSoftCases.length > 0, "Must identify cases where M4.0-M4.5 can exceed MMI 6.0");
+      const extremeCase = rows.find((r) => r.magnitude === 4.5 && r.depthKm === 5 && r.vs30 === 180);
+      assert.ok(extremeCase != null);
+      assert.ok(extremeCase.mmiPlus1Sigma >= 6.0, "M4.5 at +1s on soft soil must exceed MMI VI");
+    });
+
+    await test("Contingency Metrics: Verifies accurate reporting of 1.79% recall and 98.21% missed alert rate", async () => {
+      // Synthetic test array matching the 2 TP, 110 FN, 2368 TN
+      const dummyEvaluations: { shakemapMmi: number; gmpeMmi: number }[] = [];
+      for (let i = 0; i < 2; i++) dummyEvaluations.push({ shakemapMmi: 6.5, gmpeMmi: 6.2 }); // TP
+      for (let i = 0; i < 110; i++) dummyEvaluations.push({ shakemapMmi: 6.5, gmpeMmi: 5.2 }); // FN
+      for (let i = 0; i < 2368; i++) dummyEvaluations.push({ shakemapMmi: 4.5, gmpeMmi: 4.2 }); // TN
+
+      const metrics = computeContingencyMetrics(dummyEvaluations);
+      assert.equal(metrics.actualPositiveHighRisk, 112);
+      assert.equal(metrics.truePositives, 2);
+      assert.equal(metrics.falseNegatives, 110);
+      assert.equal(metrics.recallPercent, 1.79);
+      assert.equal(metrics.missedAlertRatePercent, 98.21);
+      assert.equal(metrics.accuracyPercent, 95.56);
+    });
+
+    await test("Subduction Interface: Zhao et al. (2006) & AB03 Interface attenuate monotonically", async () => {
+      const zhaoNear = calculateZhao06InterfacePga({ magnitude: 7.0, depthKm: 25, distanceEpiKm: 10, vs30: 760 });
+      const zhaoFar = calculateZhao06InterfacePga({ magnitude: 7.0, depthKm: 25, distanceEpiKm: 100, vs30: 760 });
+      assert.ok(zhaoNear.pgaG > zhaoFar.pgaG, "Zhao 2006 Interface must attenuate with distance");
+
+      const ab03Near = calculateAb03InterfacePga({ magnitude: 7.0, depthKm: 25, distanceEpiKm: 10, vs30: 760 });
+      const ab03Far = calculateAb03InterfacePga({ magnitude: 7.0, depthKm: 25, distanceEpiKm: 100, vs30: 760 });
+      assert.ok(ab03Near.pgaG > ab03Far.pgaG, "AB03 Interface must attenuate with distance");
+    });
+
+    await test("Fault Scaling: Wells & Coppersmith (1994) dimensions scale exponentially with magnitude", async () => {
+      const dim5 = estimateFaultDimensions(5.0);
+      const dim6 = estimateFaultDimensions(6.0);
+      const dim7 = estimateFaultDimensions(7.0);
+
+      assert.ok(dim6.lengthKm > dim5.lengthKm, "M6 fault length must exceed M5");
+      assert.ok(dim7.lengthKm > dim6.lengthKm, "M7 fault length must exceed M6");
+      assert.ok(dim7.widthKm > dim5.widthKm, "M7 fault width must exceed M5");
+      // M7.5 strike-slip should produce length ~95-130 km (Wells & Coppersmith 1994)
+      const dim75ss = estimateFaultDimensions(7.5, "STRIKE_SLIP");
+      assert.ok(dim75ss.lengthKm > 80 && dim75ss.lengthKm < 135, "M7.5 strike-slip rupture length ~95-130 km");
+    });
+
+    await test("Thompson & Worden (2018): E[Rjb] <= Repi and produces non-zero epistemic sigma for large M", async () => {
+      const conv = convertPointSourceToFiniteRuptureDistance({ rEpiKm: 45, magnitude: 6.9, mechanism: "REVERSE" });
+      assert.ok(conv.expectedRjbKm <= 45, "E[Rjb] must be less than or equal to Repi");
+      assert.ok(conv.expectedRjbKm > 0, "E[Rjb] must remain positive for distant site");
+      assert.ok(conv.sigmaRjbKm > 0, "Must calculate non-zero sigmaRjb due to unknown fault azimuth");
+      assert.ok(conv.minRjbKm < conv.expectedRjbKm, "minRjb must be lower than expected Rjb");
+
+      // Small magnitude should produce Repi == expectedRjb
+      const convSmall = convertPointSourceToFiniteRuptureDistance({ rEpiKm: 20, magnitude: 4.0 });
+      assert.equal(convSmall.expectedRjbKm, 20);
+      assert.equal(convSmall.sigmaRjbKm, 0);
+    });
+
+    await test("Geotechnical Sensitivity: Vs30 amplification produces higher ground motion on Class E vs Class B", async () => {
+      const rows = runVs30SensitivityAnalysis({
+        magnitude: 6.0,
+        depthKm: 15,
+        distanceKm: 20,
+        regime: "SHALLOW_CRUSTAL",
+      });
+
+      const classB = rows.find((r) => r.siteClass === "B");
+      const classE = rows.find((r) => r.siteClass === "E");
+      assert.ok(classB != null && classE != null);
+      assert.ok(classE.pgaMedianG > classB.pgaMedianG, "Class E PGA must exceed Class B PGA");
+      assert.ok(classE.mmiMedian > classB.mmiMedian, "Class E MMI must exceed Class B MMI");
+      assert.ok(classE.deltaMmiVsRock >= 0.8, "Class E amplification relative to rock must be >= 0.8 MMI units");
+    });
+
+    await test("Tectonic Regime Differentiation: Shallow Crustal, Interface, and Intraslab evaluate independently", async () => {
+      const comp = runTectonicRegimeComparison({
+        magnitude: 6.5,
+        depthKm: 30,
+        distancesKm: [20],
+      });
+
+      assert.equal(comp.length, 1);
+      assert.ok(comp[0].crustalMmi > 0);
+      assert.ok(comp[0].interfaceMmi > 0);
+      assert.ok(comp[0].intraslabMmi > 0);
+      // All three regimes evaluate distinctly without throwing errors
+      assert.notEqual(comp[0].crustalMmi, comp[0].intraslabMmi);
     });
   })();
 

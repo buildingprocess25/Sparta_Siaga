@@ -58,7 +58,6 @@ async function runTask3Tests() {
   const testUserId = "usr_task3_test_admin";
   const testUserData: UserModel = {
     id: testUserId,
-    username: "task3_ho_admin",
     name: "Task 3 HO Admin Tester",
     nik: "HO-TK3-001",
     email: "task3.admin@sparta-test.com",
@@ -67,7 +66,10 @@ async function runTask3Tests() {
     scope: "HO",
     branch: null,
     status: "ACTIVE",
-    tokenVersion: 1
+    source: "LOCAL",
+    tokenVersion: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
   await dbUpsertUser(testUserData);
 

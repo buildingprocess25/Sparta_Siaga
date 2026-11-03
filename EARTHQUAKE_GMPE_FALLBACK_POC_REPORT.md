@@ -1,247 +1,183 @@
 # SPARTA SIAGA: Earthquake GMPE Fallback POC Report
-**Evaluasi Kelayakan Ground Motion Prediction Equations (GMPE) sebagai Alternatif Ilmiah Fallback Intensitas Gempa**
+**Evaluasi Kelayakan Ground Motion Prediction Equations (GMPE) sebagai Alternatif Ilmiah Fallback Intensitas Gempa (Task 3: Validasi Independen, Verifikasi Numerik, dan Evaluasi GO/NO-GO)**
 
-- **Dokumen**: Proof of Concept & Scientific Feasibility Report
+- **Dokumen**: Proof of Concept & Scientific Feasibility Report (Task 3 Independent Validation Closeout)
 - **Branch Target**: `dev`
-- **Tanggal Evaluasi**: 2 November 2026
-- **Status Kelayakan**: **CONDITIONAL (FEASIBLE WITH STRICT OPERATIONAL GUARDRAILS)**
-- **Vonis Pengujian**: **PASSED (12/12 Unit & Benchmark Tests Passing, 100%)**
+- **Tanggal Evaluasi**: 3 November 2026
+- **Status Validasi Eksternal**: **NOT INDEPENDENTLY VERIFIED** (Pustaka seismologi pihak ketiga bersertifikasi seperti OpenQuake engine atau py-shakemap USGS tidak terpasang di environment lokal; verifikasi numerik saat ini murni berupa penurunan ulang persamaan matematika internal terhadap tabel koefisien publikasi asli)
+- **Status Kelayakan Operasional**: **CONDITIONAL (FEASIBLE HANYA SEBAGAI PENELITIAN RISET TERISOLASI DAN ADVISORY BANNER; STRICTLY BLOCKED DARI PEMICU LAPORAN OTOMATIS)**
+- **Keputusan Task 4**: **NO-GO untuk Otomatisasi Laporan Darurat (`CANDIDATE_AUTO_REPORT`); GO (CONDITIONAL) sebagai Riset Penelitian Terisolasi (Isolated Research Prototype)**
+- **Vonis Pengujian Perangkat Lunak**: **PASSED (19/19 Unit & Functional Tests Passing, 100%)**
+- **Catatan Integritas Ilmiah**: 19/19 pengujian unit membuktikan ketepatan implementasi matematika kode terhadap persamaan publikasi asli, BUKAN membuktikan kesempurnaan akurasi prediksi fisik terhadap alam.
 - **Aturan Penulisan**: Zero Em Dashes. Seluruh pemisah menggunakan tanda hubung `-` atau titik dua `:`.
 
 ---
 
-## 1. Executive Summary & Status Kelayakan
+## 1. Executive Summary & Ringkasan Task 3
 
-Laporan ini menyajikan hasil pengujian Proof of Concept (POC) penerapan **Ground Motion Prediction Equations (GMPE)** dan **Ground Motion to Intensity Conversion Equations (GMICE)** sebagai alternatif ilmiah ketika produk resmi ShakeMap (BMKG/USGS) belum tersedia, terlambat, atau untuk gempa berkekuatan sedang/kecil ($M < 5.0$).
+Task 3 berfokus pada **validasi mandiri** terhadap seluruh persamaan atenuasi getaran tanah (GMPE), model konversi jarak rekahan sesar (PS2FF), dan persamaan konversi intensitas (GMICE) yang diimplementasikan pada SPARTA SIAGA.
 
-Evaluasi dilakukan menggunakan model atenuasi standar konsorsium global (NGA-West2, USGS ShakeMap v4.0, OpenQuake) dan acuan nasional **PUSGEN (Pusat Studi Gempa Nasional) Indonesia 2024**, mencakup dua rezim tektonik utama Indonesia:
-1. **Kerak Dangkal (Shallow Crustal)**: Model Boore, Stewart, Seyhan & Atkinson (2014) [BSSA14].
-2. **Subduksi Intraslab (Subduction Intraslab / Benioff Zone)**: Model Zhao et al. (2006) dan Atkinson & Boore (2003) [AB03] dalam multi-GMPE ensemble.
-3. **Konversi Intensitas (GMICE)**: Model Worden et al. (2012) [WGRW12] berbasis PGA.
-
-### Ringkasan Status Kelayakan: `CONDITIONAL`
-
-| Kategori Penggunaan | Status | Justifikasi Teknis & Operasional |
-| :--- | :---: | :--- |
-| **Situational Awareness & Advisory Banner** | **FEASIBLE** | GMPE sangat akurat memproyeksikan atenuasi spasial cepat dan memberikan estimasi getaran awal (MMI) dalam < 200 ms pasca deteksi gempa. |
-| **Filter Gempa Kecil ($M < 5.0$)** | **FEASIBLE** | Pada gempa $M < 5.0$, GMPE membuktikan secara deterministik bahwa guncangan tidak menembus batas MMI VI pada struktur bangunan standar, mencegah pembuatan draf tiket yang tidak perlu. |
-| **Pembuatan Laporan Darurat Otomatis (`CANDIDATE_AUTO_REPORT`)** | **NOT FEASIBLE** | Tidak dapat digunakan sebagai pemicu draf laporan otomatis tanpa verifikasi ShakeMap resmi. Pada gempa besar ($M \ge 6.5$), pendekatan titik (*point-source*) menghasilkan tingkat False Negative 98.2% pada area dekat patahan akibat tidak memperhitungkan geometri rekahan (*finite fault rupture*). |
+Tujuan utama evaluasi ini adalah:
+1. Memverifikasi implementasi numerik terhadap kalkulator penurunan persamaan publikasi ilmiah acuan secara terpisah.
+2. Memverifikasi koefisien, satuan fisik, parameter jarak ($R_{jb}, R_{rup}$), magnitudo ($M_w$), kecepatan gelombang geser tanah ($V_{s30}$), dan formulasi ketidakpastian ($\sigma$).
+3. Mengevaluasi ulang benchmark 112 lokasi dengan estimasi ShakeMap MMI >= VI pada data resmi di 5 gempa historis Indonesia.
+4. Mengidentifikasi kesalahan ilmiah, komponen penyederhanaan model, keterbatasan fisik, dan risiko *overfitting* tanpa manipulasi atau klaim berlebihan.
+5. Menetapkan keputusan tegas **GO / NO-GO** untuk kelanjutan integrasi operasional (Task 4).
 
 ---
 
-## 2. Landasan Ilmiah & Model yang Diuji
+## 2. Validasi Numerik terhadap Publikasi Asli
 
-### 2.1. Standar Acuan PUSGEN Indonesia 2024 & Global
-Dalam Peta Sumber dan Bahaya Gempa Indonesia (PUSGEN 2017/2024) serta manual teknis USGS ShakeMap, estimasi pergerakan tanah permukaan didasarkan pada pohon logika (*logic tree*) multi-model:
-- **Kerak Dangkal**: Boore et al. (2014) [BSSA14] memberikan perlakuan terbaik untuk sesar darat aktif (seperti Sesar Cimandiri, Sesar Palu-Koro, Sesar Semangko) pada rentang $M_w 3.0 - 8.5$.
-- **Subduksi Intraslab**: Zhao et al. (2006) dan Atkinson & Boore (2003) memodelkan atenuasi lempeng samudera yang menunjam ke bawah mantel bumi dengan pelepasan tegangan tinggi (*high stress drop*) dan atenuasi anelastik rendah.
-- **USGS GMICE WGRW12**: Worden et al. (2012) merupakan standar kanonik USGS ShakeMap yang menghubungkan Peak Ground Acceleration (PGA) dengan skala Modified Mercalli Intensity (MMI).
+Pengujian numerik dilakukan dengan membandingkan luaran fungsi pada [`lib/gmpe-fallback-service.ts`](file:///c:/buildingprocess25/sparta-siaga/lib/gmpe-fallback-service.ts) terhadap kalkulator referensi yang diturunkan secara terisolasi berdasarkan persamaan matematika dari makalah acuan asli:
+- **BSSA14**: Boore et al. (2014), *Earthquake Spectra*, Vol. 30, No. 3, Tabel 4 & 5.
+- **Zhao 2006**: Zhao et al. (2006), *BSSA*, Vol. 96, No. 3, Tabel 4.
+- **AB03**: Atkinson & Boore (2003), *BSSA*, Vol. 93, No. 4, Tabel 4.
+- **WGRW12**: Worden et al. (2012), *BSSA*, Vol. 102, No. 1, Tabel 3.
+- **WC94 / PS2FF**: Wells & Coppersmith (1994) & Thompson & Worden (2018), *BSSA*, Vol. 108, No. 1.
 
-### 2.2. Formulasi Matematika & Ketidakpastian ($\sigma$)
+> [!NOTE]
+> **Catatan Validasi Eksternal (Status: NOT INDEPENDENTLY VERIFIED):**
+> Karena paket perangkat lunak seismologi eksternal bersertifikasi (misalnya OpenQuake engine atau py-shakemap USGS) tidak tersedia pada environment lokal, hasil numerik di bawah ini diverifikasi terhadap kalkulator penurunan matematis internal dari tabel publikasi asli, dan berstatus **NOT INDEPENDENTLY VERIFIED** terhadap pustaka eksternal.
 
-#### A. Model Kerak Dangkal: Boore et al. (2014) - BSSA14
-Memprediksi $\ln(\text{PGA})$ dalam satuan $g$:
-$$\ln(\text{PGA}) = F_E(M) + F_P(R_{jb}, M) + F_S(V_{s30})$$
+### Tabel Perbandingan Hasil Numerik: Implementasi SPARTA SIAGA vs Penurunan Mandiri
 
-Di mana:
-- **Fungsi Sumber $F_E(M)$**:
-  Untuk $M \le M_h$ ($M_h = 5.50$):
-  $$F_E = e_0 + e_4 (M - M_h) + e_5 (M - M_h)^2$$
-  Untuk $M > M_h$:
-  $$F_E = e_0 + e_6 (M - M_h)$$
-  Koefisien: $e_0 = -0.450$, $e_4 = 0.770$, $e_5 = 0.0$, $e_6 = 0.400$.
-- **Fungsi Lintasan $F_P(R_{jb}, M)$**:
-  $$R = \sqrt{R_{jb}^2 + h^2} \quad (h = 5.74\text{ km})$$
-  $$F_P = [c_1 + c_2 (M - M_{ref})] \ln(R / R_{ref}) + c_3 (R - R_{ref})$$
-  Koefisien: $c_1 = -1.138$, $c_2 = 0.170$, $c_3 = -0.0073\text{ km}^{-1}$, $M_{ref} = 4.50$, $R_{ref} = 1.0\text{ km}$.
-- **Fungsi Tanah $F_S(V_{s30})$**:
-  $$F_{lin} = c \ln\left(\frac{\min(V_{s30}, V_c)}{V_{ref}}\right) \quad (c = -0.50, V_{ref} = 760\text{ m/s}, V_c = 1500\text{ m/s})$$
-- **Ketidakpastian Inheren**: $\sigma_{\ln} = 0.66$ (faktor pengali $e^{0.66} \approx 1.93\times$).
-
-#### B. Model Subduksi Intraslab: Zhao et al. (2006) & Atkinson-Boore (2003)
-Memprediksi percepatan tanah akibat gempa slab dalam (focal depth $h \ge 50\text{ km}$):
-$$\ln(\text{PGA}_{Gal}) = a M - b R_{hyp} - \ln(r) + c_{intraslab} + q h_{depth} + S_k$$
-Di mana $R_{hyp} = \sqrt{R_{epi}^2 + h^2}$, $r = R_{hyp} + c \exp(d M)$, $q = 0.0145$.
-
-#### C. GMICE: Worden et al. (2012)
-Mengonversi PGA ($\text{cm/s}^2$ atau Gal) ke Modified Mercalli Intensity:
-$$MMI = \begin{cases}
-1.78 + 1.55 \log_{10}(\text{PGA}) & \text{untuk } \log_{10}(\text{PGA}) \le 1.57 \ (\text{PGA} \le 37.15\text{ Gal}) \\
--1.60 + 3.70 \log_{10}(\text{PGA}) & \text{untuk } \log_{10}(\text{PGA}) > 1.57 \ (\text{PGA} > 37.15\text{ Gal})
-\end{cases}$$
-Ambang batas $MMI \ge 6.0$ tercapai tepat pada $\text{PGA} \ge 113.2\text{ Gal} \ (\approx 0.115\text{ g})$.
+| Model & Vektor Uji | Parameter Input ($M_w, R, V_{s30}$, Mekanisme) | Hasil Implementasi Kode | Hasil Penurunan Mandiri | Selisih Mutlak ($\Delta$) | Status Verifikasi |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **BSSA14 (Shallow Crustal)** | $M_w 6.0, R_{jb}=10\text{ km}, V_{s30}=760\text{ m/s}$, Strike-Slip | $0.08326\text{ g}$ | $0.08326\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **BSSA14 (Tanah Lunak D)** | $M_w 6.0, R_{jb}=10\text{ km}, V_{s30}=270\text{ m/s}$, Strike-Slip | $0.13969\text{ g}$ | $0.13969\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **BSSA14 (Gempa Besar Reverse)** | $M_w 7.0, R_{jb}=25\text{ km}, V_{s30}=760\text{ m/s}$, Reverse | $0.10717\text{ g}$ | $0.10717\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **BSSA14 (Sesar Turun Normal)** | $M_w 5.0, R_{jb}=5\text{ km}, V_{s30}=450\text{ m/s}$, Normal | $0.05294\text{ g}$ | $0.05294\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Zhao 2006 (Megathrust Interface)** | $M_w 6.5, R_{epi}=30\text{ km}, h=25\text{ km}, V_{s30}=760\text{ m/s}$ | $0.03335\text{ g}$ | $0.03335\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Zhao 2006 (Interface Kelas D)** | $M_w 7.0, R_{epi}=50\text{ km}, h=30\text{ km}, V_{s30}=270\text{ m/s}$ | $0.05742\text{ g}$ | $0.05742\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Zhao 2006 (Intraslab Batuan)** | $M_w 6.2, R_{epi}=20\text{ km}, h=80\text{ km}, V_{s30}=760\text{ m/s}$ | $0.02993\text{ g}$ | $0.02993\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Zhao 2006 (Intraslab Kelas D)** | $M_w 6.8, R_{epi}=40\text{ km}, h=100\text{ km}, V_{s30}=270\text{ m/s}$ | $0.07877\text{ g}$ | $0.07877\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Atkinson-Boore 2003 (Interface)** | $M_w 6.5, R_{epi}=30\text{ km}, h=25\text{ km}, V_{s30}=760\text{ m/s}$ | $0.39555\text{ g}$ | $0.39555\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Atkinson-Boore 2003 (Intraslab)** | $M_w 6.2, R_{epi}=20\text{ km}, h=80\text{ km}, V_{s30}=760\text{ m/s}$ | $0.06684\text{ g}$ | $0.06684\text{ g}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **GMICE Worden 2012 (Getaran Rendah)** | $\text{PGA} = 0.020\text{ g} \ (\approx 19.61\text{ Gal} \le 37.15\text{ Gal})$ | $MMI = 3.7835$ | $MMI = 3.7835$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **GMICE Worden 2012 (Getaran Kuat)** | $\text{PGA} = 0.250\text{ g} \ (\approx 245.17\text{ Gal} > 37.15\text{ Gal})$ | $MMI = 7.2410$ | $MMI = 7.2410$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Dimensi Sesar Wells-Coppersmith** | $M_w 6.5$, Sesar Naik (Reverse) | $L=22.39\text{ km}, W=11.35\text{ km}$ | $L=22.39\text{ km}, W=11.35\text{ km}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
+| **Dimensi Sesar Wells-Coppersmith** | $M_w 7.5$, Sesar Geser (Strike-Slip) | $L=120.23\text{ km}, W=18.41\text{ km}$ | $L=120.23\text{ km}, W=18.41\text{ km}$ | $0.000\times 10^0$ | **MATCH (Internal Derivation)** |
 
 ---
 
-## 3. Hasil Perhitungan Skenario Uji
+## 3. Status Evaluasi Setiap Model (PASS / FAIL / BLOCKED)
 
-### 3.1. Skenario A: Gempa Kerak Dangkal ($M 4.0$, Kedalaman $10\text{ km}$)
-Model: Boore et al. (2014) BSSA14 dengan $V_{s30} = 760\text{ m/s}$ (B/C Rock Reference).
-
-| $R_{epi}$ (km) | $R_{hyp}$ (km) | PGA (g) | PGA (Gal) | Rentang PGA ($\pm 1\sigma$) | MMI Median | Rentang MMI ($\pm 1\sigma$) | Skala MMI | Keputusan Sistem |
-| :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| **0** | 10.0 | 0.0229 | 22.45 | 0.0118 - 0.0443 | **3.87** | 3.43 - 4.46 | **IV** | `NOTIFICATION_ONLY` |
-| **5** | 11.2 | 0.0160 | 15.68 | 0.0083 - 0.0309 | **3.63** | 3.19 - 4.08 | **IV** | `NOTIFICATION_ONLY` |
-| **10** | 14.1 | 0.0094 | 9.17 | 0.0048 - 0.0181 | **3.27** | 2.83 - 3.72 | **III** | `NOTIFICATION_ONLY` |
-| **20** | 22.4 | 0.0042 | 4.16 | 0.0022 - 0.0082 | **2.74** | 2.30 - 3.18 | **III** | `NOTIFICATION_ONLY` |
-| **50** | 51.0 | 0.0012 | 1.14 | 0.0006 - 0.0022 | **1.87** | 1.42 - 2.31 | **II** | `NOTIFICATION_ONLY` |
-| **100** | 100.5 | 0.0003 | 0.34 | 0.0002 - 0.0007 | **1.06** | 1.00 - 1.50 | **I** | `NOTIFICATION_ONLY` |
-
-**Temuan Skenario A**:
-- Pada gempa kerak dangkal $M 4.0$, intensitas guncangan di pusat gempa ($R_{epi} = 0\text{ km}$) hanya mencapai MMI 3.87 (dirasakan di dalam rumah, getaran seperti truk ringan lewat).
-- Pada jarak 20 km, intensitas turun menjadi MMI 2.74, dan pada jarak 50 km turun menjadi MMI 1.87.
-- **Kesimpulan**: Gempa berkekuatan $M < 5.0$ secara konsisten berada di bawah ambang batas laporan darurat ($MMI < 6.0$). GMPE dapat diandalkan sebagai bukti ilmiah untuk tidak memicu pembuatan laporan otomatis pada gempa magnitudo kecil.
+| Nama Model | Domain Tektonik | Status Kode | Status Operasional | Evaluasi Kritis & Alasan |
+| :--- | :--- | :---: | :---: | :--- |
+| **Boore et al. (2014) [BSSA14]** | Kerak Dangkal Aktif (*Shallow Crustal*) | **PASS** | **FEASIBLE (Advisory Saja)** | Persamaan NGA-West2 konsisten dalam atenuasi jarak dan magnitudo. Efektif memodelkan sesar dangkal Indonesia bila didukung estimasi jarak rekahan $E[R_{jb}]$. |
+| **Zhao et al. (2006) [Zhao06]** | Megathrust Interface & Intraslab | **PASS** | **FEASIBLE (Advisory Saja)** | Koefisien Tabel 4 sesuai rujukan. Memiliki pemisahan tegas antara Interface ($S_I = 0.0$) dan Intraslab ($S_{SS} = 0.323$). Mencegah kesalahan overestimasi getaran megathrust. |
+| **Atkinson & Boore (2003) [AB03]** | Subduksi Interface & In-Slab | **PASS** | **CONDITIONAL (Perlu Kalibrasi)** | Implementasi kode tepat secara matematis. Namun pada jarak dekat, model Interface AB03 menghasilkan nilai PGA frekuensi tinggi yang sangat tinggi (~10x Zhao06), mencerminkan disparitas model empiris lama sebelum era NGA-Subduction. |
+| **Thompson & Worden (2018) [PS2FF]** | Estimasi Jarak Rekahan Sesar Tanpa Sesar | **PASS** | **FEASIBLE (Komponen Wajib Advisory)** | Penting untuk mengatasi inflasi jarak sumber titik pada gempa $M_w \ge 6.0$. Menghindari penalti jarak hiposenter berlebihan pada sesar panjang. |
+| **Worden et al. (2012) [WGRW12]** | Konversi Ground Motion ke Intensitas (GMICE) | **PASS** | **FEASIBLE (Advisory Saja)** | Hubungan dwilogaritmik PGA ke MMI tepat pada ambang batas transisi $\log_{10}(PGA) = 1.57$ ($37.15\text{ Gal}$). Ambang MMI VI ($6.0$) berada pada $113.25\text{ Gal}$ ($0.1155\text{ g}$). |
+| **Ensemble PUSGEN 2024 Penuh** | Multi-Model PUSGEN | **BLOCKED** | **BLOCKED** | Membutuhkan pohon logika regional lengkap (NGA-Subduction) dan data mikrozonasi geoteknik tanah nasional yang berada di luar cakupan fallback ringan. |
 
 ---
 
-### 3.2. Skenario B: Gempa Subduksi Intraslab ($M 6.2$, Kedalaman $100\text{ km}$)
-Model: PUSGEN 2024 Multi-GMPE Ensemble (50% Zhao et al. 2006 + 50% Atkinson & Boore 2003) dengan $V_{s30} = 760\text{ m/s}$.
+## 4. Identifikasi Komponen Sederhana, Kesalahan Ilmiah, Keterbatasan Fisik & Risiko Overfitting
 
-| $R_{epi}$ (km) | $R_{hyp}$ (km) | PGA (g) | PGA (Gal) | Rentang PGA ($\pm 1\sigma$) | MMI Median | Rentang MMI ($\pm 1\sigma$) | Skala MMI | Keputusan Sistem |
-| :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| **0** | 100.0 | 0.0417 | 40.87 | 0.0226 - 0.0770 | **4.36** | 3.86 - 5.35 | **IV** | `NOTIFICATION_ONLY` |
-| **5** | 100.1 | 0.0416 | 40.78 | 0.0225 - 0.0768 | **4.36** | 3.86 - 5.34 | **IV** | `NOTIFICATION_ONLY` |
-| **10** | 100.5 | 0.0413 | 40.54 | 0.0224 - 0.0763 | **4.35** | 3.86 - 5.33 | **IV** | `NOTIFICATION_ONLY` |
-| **20** | 102.0 | 0.0404 | 39.59 | 0.0219 - 0.0746 | **4.31** | 3.84 - 5.30 | **IV** | `NOTIFICATION_ONLY` |
-| **50** | 111.8 | 0.0347 | 34.05 | 0.0188 - 0.0641 | **4.15** | 3.74 - 5.05 | **IV** | `NOTIFICATION_ONLY` |
-| **100** | 141.4 | 0.0231 | 22.66 | 0.0125 - 0.0427 | **3.88** | 3.47 - 4.40 | **IV** | `NOTIFICATION_ONLY` |
+### Daftar Lengkap Komponen GMPE yang Disederhanakan (Simplifications & Approximations):
 
-**Temuan Skenario B**:
-- Meskipun magnitudo mencapai 6.2, karena hiposenter berada sangat dalam di dalam slab subduksi ($100\text{ km}$), jarak hiposenter minimum adalah $100\text{ km}$.
-- Energi seismik terdistribusi secara luas dan merata dengan intensitas moderat (MMI IV, guncangan dirasakan luas tetapi tidak menimbulkan kerusakan struktural).
-- MMI di episenter adalah **4.36** ($< 6.0000$).
-- **Perbandingan dengan Rumus Radius Lama**: Rumus radius isotropik lama SPARTA SIAGA untuk gempa $M 6.2$ akan memicu radius prioritas 40-50 km yang memicu puluhan tiket laporan darurat palsu (*false alarm*). GMPE berhasil membuktikan bahwa kedalaman hiposenter meniadakan potensi destruktif permukaan.
+1. **Amplifikasi Tanah Non-Linier BSSA14 ($F_{nl}$)**:
+   Implementasi hanya mengadopsi suku linier $F_{S,lin} = f_7 \ln(V_{s30}/V_{ref})$ tanpa menyertakan fungsi non-linier ($f_4, f_5, f_6$) yang bergantung pada percepatan batuan dasar $PGA_{rock}$. Pada getaran sangat kuat ($PGA > 0.2\text{ g}$), tanah lunak mengalami peningkatan redaman histeresis yang secara fisik membatasi amplifikasi puncak. Pengabaian $F_{nl}$ menyebabkan sedikit overestimasi pada tanah lunak di dekat episenter gempa besar.
+2. **Kedalaman Cekungan Sedimen Dalam ($z_1, z_{2.5}$)**:
+   Suku kedalaman cekungan sedimen diabaikan (menggunakan nilai default regional). Amplifikasi gelombang permukaan periode panjang akibat resonansi cekungan dalam (seperti cekungan Jakarta atau Bandung) belum tertangkap.
+3. **Geometri Patahan 3D dan Batuan Gantung (Hanging-Wall Effect)**:
+   Model Thompson & Worden (2018) yang diterapkan menggunakan simplifikasi integrasi orientasi jurus (*strike*) horizontal 1D vertikal ($\delta = 90^\circ, Z_{tor} = 0$). Untuk sesar naik miring seperti Sesar Flores di Lombok ($\delta \approx 30^\circ - 45^\circ$), bidang patahan berada miring di bawah batuan gantung (*hanging wall*), sehingga pendekatan 1D menghasilkan sedikit underprediksi di sisi gantung.
+4. **Klasifikasi Sumber dan Ketebalan Subduksi**:
+   Pemisahan zona interface megathrust dan intraslab dilakukan berdasarkan ambang kedalaman katalog titik ($h \le 50\text{ km}$ vs $h > 50\text{ km}$) tanpa pemodelan geometri lempeng subduksi 3D (seperti USGS Slab2).
+5. **Penyederhanaan Ketidakpastian Parameter (Aleatory & Epistemic Uncertainty)**:
+   - Ketidakpastian aleatori tidak memisahkan variabilitas antar-kejadian (*inter-event* $\tau$) dan dalam-kejadian (*intra-event* $\phi$) dengan autokorelasi spasial.
+   - Ketidakpastian epistemik dari parameter input katalog (galat magnitudo $\Delta M_w$, galat kedalaman $\Delta h$, dan heterogenitas $V_{s30}$ mikrozonasi lokal) tidak dirambatkan secara stokastik.
 
----
+### Keterbatasan Fisik Tambahan & Risiko Overfitting:
 
-### 3.3. Profil Atenuasi Spasial (Ascii Chart)
-
-```
- MMI |
- 8.0 |
- 7.0 |
- 6.0 |---------------- [AMBANG BATAS LAPORAN: MMI VI CANDIDATE AUTO REPORT] ----------------
- 5.0 |        [B]       [B]       [B]
- 4.0 | [A]    [B]                           [B]
- 3.0 |        [A]       [A]       [A]                 [B]
- 2.0 |                                      [A]
- 1.0 |                                                        [A]
-     +--------------------------------------------------------------------------------------
- Repi: 0 km   5 km      10 km     20 km     50 km             100 km
-
- Keterangan:
- [A] Skenario A: M4.0 Kerak Dangkal (Kedalaman 10 km) - Atenuasi cepat terhadap jarak.
- [B] Skenario B: M6.2 Subduksi Intraslab (Kedalaman 100 km) - Guncangan merata, atenuasi landai.
-```
+6. **Keterbatasan Estimator PGA Tunggal vs PGV pada Kerusakan Struktur**:
+   Publikasi Worden et al. (2012) menegaskan bahwa untuk intensitas guncangan kuat ($MMI \ge VI$), kecepatan puncak tanah (PGV) dan respon spektral periode menengah ($0.3 - 1.0\text{ s}$) memiliki korelasi kerusakan fisik yang jauh lebih tinggi dibanding PGA frekuensi tinggi sesaat.
+7. **Risiko Overfitting Pemilihan Nilai $V_{s30}$ Statis**:
+   Menurunkan nilai $V_{s30}$ seragam secara nasional ke $270\text{ m/s}$ atau $180\text{ m/s}$ semata-mata demi menaikkan sensitivitas deteksi pada gempa Cianjur dan Lombok berpotensi menimbulkan *overfitting*, yang memicu lonjakan alarm palsu (*False Positives*) pada gempa yang terjadi di formasi batuan keras.
+8. **Dilema Fundamental: Deterministik Median vs Batas Atas $+1\sigma$**:
+   - Pada median (CFG-4), model memiliki tingkat bahaya terlewat (*Missed Alert Rate*) sebesar **63.39%**.
+   - Pada batas atas $+1\sigma$ (CFG-6), tingkat bahaya terlewat ditekan hingga tinggal **5.36% (Recall 94.64%)**, namun menghasilkan **51 alarm palsu** pada toko-toko yang berada di zona guncangan rendah.
 
 ---
 
-## 4. Validasi Empiris terhadap ShakeMap Historis Indonesia
+## 5. Evaluasi Ulang Benchmark 112 Lokasi dengan Estimasi ShakeMap MMI >= VI
 
-Validasi empiris dilakukan terhadap **2.480 fasilitas dan toko ritel** yang terlingkup dalam grid numerik ShakeMap resmi USGS pada 5 gempa historis Indonesia:
-1. **Gempa Cianjur 2022** (`us7000ir9t`, $M 5.6$, kedalaman 10 km, sesar darat aktif).
-2. **Gempa Palu 2018** (`us1000h3p4`, $M 7.5$, kedalaman 20 km, sesar mendatar Palu-Koro).
-3. **Gempa Lombok 2018** (`us1000g3ub`, $M 6.9$, kedalaman 34 km, Flores back-arc thrust).
-4. **Gempa Malang 2021** (`us6000e0iy`, $M 6.0$, kedalaman 67 km, intraslab subduksi).
-5. **Gempa Pasaman Barat 2022** (`us6000gzyg`, $M 6.1$, kedalaman 4 km, sesar geser Sumatera).
+### Pencocokan Identitas Lima Gempa Historis Fixture:
 
-### 4.1. Metrik Akurasi Statistik Global ($N = 2.480$)
+Evaluasi dijalankan ulang secara ketat terhadap seluruh 2.480 pasang data fasilitas pada 5 gempa historis resmi USGS ShakeMap yang ada dalam repositori:
 
-| Metrik Statistik | Nilai Evaluasi | Keterangan & Interpretasi |
-| :--- | :---: | :--- |
-| **Total Pasangan Lokasi-Kejadian ($N$)** | **2.480** | Fasilitas di dalam grid ShakeMap resmi. |
-| **Mean Error (Prediction Bias)** | **-0.6938 MMI** | GMPE rata-rata *underpredict* sebesar ~0.69 unit MMI dibanding ShakeMap. |
-| **Mean Absolute Error (MAE)** | **0.7161 MMI** | Rata-rata deviasi absolut model terhadap ShakeMap resmi. |
-| **Root Mean Square Error (RMSE)** | **0.8669 MMI** | Deviasi kuadrat terkecil (mendekati 1 kelas intensitas MMI). |
-| **Residual Standard Deviation ($\sigma$)** | **0.5198 MMI** | Sebaran sejalan dengan ketidakpastian aleatorik GMPE standar. |
+1. `us7000ir9t`: Cianjur 2022 ($M_w 5.6, h = 10\text{ km}$, Shallow Crustal Strike-Slip, Sesar Cugenang)
+2. `us1000h3p4`: Palu 2018 ($M_w 7.5, h = 20\text{ km}$, Shallow Crustal Strike-Slip, Sesar Palu-Koro)
+3. `us1000g3ub`: Lombok 2018 ($M_w 6.9, h = 34\text{ km}$, Shallow Crustal Back-arc Thrust, Sesar Flores)
+4. `us6000e0iy`: Malang 2021 ($M_w 6.0, h = 67\text{ km}$, Subduction Intraslab)
+5. `us6000gzyg`: Pasaman 2022 ($M_w 6.1, h = 4\text{ km}$, Shallow Crustal Strike-Slip, Sesar Besar Sumatera)
 
-### 4.2. Matriks Kontinjensi pada Ambang Keputusan ($MMI \ge 6.0$)
+> [!IMPORTANT]
+> **Penyelesaian Inkonsistensi Palu 2018 vs Majene 2021:**
+> - Gempa Majene 2021 ($M_w 6.2$) sempat disebutkan dalam catatan konseptual sebelumnya, namun **tidak pernah menjadi bagian dari fixture data resmi di repositori SPARTA SIAGA**.
+> - Gempa ke-5 yang sebenarnya tersimpan pada `data/poc/shakemaps/us1000h3p4` adalah **Palu 2018 (us1000h3p4)**.
+> - **Karakteristik Grid Palu 2018**: Seluruh toko Alfamart yang tercakup dalam benchmark berada di pulau Jawa, Bali, Lombok, dan Sumatera. Tidak ada fasilitas toko di Sulawesi Tengah dalam subset data uji ini, sehingga seluruh fasilitas untuk gempa Palu 2018 berada di luar jangkauan grid ShakeMap (`UNKNOWN`, 0 fasilitas dalam grid).
+> - **Distribusi 112 Lokasi ShakeMap MMI >= VI**: Sebanyak 112 fasilitas dengan estimasi ShakeMap MMI >= VI seluruhnya terdistribusi pada dua gempa dangkal, yaitu **Cianjur 2022 (43 fasilitas, MMI 6.01 hingga 8.10)** dan **Lombok 2018 (69 fasilitas, MMI 6.03 hingga 7.41)**. Pada Malang 2021 (intraslab dalam) dan Pasaman 2022, tidak ada fasilitas dalam katalog yang mencapai ShakeMap MMI >= VI.
 
-| Kategori Klasifikasi | Jumlah | Persentase | Makna Operasional |
-| :--- | :---: | :---: | :--- |
-| **True Positives (Concordant High Risk)** | 2 | 0.1% | GMPE dan ShakeMap sama-sama mendeteksi guncangan kuat ($MMI \ge 6.0$). |
-| **True Negatives (Concordant Low Risk)** | 2.368 | 95.5% | Keduanya sepakat guncangan tidak merusak ($MMI < 6.0$). |
-| **False Positives (Overprediction)** | 0 | 0.0% | GMPE tidak pernah memicu alarm palsu pada area aman. |
-| **False Negatives (Missed Alerts)** | 110 | 4.4% | ShakeMap $\ge 6.0$, namun GMPE titik memproyeksikan $< 6.0$. |
-| **Total Keselarasan Keputusan** | **2.370 / 2.480** | **95.56%** | Tingkat konkordansi global model GMPE terhadap ShakeMap. |
+### Tabel Evaluasi Benchmark Multi-Konfigurasi (2.480 Pasang Data)
 
-### 4.3. Rincian Akurasi per Peristiwa Gempa
+| Konfigurasi Pengujian | Bias (MMI) | MAE (MMI) | RMSE (MMI) | True Positives (Deteksi Estimasi ShakeMap MMI >= VI) | False Negatives (Terlewat dari ShakeMap MMI >= VI) | False Positives (Alarm Palsu MMI < VI) | True Negatives (Tepat di Bawah MMI VI) | Recall / Sensitivitas | Tingkat Terlewat | Presisi | Akurasi Global |
+| :--- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| **CFG-1: Baseline POC (Point-Source, $V_{s30}=450$)** | **$-0.679$** | $0.701$ | $0.844$ | 2 / 112 | 110 | 0 | 2.368 | **1.79%** | **98.21%** | 100.0% | 95.56% |
+| **CFG-2: Point-Source + Tanah Kelas D ($V_{s30}=270$)** | $-0.502$ | $0.553$ | $0.688$ | 11 / 112 | 101 | 0 | 2.368 | **9.82%** | **90.18%** | 100.0% | 95.93% |
+| **CFG-3: Model Rupture TW18 $E[R_{jb}]$ ($V_{s30}=450$)** | $-0.622$ | $0.651$ | $0.782$ | 12 / 112 | 100 | 0 | 2.368 | **10.71%** | **89.29%** | 100.0% | 95.97% |
+| **CFG-4: TW18 $E[R_{jb}]$ + Tanah Kelas D ($V_{s30}=270$)** | **$-0.443$** | **$0.507$** | **$0.631$** | **41 / 112** | **71** | **2** | **2.366** | **36.61%** | **63.39%** | **95.35%** | **97.06%** |
+| **CFG-5: TW18 $E[R_{jb}]$ + Tanah Lunak Kelas E ($V_{s30}=180$)** | $-0.315$ | $0.416$ | $0.531$ | 78 / 112 | 34 | 12 | 2.356 | **69.64%** | **30.36%** | 86.67% | 98.15% |
+| **CFG-6: TW18 $E[R_{jb}]$ + Kelas D pada $+1\sigma$ Upper Bound** | **$+0.089$** | **$0.367$** | **$0.467$** | **106 / 112** | **6** | **51** | **2.317** | **94.64%** | **5.36%** | **67.52%** | **97.70%** |
 
-| ID Gempa | Judul & Karakteristik Kejadian | Sampel Fasilitas | Bias (MMI) | MAE (MMI) | RMSE (MMI) | Catatan Fisik |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| `us6000e0iy` | Malang 2021 (M6.0, 67 km Intraslab) | 757 | **-0.337** | **0.337** | **0.373** | Sangat presisi. Intraslab termodelkan dengan sangat baik. |
-| `us7000ir9t` | Cianjur 2022 (M5.6, 10 km Kerak) | 845 | **-0.561** | **0.626** | **0.789** | Underprediksi pada sedimen lunak Cianjur jika memakai $V_{s30}$ rata-rata. |
-| `us6000gzyg` | Pasaman Barat 2022 (M6.1, 4 km) | 186 | **-0.888** | **0.888** | **0.897** | Terpengaruh topografi vulkanik Gunung Talamau. |
-| `us1000h3p4` | Palu 2018 (M7.5, 20 km Strike-Slip) | 331 | **-1.126** | **1.126** | **1.190** | Rekahan 150 km menembus Palu, jarak titik dari episenter 72 km meleset. |
-| `us1000g3ub` | Lombok 2018 (M6.9, 34 km Thrust) | 361 | **-1.257** | **1.257** | **1.304** | Efek hanging-wall patahan naik busur belakang (*back-arc thrust*). |
+### Analisis Kritis Perbandingan Konfigurasi:
+- **Baseline Fase 1 (CFG-1)**: Melewatkan 98.21% lokasi dengan estimasi ShakeMap MMI >= VI karena jarak dihitung murni dari titik episenter dan tanah diasumsikan seragam keras.
+- **Penyempurnaan Fase 2 Deterministik (CFG-4)**: Deteksi meningkat dari 2 menjadi 41 lokasi, Recall naik ke 36.61% dengan Presisi 95.35%. Namun masih terdapat **63.39% lokasi yang terlewat**.
+- **Batas Atas Kesiapsiagaan $+1\sigma$ (CFG-6)**: Menangkap 94.64% lokasi potensi guncangan kuat (106 lokasi), tetapi memicu 51 alarm palsu.
 
 ---
 
-## 5. Analisis Keterbatasan Sains & Kelengkapan Parameter
+## 6. Keputusan Kelayakan: GO / NO-GO untuk Task 4
 
-Pengujian empiris di atas secara tegas mengungkap mengapa GMPE murni **tidak dapat menggantikan ShakeMap** untuk keputusan otomatis:
+Berdasarkan evaluasi statistik dan keterbatasan fisik model di atas, diputuskan:
 
-### 1. Masalah Pendekatan Sumber Titik (*Point-Source Assumption*)
-Pada gempa besar ($M \ge 6.5$), rekahan patahan tidak berbentuk titik, melainkan bidang dengan panjang puluhan hingga ratusan kilometer:
-- Pada Gempa Palu 2018 ($M 7.5$), episenter berada 72 km di utara Teluk Palu.
-- Model GMPE titik menghitung jarak dari episenter ($72\text{ km}$), memproyeksikan $MMI \approx 5.5$ (hanya notifikasi).
-- Pada kenyataannya, rekahan bergerak cepat (*supershear rupture*) sejauh 150 km melintasi Kota Palu, menghasilkan $MMI \ge VIII$ (7.9 - 8.2).
-- Produk ShakeMap resmi menyelesaikan masalah ini karena mengintegrasikan data rekahan (*finite fault rupture*), stasiun akselerograf BMKG, dan laporan makroseismik (DYFI).
+### 1. Pemicu Pembuatan Laporan Insiden Otomatis (`CANDIDATE_AUTO_REPORT`): **NO-GO (STRICTLY BLOCKED)**
+- **Alasan Ilmiah**: Nilai median deterministik GMPE terbaik (CFG-4) masih melewatkan 63.39% lokasi dengan estimasi ShakeMap MMI >= VI (False Negative). Jika batas deteksi dinaikkan ke persentil $+1\sigma$ (CFG-6) untuk mengejar recall 94.64%, sistem menghasilkan 51 alarm palsu yang akan memicu tiket laporan darurat palsu di cabang yang aman.
+- **Aturan Baku Operasional**: Pembuatan tiket insiden darurat otomatis pada database produksi SPARTA SIAGA **tetap wajib dipagari secara eksklusif hanya oleh produk ShakeMap resmi BMKG/USGS** yang terbit.
 
-### 2. Ketiadaan Data $V_{s30}$ Mikro Real-Time
-Kecepatan rambat gelombang geser 30 meter teratas ($V_{s30}$) sangat mengontrol amplifikasi tanah:
-- Tanah batuan dasar ($V_{s30} = 760\text{ m/s}$) vs tanah aluvium/sedimen lunak ($V_{s30} = 200\text{ m/s}$) memiliki perbedaan PGA sebesar $e^{0.50 \ln(760/200)} \approx 1.95\times$ (lonjakan hampir 1.5 unit MMI).
-- Tanpa peta $V_{s30}$ mikro beresolusi tinggi, GMPE terpaksa mengasumsikan nilai rata-rata regional yang menyebabkan underprediksi pada kawasan cekungan sedimen (seperti Cekungan Bandung atau Kota Cianjur).
-
-### 3. Ketidakpastian Aleatorik Inheren ($\pm 1\sigma$)
-Setiap persamaan GMPE memiliki dispersi acak $\sigma_{\ln} \approx 0.65$ ($\approx \pm 0.8$ hingga $\pm 1.2$ unit MMI):
-- Untuk estimasi median $MMI = 5.2$, batas rentang $68\%$ ($+1\sigma$) mencapai $MMI = 6.4$ (masuk zona rusak), sedangkan batas $-1\sigma$ berada di $MMI = 4.2$.
-- Menjadikan median GMPE sebagai pemicu deterministik tiket insiden darurat berisiko tinggi menimbulkan *missed alert* pada lokasi dengan amplifikasi lokal.
-
-### 4. Kelengkapan Lisensi & Tata Kelola Perangkat Lunak
-- Engine OpenQuake dirilis dengan lisensi copyleft **AGPL-3.0**. Memasukkan dependensi OpenQuake secara langsung ke backend proprietary perusahaan berisiko menimbulkan masalah kepatuhan lisensi.
-- Implementasi POC yang dibangun dalam project SPARTA SIAGA ([`lib/gmpe-fallback-service.ts`](file:///c:/buildingprocess25/sparta-siaga/lib/gmpe-fallback-service.ts)) adalah **clean-room mathematical implementation** berbasis rumus ilmiah publik (Boore et al. 2014, Zhao et al. 2006, Worden et al. 2012) yang 100% bebas dari risiko kontaminasi lisensi pihak ketiga.
+### 2. Kelayakan Melanjutkan Task 4: **GO HANYA SEBAGAI PENELITIAN RISET TERISOLASI (ISOLATED RESEARCH PROTOTYPE)**
+- **Batasan Riset**: Task 4 diizinkan berjalan secara bersyarat murni sebagai modul eksperimen terisolasi untuk menguji visualisasi advisory banner atau evaluasi algoritma di sandbox pengujian, **tanpa integrasi ke alur pelaporan otomatis aktif, tanpa perubahan pada worker operasional, dan tanpa mutasi database produksi/staging**.
 
 ---
 
-## 6. Rekomendasi Arsitektur & Aturan Operasional
+## 7. Bahan Pembaruan Dokumen Kajian / PDF Terdahulu
 
-Berdasarkan seluruh hasil pengujian dan batas-batas ilmiah di atas, diputuskan:
+Untuk memperbarui dokumen presentasi atau materi kajian teknis sebelumnya, poin-poin koreksi berikut wajib disesuaikan:
 
-```
-[BMKG / USGS Event Diterima]
-          │
-          ├──> TAHAP 1: Notifikasi Nasional Murni (Informasi Terbuka, Seluruh Pengguna)
-          │
-          ├──> TAHAP 2 (JALUR UTAMA): Menunggu ShakeMap Resmi (CovJSON/Grid XML)
-          │         │
-          │         ├── ShakeMap Ditemukan: Evaluasi MMI Bilinear -> Jika MMI >= 6.0: CANDIDATE_AUTO_REPORT
-          │         └── ShakeMap Belum Ada (0 - 30 Menit): Status UNKNOWN (Retry Terjadwal)
-          │
-          └──> JALUR FALLBACK GMPE (INFORMATIONAL ONLY):
-                    │
-                    ├── Jika M < 5.0: Konfirmasi ilmiah guncangan ringan (100% NOTIFICATION_ONLY)
-                    └── Jika ShakeMap Belum Tersedia (> 30 Menit):
-                              │
-                              ├── Tampilkan Banner Estimasi MMI GMPE (+/- 1-sigma) di Dashboard Monitoring
-                              └── DILARANG membuat tiket insiden darurat otomatis (Cegah False Negative/Positive)
-```
-
-### Aturan Ketat untuk Tim Engineering & Operasional:
-1. **Dilarang Mengaktifkan Pembuatan Tiket Otomatis Berbasis GMPE**: Laporan darurat otomatis cabang hanya boleh dipicu oleh ShakeMap numerik resmi BMKG atau USGS.
-2. **GMPE sebagai Situational Awareness**: Hasil GMPE ditampilkan sebagai layer peta estimasi atau banner informasi pendukung (*"Estimasi GMPE: MMI IV-V (Dalam Evaluasi ShakeMap)"*) untuk membantu tim siaga memahami cakupan gempa sebelum ShakeMap terbit.
-3. **Penyaringan Gempa Kecil**: Untuk gempa $M < 5.0$, perhitungan GMPE dapat digunakan untuk secara pasti menutup potensi eskalasi darurat tanpa perlu menunggu ShakeMap yang sering kali tidak diterbitkan untuk gempa kecil non-destruktif.
+1. **Koreksi Klaim Akurasi Global 95.56%**:
+   - *Dokumen Lama*: Mengklaim akurasi sistem mencapai 95.56%.
+   - *Pembaruan Wajib*: Jelaskan bahwa 95.56% adalah fenomena *Accuracy Paradox* yang didorong oleh 2.368 fasilitas aman di luar jangkauan gempa. Kemampuan deteksi pada lokasi dengan estimasi ShakeMap MMI >= VI pada model awal sebenarnya hanya 1.79% (2 dari 112 fasilitas).
+2. **Ralat Generalisasi Gempa $M < 5.0$ Pasti Aman**:
+   - *Dokumen Lama*: Mengklaim gempa $M < 5.0$ dipastikan aman.
+   - *Pembaruan Wajib*: Cantumkan bahwa gempa dangkal ($h \le 5\text{ km}$) bermagnitudo $M 4.0 - 4.8$ di atas tanah lunak ($V_{s30} \le 180\text{ m/s}$) pada rentang $+1\sigma$ secara teoritis dapat memicu guncangan lokal MMI >= VI pada radius sangat dekat ($R \le 5\text{ km}$).
+3. **Penyertaan Model Rupture Thompson & Worden (2018)**:
+   - Tambahkan diagram penjelasan mengapa jarak sumber titik ($R_{epi}$) mengalami distorsi pada gempa bermagnitudo $\ge 6.0$ dan bagaimana integrasi $E[R_{jb}]$ memulihkan estimasi jarak sesar di Lombok dan Palu.
+4. **Pemisahan Tiga Rezim Tektonik & Atribusi Model**:
+   - Cantumkan pemisahan eksplisit: Kerak Dangkal (BSSA14), Subduksi Interface (Zhao06 + AB03 Interface), dan Subduksi Intraslab (Zhao06 + AB03 Intraslab).
+   - Nyatakan bahwa model subduksi saat ini adalah representasi empiris terbatas, bukan pohon logika komprehensif PUSGEN 2024.
+5. **Penetapan Batasan Operasional Dual-Track**:
+   - Tegaskan bahwa GMPE hanya berfungsi sebagai *advisory banner* kesiapsiagaan visual dan **bukan** pemicu pembuatan laporan otomatis insiden fasilitas.
 
 ---
 
-## 7. Status Pengujian & Hasil Verifikasi
+## 8. Referensi Ilmiah Lengkap & DOI
 
-- **POC Source File**: [`lib/gmpe-fallback-service.ts`](file:///c:/buildingprocess25/sparta-siaga/lib/gmpe-fallback-service.ts)
-- **Unit Test Suite**: [`tests/gmpe-fallback-poc.test.ts`](file:///c:/buildingprocess25/sparta-siaga/tests/gmpe-fallback-poc.test.ts)
-- **Benchmark Runner**: [`scripts/run-gmpe-fallback-poc.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/run-gmpe-fallback-poc.ts)
-
-### Hasil Eksekusi Test Suite:
-- Total Pengujian Unit & Validasi: **12 Skenario**
-- Hasil: **12 PASSED (100%), 0 FAILED, 0 BLOCKED**
-- TypeScript Check (`tsc --noEmit`): **0 Error (PASS)**
-- Integritas Basis Data: **100% Terisolasi** (tidak menyentuh basis data apa pun, database operasional dan production tetap aman).
+1. **Boore, D. M., Stewart, J. P., Seyhan, E., & Atkinson, G. M. (2014)**. *NGA-West2 Equations for Predicting PGA, PGV, and 5% Damped PSA for Shallow Crustal Earthquakes*. Earthquake Spectra, 30(3), 1057-1085. DOI: [10.1193/070113EQS184M](https://doi.org/10.1193/070113EQS184M).
+2. **Zhao, J. X., Zhang, J., Asano, A., Ohno, Y., Oouchi, T., Takahashi, T., Ogawa, H., Irikura, K., Thio, H. K., Somerville, P. G., Fukushima, Y., & Fukushima, Y. (2006)**. *Attenuation Relations of Strong Ground Motion in Japan Using Site Classification Based on Predominant Period*. Bulletin of the Seismological Society of America, 96(3), 898-913. DOI: [10.1785/0120050122](https://doi.org/10.1785/0120050122).
+3. **Atkinson, G. M., & Boore, D. M. (2003)**. *Empirical Ground-Motion Relations for Subduction-Zone Earthquakes and Their Application to Cascadia and Other Regions*. Bulletin of the Seismological Society of America, 93(4), 1703-1729. DOI: [10.1785/0120020156](https://doi.org/10.1785/0120020156).
+4. **Thompson, E. M., & Worden, C. B. (2018)**. *Estimating Rupture Distances without a Rupture*. Bulletin of the Seismological Society of America, 108(1), 371-379. DOI: [10.1785/0120170174](https://doi.org/10.1785/0120170174).
+5. **Worden, C. B., Gerstenberger, M. C., Rhoades, D. A., & Wald, D. J. (2012)**. *Probabilistic Relationships between Ground-Motion Parameters and Modified Mercalli Intensity in California*. Bulletin of the Seismological Society of America, 102(1), 204-221. DOI: [10.1785/0120110156](https://doi.org/10.1785/0120110156).
+6. **Wells, D. L., & Coppersmith, K. J. (1994)**. *New Empirical Relationships among Magnitude, Rupture Length, Rupture Width, Rupture Area, and Surface Displacement*. Bulletin of the Seismological Society of America, 84(4), 974-1002. DOI: [10.1785/BSSA0840040974](https://doi.org/10.1785/BSSA0840040974).
+7. **Leonard, M. (2010)**. *Earthquake Fault Scaling: Self-Consistent Relating of Rupture Length, Width, Average Displacement, and Moment Release*. Bulletin of the Seismological Society of America, 100(5A), 1971-1988. DOI: [10.1785/0120090189](https://doi.org/10.1785/0120090189).
+8. **Pusat Studi Gempa Nasional (PUSGEN) (2017, 2024)**. *Peta Sumber dan Bahaya Gempa Indonesia Tahun 2017 & Pemutakhiran Acuan PUSGEN 2024*. Pusat Penelitian dan Pengembangan Perumahan dan Permukiman, Balitbang Kementerian Pekerjaan Umum dan Perumahan Rakyat, Bandung.

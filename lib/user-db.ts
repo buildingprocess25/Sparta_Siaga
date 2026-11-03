@@ -15,6 +15,7 @@ export interface UserModel {
   source: string;
   passwordHash?: string | null;
   avatarUrl?: string | null;
+  ssoStatus?: string | null;
   tokenVersion?: number;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +36,7 @@ function rowToUser(row: any): UserModel {
     source: row.source || "LOCAL",
     passwordHash: row.password_hash,
     avatarUrl: row.avatar_url,
+    ssoStatus: row.sso_status !== undefined ? row.sso_status : null,
     tokenVersion: row.token_version !== undefined && row.token_version !== null ? Number(row.token_version) : 1,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,

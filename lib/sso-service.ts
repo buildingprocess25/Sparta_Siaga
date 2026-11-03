@@ -26,7 +26,11 @@ export type SsoIdentityMatchResult =
   | { status: "NOT_FOUND"; reason: string }
   | { status: "AMBIGUOUS"; reason: string }
   | { status: "INACTIVE"; user: UserModel; reason: string }
-  | { status: "DEACTIVATED_ROLE"; user: UserModel; reason: string };
+  | { status: "DEACTIVATED_ROLE"; user: UserModel; reason: string }
+  | { status: "PENDING_SSO_GRANT"; user: UserModel; reason: string }
+  | { status: "UNMATCHED_SSO"; user: UserModel; reason: string }
+  | { status: "PENDING_REVIEW"; user: UserModel; reason: string }
+  | { status: "BLOCKED"; user: UserModel; reason: string };
 
 /**
  * Validates whether the authenticated SSO user has access to the 'siaga' module.
@@ -144,11 +148,56 @@ export async function exchangeSpartaLaunchToken(
 }
 
 /**
+ * Validates whether a user has an approved role and branch assignment in SIAGA.
+ * - System Administrator: systemRole === 'ADMIN' (always approved)
+ * - Head Office Admin: role 'admin', 'ho_admin', 'gm_ho', 'sm_ho' with scope 'HO' (approved)
+ * - Branch Roles: role 'bm', 'bmc', 'bec', 'bbc', 'bms', 'bes', 'bbs' with scope 'BRANCH'|'CABANG'|'WILAYAH'
+ *   and non-empty branch assignment.
+ * - Roles 'tim_toko' and 'rekanan' are rejected.
+ */
+export function isApprovedRoleAndBranch(user: {
+  systemRole?: string | null;
+  businessRole?: string | null;
+  scope?: string | null;
+  branch?: string | null;
+}): boolean {
+  if (user.systemRole === "ADMIN") {
+    return true;
+  }
+
+  const role = (user.businessRole || "").toLowerCase().trim();
+  if (!role) return false;
+
+  // Deactivated roles
+  if (["tim_toko", "rekanan"].includes(role)) {
+    return false;
+  }
+
+  const APPROVED_HO_ROLES = ["admin", "ho_admin", "gm_ho", "sm_ho"];
+  const APPROVED_BRANCH_ROLES = ["bm", "bmc", "bec", "bbc", "bms", "bes", "bbs"];
+
+  const scope = (user.scope || "").toUpperCase().trim();
+
+  if (APPROVED_HO_ROLES.includes(role)) {
+    return scope === "HO" || scope === "";
+  }
+
+  if (APPROVED_BRANCH_ROLES.includes(role)) {
+    const hasBranch = Boolean(user.branch && user.branch.trim().length > 0 && user.branch.trim() !== "-");
+    const validScope = ["BRANCH", "CABANG", "WILAYAH"].includes(scope);
+    return hasBranch && validScope;
+  }
+
+  return false;
+}
+
+/**
  * Matches an authenticated SSO identity against existing SIAGA users.
  * - Requires at least one approved identifier (SSO ID, NIK, or normalized email).
  * - Enforces zero automatic user creation.
  * - Detects and rejects ambiguous matches (e.g. cross-identity conflicts).
- * - Verifies user active status.
+ * - Safe Just-In-Time activation for PENDING_SSO_GRANT candidates upon verified grant.
+ * - Enforces strict rejection for BLOCKED, UNMATCHED_SSO, PENDING_REVIEW, and INACTIVE.
  */
 export async function matchSsoIdentityToSiagaUser(
   ssoUser: SsoExchangeUser
@@ -171,8 +220,22 @@ export async function matchSsoIdentityToSiagaUser(
   }
 
   // Find all candidate users in SIAGA DB matching any approved identifier
+  let hasSsoStatusColumn = false;
+  try {
+    const colCheck = await pool.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'sso_status' LIMIT 1`
+    );
+    hasSsoStatusColumn = colCheck.rows.length > 0;
+  } catch {
+    hasSsoStatusColumn = false;
+  }
+
+  const queryCols = hasSsoStatusColumn
+    ? `id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, sso_status, token_version`
+    : `id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, token_version`;
+
   const { rows } = await pool.query(
-    `SELECT id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, token_version
+    `SELECT ${queryCols}
      FROM users
      WHERE (LOWER(TRIM(email)) = LOWER(TRIM($1)) AND $1::text IS NOT NULL)
         OR (LOWER(TRIM(nik)) = LOWER(TRIM($2)) AND $2::text IS NOT NULL)
@@ -209,27 +272,115 @@ export async function matchSsoIdentityToSiagaUser(
     branch: row.branch,
     status: row.status,
     source: row.source || "SSO",
+    ssoStatus: row.sso_status !== undefined ? row.sso_status : null,
     tokenVersion: row.token_version ? Number(row.token_version) : 1,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
-  // Status check: inactive accounts must not be authenticated
-  if (user.status !== "ACTIVE") {
-    return {
-      status: "INACTIVE",
-      user,
-      reason: `Akun '${user.name}' (${user.id}) berstatus nonaktif di database SIAGA.`,
-    };
-  }
-
-  // Deactivated roles: tim_toko and rekanan are blocked from application access
+  // 1. Deactivated roles: tim_toko and rekanan are blocked from application access
   const DEACTIVATED_BUSINESS_ROLES = ["tim_toko", "rekanan"];
   if (user.businessRole && DEACTIVATED_BUSINESS_ROLES.includes(user.businessRole.toLowerCase())) {
     return {
       status: "DEACTIVATED_ROLE",
       user,
       reason: `Akun '${user.name}' memiliki peran '${user.businessRole}' yang telah dinonaktifkan dari sistem.`,
+    };
+  }
+
+  // 2. Enforce sso_status for synchronized users
+  if (user.ssoStatus) {
+    const ssoUpper = user.ssoStatus.toUpperCase().trim();
+
+    // 2a. BLOCKED accounts: soft-deleted or explicitly blocked
+    if (ssoUpper === "BLOCKED") {
+      return {
+        status: "BLOCKED",
+        user,
+        reason: `Akun '${user.name}' (${user.id}) telah diblokir/dinonaktifkan (BLOCKED).`,
+      };
+    }
+
+    // 2b. UNMATCHED_SSO accounts: not in SSO export
+    if (ssoUpper === "UNMATCHED_SSO") {
+      return {
+        status: "UNMATCHED_SSO",
+        user,
+        reason: `Akun '${user.name}' (${user.id}) belum terdaftar di Portal SSO (UNMATCHED_SSO).`,
+      };
+    }
+
+    // 2c. PENDING_REVIEW accounts: anomalies or pending administrative review
+    if (ssoUpper === "PENDING_REVIEW") {
+      return {
+        status: "PENDING_REVIEW",
+        user,
+        reason: `Akun '${user.name}' (${user.id}) masih dalam proses review perizinan (PENDING_REVIEW).`,
+      };
+    }
+
+    // 2d. PENDING_SSO_GRANT accounts: synchronized users waiting for valid SSO login & SIAGA grant
+    if (ssoUpper === "PENDING_SSO_GRANT") {
+      // Step A: Verify SIAGA module access grant in SSO token
+      const hasSiagaGrant = validateSsoModuleAccess(ssoUser);
+      if (!hasSiagaGrant) {
+        return {
+          status: "PENDING_SSO_GRANT",
+          user,
+          reason: `Akun '${user.name}' (${user.id}) menunggu otorisasi akses modul SIAGA di Portal SSO (PENDING_SSO_GRANT).`,
+        };
+      }
+
+      // Step B: Verify approved local role and branch assignment in SIAGA
+      if (!isApprovedRoleAndBranch(user)) {
+        return {
+          status: "PENDING_REVIEW",
+          user,
+          reason: `Akun '${user.name}' (${user.id}) belum memiliki peran atau cabang yang memenuhi syarat otorisasi SIAGA.`,
+        };
+      }
+
+      // Step C: Just-In-Time safe activation in SIAGA database
+      const updateRes = await pool.query(
+        `UPDATE users
+         SET status = 'ACTIVE',
+             sso_status = 'ACTIVE',
+             external_user_id = COALESCE(users.external_user_id, $2),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, sso_status, token_version`,
+        [user.id, ssoId]
+      );
+
+      if (updateRes.rows.length > 0) {
+        const uRow = updateRes.rows[0];
+        user.status = "ACTIVE";
+        user.ssoStatus = "ACTIVE";
+        user.externalUserId = uRow.external_user_id;
+      }
+
+      return {
+        status: "MATCHED",
+        user,
+      };
+    }
+
+    // 2e. Any other non-ACTIVE ssoStatus
+    if (ssoUpper !== "ACTIVE") {
+      return {
+        status: "INACTIVE",
+        user,
+        reason: `Status sinkronisasi akun '${user.name}' (${user.id}) tidak valid untuk akses SIAGA (${user.ssoStatus}).`,
+      };
+    }
+  }
+
+  // 3. Status check: inactive accounts must not be authenticated
+  if (user.status !== "ACTIVE") {
+    return {
+      status: "INACTIVE",
+      user,
+      reason: `Akun '${user.name}' (${user.id}) berstatus nonaktif di database SIAGA.`,
     };
   }
 
@@ -278,6 +429,15 @@ export function mapSsoErrorCodeToRedirect(errorCode: string): string {
       return "AmbiguousIdentity";
     case "DEACTIVATED_ROLE":
       return "DeactivatedRole";
+    case "PENDING_SSO_GRANT":
+      return "PendingSsoGrant";
+    case "UNMATCHED_SSO":
+      return "UnmatchedSso";
+    case "PENDING_REVIEW":
+      return "PendingReview";
+    case "BLOCKED":
+    case "USER_BLOCKED":
+      return "UserBlocked";
     case "SSO_SERVICE_UNAVAILABLE":
     case "SSO_SERVICE_TIMEOUT":
       return "SsoServiceUnavailable";
