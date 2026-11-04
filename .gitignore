@@ -62,3 +62,6 @@ graphify-out/
 
 /scratch/
 /.graphifyignore
+
+EVALUATOR_CREDENTIALS*
+*.credentials.local

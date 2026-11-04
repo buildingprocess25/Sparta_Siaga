@@ -25,6 +25,9 @@ import {
   Clock,
   Loader2,
   RefreshCw,
+  Play,
+  RotateCcw,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -83,6 +86,18 @@ export function SystemSettingsModal({
   const [isUpdatingTestingMode, setIsUpdatingTestingMode] = useState(false);
   const [testingAuditLogs, setTestingAuditLogs] = useState<any[]>([]);
 
+  // UAT Simulation controls state
+  const [simulationAllowed, setSimulationAllowed] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState("bandung_56");
+  const [simLat, setSimLat] = useState("-6.9039");
+  const [simLon, setSimLon] = useState("107.6186");
+  const [simMag, setSimMag] = useState("5.6");
+  const [simDepth, setSimDepth] = useState("10");
+  const [isTriggeringSim, setIsTriggeringSim] = useState(false);
+  const [simResult, setSimResult] = useState<any>(null);
+  const [isResettingSim, setIsResettingSim] = useState(false);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
   // Email status state
   const [emailConfig, setEmailConfig] = useState<any>(null);
   const [recentEmailLogs, setRecentEmailLogs] = useState<any[]>([]);
@@ -93,10 +108,83 @@ export function SystemSettingsModal({
 
   const isAdmin = currentUser?.systemRole === "ADMIN";
 
-  // Sync testingMode prop
+  // Sync testingMode prop & check simulation availability
   useEffect(() => {
     setTestingModeActive(testingMode);
+    fetch("/api/simulation/status")
+      .then((r) => (r.ok ? r.json() : { allowed: false }))
+      .then((data) => setSimulationAllowed(Boolean(data.allowed)))
+      .catch(() => setSimulationAllowed(false));
   }, [testingMode]);
+
+  const handleScenarioChange = (val: string) => {
+    setSelectedScenario(val);
+    if (val === "bandung_56") {
+      setSimLat("-6.9039");
+      setSimLon("107.6186");
+      setSimMag("5.6");
+      setSimDepth("10");
+    } else if (val === "cianjur_56") {
+      setSimLat("-6.8200");
+      setSimLon("107.1400");
+      setSimMag("5.6");
+      setSimDepth("10");
+    } else if (val === "sukabumi_54") {
+      setSimLat("-6.9300");
+      setSimLon("106.9300");
+      setSimMag("5.4");
+      setSimDepth("15");
+    }
+  };
+
+  const handleTriggerSimulation = async () => {
+    setIsTriggeringSim(true);
+    setSimResult(null);
+    try {
+      const res = await fetch("/api/simulation/earthquake/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          latitude: parseFloat(simLat),
+          longitude: parseFloat(simLon),
+          magnitude: parseFloat(simMag),
+          depthKm: parseFloat(simDepth),
+          scenarioKey: selectedScenario,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSimResult(data);
+        toast.success(data.message || "Gempa simulasi berhasil dipicu!");
+      } else {
+        toast.error(data.error || "Gagal memicu gempa simulasi.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Kesalahan jaringan saat memicu simulasi.");
+    } finally {
+      setIsTriggeringSim(false);
+    }
+  };
+
+  const handleResetSimulation = async () => {
+    if (!confirm("Reset seluruh data skenario UAT ke kondisi baseline awal?")) return;
+    setIsResettingSim(true);
+    setResetResult(null);
+    try {
+      const res = await fetch("/api/simulation/reset", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResetResult(data.message);
+        toast.success(data.message);
+      } else {
+        toast.error(data.error || "Gagal mereset simulasi.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Kesalahan jaringan saat mereset.");
+    } finally {
+      setIsResettingSim(false);
+    }
+  };
 
   // Fetch testing mode status & logs
   const fetchTestingModeData = async () => {
@@ -320,39 +408,39 @@ export function SystemSettingsModal({
             <span>Tema & Peta</span>
           </button>
 
-          {isAdmin && (
-            <>
-              <button
-                onClick={() => setActiveTab("testing")}
-                className={`py-3 px-3 border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
-                  activeTab === "testing"
-                    ? "border-amber-500 text-amber-500 font-bold"
-                    : isDark
-                    ? "border-transparent text-slate-400 hover:text-slate-200"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <FlaskConical className="w-3.5 h-3.5 text-amber-500" />
-                <span>Mode Pengujian</span>
-                {testingModeActive && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                )}
-              </button>
+          {isAdmin && simulationAllowed && (
+            <button
+              onClick={() => setActiveTab("testing")}
+              className={`py-3 px-3 border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === "testing"
+                  ? "border-amber-500 text-amber-500 font-bold"
+                  : isDark
+                  ? "border-transparent text-slate-400 hover:text-slate-200"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <FlaskConical className="w-3.5 h-3.5 text-amber-500" />
+              <span>Mode Pengujian</span>
+              {testingModeActive && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              )}
+            </button>
+          )}
 
-              <button
-                onClick={() => setActiveTab("email")}
-                className={`py-3 px-3 border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
-                  activeTab === "email"
-                    ? "border-blue-500 text-blue-500 font-bold"
-                    : isDark
-                    ? "border-transparent text-slate-400 hover:text-slate-200"
-                    : "border-transparent text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Mail className="w-3.5 h-3.5 text-blue-500" />
-                <span>Status & Uji Email</span>
-              </button>
-            </>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab("email")}
+              className={`py-3 px-3 border-b-2 transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === "email"
+                  ? "border-blue-500 text-blue-500 font-bold"
+                  : isDark
+                  ? "border-transparent text-slate-400 hover:text-slate-200"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Mail className="w-3.5 h-3.5 text-blue-500" />
+              <span>Status & Uji Email</span>
+            </button>
           )}
         </div>
 
@@ -591,8 +679,8 @@ export function SystemSettingsModal({
             </div>
           )}
 
-          {/* TAB 4: Testing Mode (Admin Only) */}
-          {activeTab === "testing" && isAdmin && (
+          {/* TAB 4: Testing Mode (Admin Only - UAT Only) */}
+          {activeTab === "testing" && isAdmin && simulationAllowed && (
             <div className="space-y-4">
               {/* Toggle Box */}
               <div
@@ -630,8 +718,8 @@ export function SystemSettingsModal({
                       </div>
                       <p className="text-[11px] leading-relaxed text-slate-400">
                         {testingModeActive
-                          ? "Transaksi operasional (pemeriksaan BMS/BES, approval BMC/BnM, progres) diarahkan ke database UAT terisolasi. Email & push eksternal diblokir untuk mencegah kepanikan."
-                          : "Sistem beroperasi normal menggunakan database produksi Biznet PostgreSQL siaga."}
+                          ? "Panel kontrol simulasi dan skenario UAT tersedia. Transaksi operasional (pemeriksaan BMS/BES, approval BMC/BnM, progres) diarahkan ke database UAT terisolasi. Email & push eksternal diblokir untuk mencegah kepanikan."
+                          : "Mode pengujian nonaktif. Sistem berjalan tanpa kontrol simulasi sintetis."}
                       </p>
                     </div>
                   </div>
@@ -646,7 +734,7 @@ export function SystemSettingsModal({
                     }`}
                   >
                     {isUpdatingTestingMode && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    <span>{testingModeActive ? "Matikan Testing Mode" : "Aktifkan Testing Mode"}</span>
+                    <span>{testingModeActive ? "Sembunyikan Simulasi" : "Buka Kontrol Simulasi"}</span>
                   </button>
                 </div>
 
@@ -667,6 +755,154 @@ export function SystemSettingsModal({
                   />
                 </div>
               </div>
+
+              {/* Simulasi Gempa Bumi UAT (Engine Produksi) */}
+              {testingModeActive && (
+                <div
+                  className={`p-4 rounded-xl border space-y-3 ${
+                    isDark ? "bg-slate-950/60 border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-red-500/20 text-red-400">
+                        <Activity className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-white">Trigger Simulasi Gempa (Engine Produksi)</div>
+                        <div className="text-[10px] text-slate-400">
+                          Menjalankan radius &amp; evaluasi toko SPARTA menggunakan engine nyata
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Skenario Preset Selector */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      Pilihan Skenario UAT
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "bandung_56", label: "Gempa Bandung", desc: "M 5.6 • Dago" },
+                        { id: "cianjur_56", label: "Gempa Cianjur", desc: "M 5.6 • Prioritas Toko" },
+                        { id: "sukabumi_54", label: "Gempa Sukabumi", desc: "M 5.4 • Pesisir" },
+                      ].map((sc) => (
+                        <button
+                          key={sc.id}
+                          type="button"
+                          onClick={() => handleScenarioChange(sc.id)}
+                          className={`p-2 rounded-lg border text-left transition-all ${
+                            selectedScenario === sc.id
+                              ? "border-amber-500 bg-amber-500/10 text-amber-300 font-bold"
+                              : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="text-[11px] leading-tight">{sc.label}</div>
+                          <div className="text-[9px] text-slate-500 font-normal">{sc.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Parameter Grid */}
+                  <div className="grid grid-cols-4 gap-2 pt-1 text-[11px]">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">Latitude</span>
+                      <input
+                        type="text"
+                        value={simLat}
+                        onChange={(e) => setSimLat(e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">Longitude</span>
+                      <input
+                        type="text"
+                        value={simLon}
+                        onChange={(e) => setSimLon(e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">Magnitudo</span>
+                      <input
+                        type="text"
+                        value={simMag}
+                        onChange={(e) => setSimMag(e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">Kedalaman (km)</span>
+                      <input
+                        type="text"
+                        value={simDepth}
+                        onChange={(e) => setSimDepth(e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-200 font-mono text-[11px]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Trigger Button & Feedback */}
+                  <div className="pt-1 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleTriggerSimulation}
+                      disabled={isTriggeringSim}
+                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-red-600/30 transition-all"
+                    >
+                      {isTriggeringSim ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                      )}
+                      <span>Picu Gempa Simulasi</span>
+                    </button>
+
+                    {simResult && (
+                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>
+                          Dibuat {simResult.evaluation?.createdReports ?? 0} laporan &amp; {simResult.evaluation?.dispatchedAlerts ?? 0} notifikasi.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Reset Skenario UAT Box */}
+              {testingModeActive && (
+                <div
+                  className={`p-4 rounded-xl border flex items-center justify-between gap-3 ${
+                    isDark ? "bg-slate-950/60 border-slate-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                      <RotateCcw className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-white">Reset Skenario UAT (Fresh Baseline)</div>
+                      <div className="text-[10px] text-slate-400">
+                        Membersihkan laporan uji UAT dan mereset Simulasi 1 &amp; 2 ke status awal. User sinkronisasi (701) terlindungi 100%.
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleResetSimulation}
+                    disabled={isResettingSim}
+                    className="px-3 py-1.5 rounded-lg border border-amber-500/50 hover:bg-amber-500/20 text-amber-300 font-bold text-xs shrink-0 flex items-center gap-1.5 transition-colors"
+                  >
+                    {isResettingSim ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                    <span>Reset Skenario</span>
+                  </button>
+                </div>
+              )}
 
               {/* Production Safety Note */}
               <div className="p-3 rounded-lg bg-blue-950/40 border border-blue-800/40 text-blue-200 text-[11px] flex items-start gap-2.5">

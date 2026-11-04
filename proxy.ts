@@ -6,7 +6,7 @@ import { getJwtSecret } from './lib/runtime-config';
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Public and PWA infrastructure assets (Must NEVER be redirected to /login)
+  // 1. Public and PWA infrastructure assets (Must NEVER be redirected to /login)
   const isPwaOrStatic =
     pathname === '/manifest.webmanifest' ||
     pathname === '/manifest.json' ||
@@ -15,6 +15,9 @@ export async function proxy(request: NextRequest) {
     pathname === '/favicon.ico' ||
     pathname.startsWith('/icons/') ||
     pathname.startsWith('/brand/') ||
+    pathname.startsWith('/images/') ||
+    pathname.startsWith('/static/') ||
+    pathname.startsWith('/_next') ||
     pathname.endsWith('.png') ||
     pathname.endsWith('.jpg') ||
     pathname.endsWith('.jpeg') ||
@@ -26,10 +29,10 @@ export async function proxy(request: NextRequest) {
   const publicPrefixes = [
     '/login',
     '/api/auth/login',
+    '/api/auth/quick-login',
+    '/api/auth/env-status',
     '/api/auth/refresh',
     '/auth/sso/callback',
-    '/brand',
-    '/_next',
     '/api/health/live',
     '/api/health/ready',
     '/api/notifications/worker',
@@ -48,7 +51,7 @@ export async function proxy(request: NextRequest) {
   const sessionToken = request.cookies.get('siaga_session')?.value;
   const refreshToken = request.cookies.get('siaga_refresh')?.value;
 
-  // 1. If valid short-lived access token is present, allow immediately
+  // 2. If valid short-lived access token is present, allow immediately
   if (sessionToken) {
     try {
       const jwtSecret = new TextEncoder().encode(getJwtSecret());
@@ -61,14 +64,14 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // 2. If access token is expired or missing but 30-day refresh token exists:
+  // 3. If access token is expired or missing but 30-day refresh token exists:
   // Allow pass-through so API routes (via getSessionUser) or client shell (via /api/auth/refresh)
   // can transparently renew the session without an abrupt forced logout.
   if (refreshToken) {
     return NextResponse.next();
   }
 
-  // 3. Neither session nor refresh token exists: deny unauthenticated access
+  // 4. Neither session nor refresh token exists: deny unauthenticated access
   if (pathname.startsWith('/api/')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

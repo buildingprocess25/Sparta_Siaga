@@ -271,6 +271,20 @@ export function IncidentAppShell({
     return currentPath === href || currentPath.startsWith(`${href}/`);
   };
 
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.redirectTo) {
+        window.location.href = data.redirectTo;
+        return;
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+    window.location.href = '/login';
+  };
+
   return (
     <div
       className={`flex h-screen w-full antialiased overflow-hidden font-sans transition-colors duration-200 ${
@@ -497,10 +511,7 @@ export function IncidentAppShell({
               <div className={`p-2 border-t ${isDark ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-white"}`}>
                 <button
                   type="button"
-                  onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                    window.location.href = '/login';
-                  }}
+                  onClick={handleLogout}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-bold transition-colors text-red-600 dark:text-red-400 ${
                     isDark ? "hover:bg-red-950/50" : "hover:bg-red-50"
                   }`}
@@ -528,9 +539,14 @@ export function IncidentAppShell({
                 ⚠️ MODE PENGUJIAN AKTIF — Transaksi UAT dialihkan ke database terisolasi. Notifikasi email &amp; push eksternal diblokir.
               </span>
             </div>
-            <span className="bg-slate-950/20 text-slate-950 px-2 py-0.5 rounded text-[10px] font-mono font-black uppercase tracking-wider shrink-0 ml-2">
-              UAT ISOLATED
-            </span>
+            <Link
+              href="/settings"
+              className="bg-slate-950/20 hover:bg-slate-950/30 text-slate-950 px-2.5 py-1 rounded text-[10px] font-mono font-black uppercase tracking-wider shrink-0 ml-2 transition-colors inline-flex items-center gap-1"
+              title="Buka panel simulasi di Pengaturan Sistem"
+            >
+              <span>🧪 UAT ISOLATED</span>
+              <span className="hidden sm:inline opacity-80">· Panel Kontrol →</span>
+            </Link>
           </div>
         )}
 
@@ -866,10 +882,7 @@ export function IncidentAppShell({
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                    window.location.href = '/login';
-                  }}
+                  onClick={handleLogout}
                   className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-bold transition-colors min-h-[44px]"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>

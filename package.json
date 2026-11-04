@@ -10,6 +10,8 @@
   },
   "scripts": {
     "dev": "node --max-old-space-size=4096 ./node_modules/next/dist/bin/next dev -p 3004 --webpack",
+    "dev:local": "tsx scripts/run-dev.ts development",
+    "dev:uat": "tsx scripts/run-dev.ts uat",
     "build": "next build",
     "start": "next start -p 3004",
     "start:production": "node .next/standalone/server.js",
@@ -21,7 +23,9 @@
     "seed": "tsx scripts/seed-incidents.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit --incremental false",
-    "seed:admin": "pnpm dlx tsx scripts/seed-admin.ts"
+    "seed:admin": "pnpm dlx tsx scripts/seed-admin.ts",
+    "tunnel:uat": "pnpm dlx localtunnel --port 3004",
+    "tunnel:info": "tsx scripts/start-uat-tunnel.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

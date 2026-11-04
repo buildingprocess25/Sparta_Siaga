@@ -159,7 +159,11 @@ export function canCreateManagementInstruction(
   user: UserContext
 ): boolean {
   if (user.systemRole === "ADMIN") return true; // Admin has full access
-  return user.role === "gm_ho" || user.role === "sm_ho";
+  return (
+    user.role === "gm_ho" ||
+    user.role === "sm_ho" ||
+    ((user.role === "admin" || user.role === "ho_admin") && user.scope === "HO")
+  );
 }
 
 export function canCreateEstimation(

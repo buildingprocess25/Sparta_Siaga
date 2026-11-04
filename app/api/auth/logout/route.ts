@@ -11,6 +11,7 @@ import {
   revokeAllUserSessions 
 } from "@/lib/session-service";
 import { dbRevokeAllUserSessions } from "@/lib/user-db";
+import { getLogoutRedirectUrl } from "@/lib/environment-policy";
 
 export async function POST(req: Request) {
   let allDevices = false;
@@ -60,7 +61,11 @@ export async function POST(req: Request) {
     await revokeSessionByRefreshToken(refreshToken);
   }
 
-  const response = NextResponse.json({ success: true, allDevices });
+  const response = NextResponse.json({ 
+    success: true, 
+    allDevices, 
+    redirectTo: getLogoutRedirectUrl() 
+  });
   const cookieOpts = {
     ...getSessionCookieOptions(),
     maxAge: 0,

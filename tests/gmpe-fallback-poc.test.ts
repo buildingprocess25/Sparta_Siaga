@@ -332,6 +332,69 @@ async function runTestSuite() {
       // All three regimes evaluate distinctly without throwing errors
       assert.notEqual(comp[0].crustalMmi, comp[0].intraslabMmi);
     });
+
+    // 7. Task 4: Historical Earthquakes without Numerical ShakeMap (Audited USGS/BMKG)
+    await test("Task 4: Non-ShakeMap Validation for Shallow M<5 (Sumedang 2023 us6000m0tt) captures near-source intensity", async () => {
+      // Sumedang 2023 (us6000m0tt: Mw 4.8, h=12.16 km, strike-slip, Repi=14.2 km to Sumedang Kota, Vs30=240 m/s)
+      const res = evaluateGmpeGroundMotion({
+        magnitude: 4.8,
+        depthKm: 12.16,
+        distanceEpiKm: 14.2,
+        vs30: 240,
+        regime: "SHALLOW_CRUSTAL",
+        mechanism: "STRIKE_SLIP",
+      });
+
+      // Observed: USGS DYFI CDI 5.4, BMKG IV-V (interval [4.0, 5.4])
+      // GMPE median predicts ~4.07 MMI (falls within interval [4.0, 5.4])
+      assert.ok(res.mmi >= 3.8 && res.mmi <= 5.5, `Expected near-source MMI ~3.8-5.5, got ${res.mmi}`);
+      assert.ok(res.mmi >= 4.0 && res.mmi <= 5.4, `Prediction must fall within observed interval [4.0, 5.4], got ${res.mmi}`);
+    });
+
+    await test("Task 4: Non-ShakeMap Validation for Deep M6+ (Java Sea 2023 us6000k49j h=597 km) captures broad attenuation", async () => {
+      // Java Sea 2023 (us6000k49j: Mw 7.0, h=597 km, deep intraslab)
+      const resTuban = evaluateGmpeGroundMotion({
+        magnitude: 7.0,
+        depthKm: 597.0,
+        distanceEpiKm: 95.5,
+        regime: "SUBDUCTION_INTRASLAB",
+        vs30: 270,
+      });
+
+      // Observed: USGS DYFI CDI 3.8, BMKG III-IV
+      // GMPE median predicts ~3.96 MMI (difference < 0.3 MMI)
+      assert.ok(Math.abs(resTuban.mmi - 3.80) < 0.3, `Tuban error must be < 0.3 MMI, got ${Math.abs(resTuban.mmi - 3.80)}`);
+
+      // Far field: Jakarta (Repi=574.9 km), Observed: USGS DYFI CDI 2.7, BMKG II-III
+      const resJkt = evaluateGmpeGroundMotion({
+        magnitude: 7.0,
+        depthKm: 597.0,
+        distanceEpiKm: 574.9,
+        regime: "SUBDUCTION_INTRASLAB",
+        vs30: 250,
+      });
+      assert.ok(Math.abs(resJkt.mmi - 2.70) < 0.5, `Jakarta error must be < 0.5 MMI, got ${Math.abs(resJkt.mmi - 2.70)}`);
+      // Far field ground motion must attenuate relative to near field
+      assert.ok(resJkt.mmi < resTuban.mmi, "Far-field intensity must be less than near-field");
+    });
+
+    await test("Task 4: Non-ShakeMap Validation for Bawean 2024 (us6000mkfz) captures finite-fault intensity", async () => {
+      // Bawean 2024 (us6000mkfz: Mw 6.4, h=9.47 km, shallow crustal strike-slip, Repi=31.8 km to Bawean)
+      const resBawean = evaluateGmpeGroundMotion({
+        magnitude: 6.4,
+        depthKm: 9.47,
+        distanceEpiKm: 31.8,
+        vs30: 250,
+        regime: "SHALLOW_CRUSTAL",
+        mechanism: "STRIKE_SLIP",
+        useRuptureDistanceConversion: true,
+      });
+
+      // Observed: BMKG V-VI MMI (interval [5.0, 6.0], midpoint 5.5)
+      // GMPE median with Thompson-Worden conversion predicts ~5.67 MMI
+      assert.ok(resBawean.mmi >= 5.0 && resBawean.mmi <= 6.0, `Expected MMI in interval [5.0, 6.0], got ${resBawean.mmi}`);
+      assert.ok(Math.abs(resBawean.mmi - 5.50) < 0.25, `Bawean error must be < 0.25 MMI, got ${Math.abs(resBawean.mmi - 5.50)}`);
+    });
   })();
 
   console.log("\n================================================================================");

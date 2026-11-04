@@ -3,7 +3,7 @@
 
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
-import { getProductionDbPool } from './db';
+import { getDbPool } from './db';
 import { fetchDisasterFeed } from './disaster-service';
 import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
 import { dbUpsertEarthquakeEvent } from './earthquake-db';
@@ -97,7 +97,7 @@ async function getBranchCentroids(): Promise<BranchCentroid[]> {
   }
 
   try {
-    const pool = getProductionDbPool();
+    const pool = getDbPool();
     const res = await pool.query(`
       SELECT cabang,
              ROUND(AVG(latitude)::numeric, 4) as lat,
@@ -145,7 +145,7 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
   let lockAcquired = false;
 
   try {
-    const pool = getProductionDbPool();
+    const pool = getDbPool();
 
     // DB-backed concurrency control: acquire advisory lock on a dedicated client session
     // to guarantee mutual exclusion and prevent lock leakage across connection pool reuse
@@ -475,7 +475,8 @@ export async function processEarthquakeAlertsAndReports(
   earthquakes: Earthquake[],
   stores: Store[],
   isEligibleForAlert: boolean = true,
-  allowBackfill: boolean = false
+  allowBackfill: boolean = false,
+  allowSimulation: boolean = false
 ): Promise<{ dispatchedAlerts: number; createdReports: number }> {
   let dispatchedAlerts = 0;
   let createdReports = 0;
@@ -496,7 +497,10 @@ export async function processEarthquakeAlertsAndReports(
       ((eq as any).provider_event_id && /test|simul|uji|demo/i.test((eq as any).provider_event_id))
     );
 
-    if (!isOfficialProvider || isSyntheticOrTest) {
+    const { isUatSimulationAllowed } = await import("./environment-policy");
+    const simulationAuthorized = allowSimulation && isUatSimulationAllowed();
+
+    if ((!isOfficialProvider || isSyntheticOrTest) && !simulationAuthorized) {
       console.warn(`[Daemon Alert Guard] Ignored non-official/synthetic earthquake from production alert evaluation: ID=${eq.id}, Title="${eq.title}", Source="${source}"`);
       continue;
     }
@@ -555,7 +559,7 @@ export async function processEarthquakeAlertsAndReports(
     }> = [];
 
     try {
-      const pool = getProductionDbPool();
+      const pool = getDbPool();
       const facRes = await pool.query(
         `SELECT id::text, code, name, facility_type, branch_id, latitude, longitude,
                 operational_status, auto_report_enabled, mapping_verified_at

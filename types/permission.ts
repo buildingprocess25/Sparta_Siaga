@@ -351,6 +351,7 @@ export const ROLE_PERMISSION_CATALOG: Record<string, readonly PermissionKey[]> =
   ho_admin: [
     "REPORT_VIEW_ALL",
     "NOTIFICATION_VIEW",
+    "MANAGEMENT_INSTRUCTION_CREATE",
     "ESTIMATION_VIEW",
   ],
   gm_ho: [
@@ -463,6 +464,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Partial<Record<PermissionK
   ho_admin: {
     REPORT_VIEW_ALL: "ALLOW",
     NOTIFICATION_VIEW: "ALLOW",
+    MANAGEMENT_INSTRUCTION_CREATE: "ALLOW",
     ESTIMATION_VIEW: "ALLOW",
   },
   gm_ho: {
