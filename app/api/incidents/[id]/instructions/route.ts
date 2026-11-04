@@ -85,7 +85,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const isAllowed = await canCreateManagementInstructionAsync(sessionUser);
     if (!isAllowed) {
       return NextResponse.json(
-        { error: "Unauthorized: Hanya GM/SM HO yang berhak membuat instruksi manajemen" },
+        { error: "Unauthorized: Hanya Pengguna Head Office (Admin/GM/SM HO) yang berhak membuat instruksi manajemen" },
         { status: 403 }
       );
     }

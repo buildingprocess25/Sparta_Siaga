@@ -451,8 +451,8 @@ export async function checkUserPermission(params: CheckPermissionParams): Promis
   // HO users (HO Admin, GM HO, SM HO) have strictly read-only monitoring access across all branches.
   // They must not perform operational mutations or operational approvals (Section 4.F).
   if (user.scope === "HO" && isOperationalPermission(permission)) {
-    if (permission === "MANAGEMENT_INSTRUCTION_CREATE" && (user.role === "gm_ho" || user.role === "sm_ho")) {
-      // Allowed for GM/SM HO only
+    if (permission === "MANAGEMENT_INSTRUCTION_CREATE" && (user.role === "admin" || user.role === "ho_admin" || user.role === "gm_ho" || user.role === "sm_ho")) {
+      // Allowed for HO Admin, GM HO, SM HO
     } else {
       return {
         authorized: false,
@@ -464,12 +464,13 @@ export async function checkUserPermission(params: CheckPermissionParams): Promis
 
   // 1. SYSTEM ADMIN CLASSIFICATION
   // Admin SPARTA SIAGA is the super administrator for application administration.
-  // Section 4.G: System Admin tidak otomatis boleh menggantikan pihak operasional dalam melakukan approval (REPORT_BM_APPROVAL, COMPLETION_APPROVE_COORDINATOR, REPORT_CLOSE).
+  // Section 4.G: System Admin tidak otomatis boleh menggantikan pihak operasional dalam melakukan approval atau pengajuan lapangan (REPORT_BM_APPROVAL, COMPLETION_APPROVE_COORDINATOR, REPORT_CLOSE, COMPLETION_SUBMIT).
   if (user.systemRole === "ADMIN") {
     if (
       permission === "REPORT_BM_APPROVAL" ||
       permission === "COMPLETION_APPROVE_COORDINATOR" ||
-      permission === "REPORT_CLOSE"
+      permission === "REPORT_CLOSE" ||
+      permission === "COMPLETION_SUBMIT"
     ) {
       // Fall through to strict role & branch operational evaluation
     } else {
@@ -712,13 +713,13 @@ export async function checkUserPermission(params: CheckPermissionParams): Promis
 
   // Management instruction
   if (permission === "MANAGEMENT_INSTRUCTION_CREATE") {
-    if (user.scope === "HO" && (user.role === "gm_ho" || user.role === "sm_ho")) {
+    if (user.scope === "HO" && (user.role === "admin" || user.role === "ho_admin" || user.role === "gm_ho" || user.role === "sm_ho")) {
       return { authorized: true, source: "ROLE_PERMISSION" };
     }
     return {
       authorized: false,
       source: "ROLE_PERMISSION",
-      reason: "Hanya GM/SM Head Office yang dapat membuat instruksi manajemen.",
+      reason: "Hanya Pengguna Head Office (Admin/GM/SM HO) yang dapat membuat instruksi manajemen.",
     };
   }
 

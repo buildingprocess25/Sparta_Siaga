@@ -7,6 +7,7 @@ import {
   canApproveAsBmAsync,
   canViewReportAsync,
 } from "@/lib/permission-service";
+import { ProgressService } from "@/lib/progress-service";
 import { deriveWorkflowActions } from "@/lib/workflow-actions";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -60,13 +61,41 @@ export async function GET(_: Request, { params }: RouteContext) {
     );
     const actorRole = (sessionUser.role || "").toLowerCase();
     const operationalActor = sessionUser.systemRole !== "ADMIN" && sessionUser.scope !== "HO" && sameBranch;
+
+    // Prasyarat pengajuan penyelesaian: progres 100% dan bukti FINAL/HANDOVER atau milestone SERAH_TERIMA
+    const hasFinalEvidence = await ProgressService.hasFinalOrHandoverEvidence(incident.id);
+    let hasMilestoneSt = false;
+    try {
+      const { getMilestones } = await import("@/lib/milestone-service");
+      const milestones = await getMilestones(incident.id);
+      const st = milestones.find((m) => m.stageKey === "SERAH_TERIMA");
+      hasMilestoneSt = Boolean(st && st.status === "SUBMITTED" && (st.documentStorageKey || st.documentUrl));
+    } catch {
+      // ignore
+    }
+
+    const currentProgress = incident.progress ?? 0;
+    const isPrerequisitesMet = currentProgress >= 100 && (hasFinalEvidence || hasMilestoneSt);
+    let submitCompletionReason = submitCompletionResult.reason || "";
+    if (operationalActor && ["bms", "bes", "bbs"].includes(actorRole)) {
+      if (currentProgress < 100) {
+        submitCompletionReason = `Pekerjaan fisik belum mencapai 100% (progres saat ini: ${currentProgress}%).`;
+      } else if (!hasFinalEvidence && !hasMilestoneSt) {
+        submitCompletionReason = "Wajib melampirkan bukti serah terima (Milestone Serah Terima atau foto FINAL / HANDOVER).";
+      }
+    }
+
     const actionPermissions = {
       canInspect: inspectionResult.authorized,
       canApproveInitial: bmApprovalResult.authorized,
       canCreateEstimation: triggerEstimationResult.authorized,
       canUpdateReadiness: readinessResult.authorized,
       canUpdateProgress: updateProgressResult.authorized,
-      canSubmitCompletion: operationalActor && ["bms", "bes", "bbs"].includes(actorRole) && submitCompletionResult.authorized,
+      canSubmitCompletion:
+        operationalActor &&
+        ["bms", "bes", "bbs"].includes(actorRole) &&
+        isPrerequisitesMet &&
+        submitCompletionResult.authorized,
       canApproveCoordinator: operationalActor && ["bmc", "bec", "bbc"].includes(actorRole) && approveCoordinatorResult.authorized,
       canFinalApprove: operationalActor && actorRole === "bm" && closeResult.authorized,
       canClose: operationalActor && actorRole === "bm" && closeResult.authorized,
@@ -98,7 +127,7 @@ export async function GET(_: Request, { params }: RouteContext) {
         canUpdateReadiness: actionPermissions.canUpdateReadiness,
         updateReadinessReason: readinessResult.reason || "",
         canSubmitCompletion: actionPermissions.canSubmitCompletion,
-        submitCompletionReason: submitCompletionResult.reason || "",
+        submitCompletionReason: submitCompletionReason,
         canApproveCoordinator: actionPermissions.canApproveCoordinator,
         approveCoordinatorReason: approveCoordinatorResult.reason || "",
       },

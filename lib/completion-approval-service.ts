@@ -401,6 +401,14 @@ export class CompletionApprovalService {
     }
 
     const isSystemAdmin = params.actor.systemRole === "ADMIN";
+    if (isSystemAdmin) {
+      const err: any = new Error(
+        "Forbidden: System Administrator tidak dapat melakukan tindakan operasional pengajuan penyelesaian."
+      );
+      err.status = 403;
+      err.code = "ADMIN_OPERATIONAL_BYPASS_BLOCKED";
+      throw err;
+    }
 
     // 2. State Check
     if (approval.status !== "WAITING_PIC_SUBMISSION" && approval.status !== "REVISION_REQUIRED") {
@@ -414,9 +422,9 @@ export class CompletionApprovalService {
 
     // 3. Actor Role Validation (Server-side resolved)
     const expectedRoute = resolveApprovalRoute(report, route);
-    const actorRole = isSystemAdmin ? "admin" : (params.actor.role || "").toLowerCase();
+    const actorRole = (params.actor.role || "").toLowerCase();
 
-    if (!isSystemAdmin && actorRole !== expectedRoute.picRole) {
+    if (actorRole !== expectedRoute.picRole) {
       const err: any = new Error(
         `Pengajuan penyelesaian hanya dapat diajukan oleh PIC resmi jalur ${expectedRoute.flowType} (${expectedRoute.picRole.toUpperCase()}), bukan '${actorRole.toUpperCase() || "N/A"}'.`
       );
@@ -425,18 +433,16 @@ export class CompletionApprovalService {
       throw err;
     }
 
-    // 4. Branch Scope Validation (Admin is not restricted to single branch)
-    if (!isSystemAdmin) {
-      const userBranch = cleanBranch(params.actor.branch);
-      const reportBranch = cleanBranch(report.branch);
-      if (!userBranch || userBranch !== reportBranch) {
-        const err: any = new Error(
-          `Aksi pengajuan penyelesaian hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
-        );
-        err.status = 403;
-        err.code = "BRANCH_SCOPE_VIOLATION";
-        throw err;
-      }
+    // 4. Branch Scope Validation
+    const userBranch = cleanBranch(params.actor.branch);
+    const reportBranch = cleanBranch(report.branch);
+    if (!userBranch || userBranch !== reportBranch) {
+      const err: any = new Error(
+        `Aksi pengajuan penyelesaian hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
+      );
+      err.status = 403;
+      err.code = "BRANCH_SCOPE_VIOLATION";
+      throw err;
     }
 
     // 5. Central Permission Resolver check (COMPLETION_SUBMIT)
@@ -494,18 +500,18 @@ export class CompletionApprovalService {
       ]
     );
 
-    // 8. Append to Incident Timeline & update status
+    // 8. Append to Incident Timeline & update status (Menuju Review Koordinator)
     const nowWib = formatServerTimestampWib();
     const timelineEntry = {
       stage: "Pengajuan Penyelesaian",
-      label: "Penyelesaian Pekerjaan Diajukan ke BnM Manajer",
+      label: `Penyelesaian Pekerjaan Diajukan ke Koordinator (${expectedRoute.coordinatorRole.toUpperCase()})`,
       timestamp: nowWib,
       actor: `${params.actor.name} (${actorRole.toUpperCase()})`,
       notes: submissionNotes,
     };
 
     await dbUpdateIncident(params.reportId, {
-      status: "pending_final_approval",
+      status: "awaiting_st",
       timeline: [...(report.timeline || []), timelineEntry],
     });
 
@@ -625,17 +631,18 @@ export class CompletionApprovalService {
       ]
     );
 
-    // 8. Append to Incident Timeline
+    // 8. Append to Incident Timeline & update status (Menuju Persetujuan Akhir BnM)
     const nowWib = formatServerTimestampWib();
     const timelineEntry = {
       stage: "Persetujuan Koordinator",
-      label: `Disetujui oleh ${actorRole.toUpperCase()}`,
+      label: `Disetujui oleh ${actorRole.toUpperCase()} - Diteruskan ke BnM Manajer`,
       timestamp: nowWib,
       actor: `${params.actor.name} (${actorRole.toUpperCase()})`,
       notes: coordNotes,
     };
 
     await dbUpdateIncident(params.reportId, {
+      status: "pending_final_approval",
       timeline: [...(report.timeline || []), timelineEntry],
     });
 
@@ -758,7 +765,7 @@ export class CompletionApprovalService {
       ]
     );
 
-    // 8. Append to Incident Timeline
+    // 8. Append to Incident Timeline & update status
     const nowWib = formatServerTimestampWib();
     const timelineEntry = {
       stage: "Revisi Pekerjaan Diminta",
@@ -769,6 +776,7 @@ export class CompletionApprovalService {
     };
 
     await dbUpdateIncident(params.reportId, {
+      status: "revision_requested",
       timeline: [...(report.timeline || []), timelineEntry],
     });
 

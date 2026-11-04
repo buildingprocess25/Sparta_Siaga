@@ -116,7 +116,8 @@ export function MilestoneProgressionCard({
 
   const isPicUser =
     identity?.scope !== "HO" &&
-    (identity?.systemRole === "ADMIN" || isBranchMatch) &&
+    identity?.systemRole !== "ADMIN" &&
+    isBranchMatch &&
     (
       identity?.businessRole === "bms" ||
       identity?.role === "bms" ||

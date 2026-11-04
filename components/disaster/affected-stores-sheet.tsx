@@ -45,15 +45,22 @@ export function AffectedStoresSheet({
   });
 
   return (
-    <div
-      role="dialog"
-      aria-label="Lokasi dalam Radius Evaluasi"
-      className={`fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-3xl border-t pb-24 sm:pb-0 sm:inset-y-0 sm:left-0 sm:right-auto sm:w-[440px] sm:rounded-none sm:border-r sm:max-h-full z-[1500] shadow-2xl flex flex-col backdrop-blur-xl animate-in slide-in-from-bottom sm:slide-in-from-left duration-300 ${
-        isLight
-          ? "bg-white/95 border-slate-200 text-slate-800"
-          : "bg-slate-900/95 border-slate-800 text-slate-200"
-      }`}
-    >
+    <>
+      {/* Mobile/Tablet Backdrop */}
+      <div
+        className="sm:hidden fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[1490] transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        role="dialog"
+        aria-label="Lokasi dalam Radius Evaluasi"
+        className={`fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-3xl border-t pb-24 sm:pb-0 sm:inset-y-0 sm:left-0 sm:right-auto sm:w-[440px] sm:rounded-none sm:border-r sm:max-h-full z-[1500] shadow-2xl flex flex-col backdrop-blur-xl animate-in slide-in-from-bottom sm:slide-in-from-left duration-300 ${
+          isLight
+            ? "bg-white/95 border-slate-200 text-slate-800"
+            : "bg-slate-900/95 border-slate-800 text-slate-200"
+        }`}
+      >
       {/* Mobile drag bar */}
       <div className="sm:hidden w-full flex justify-center pt-2 pb-1">
         <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700" />
@@ -197,5 +204,6 @@ export function AffectedStoresSheet({
         )}
       </div>
     </div>
+    </>
   );
 }

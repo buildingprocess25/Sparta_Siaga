@@ -30,6 +30,7 @@ interface CompletionApprovalCardProps {
   history: CompletionApprovalHistoryRecord[];
   latestProgress: number;
   hasFinalEvidence: boolean;
+  hasMilestoneSt?: boolean;
   userRole?: string | null;
   userBranch?: string | null;
   userSystemRole?: string;
@@ -70,6 +71,7 @@ export function CompletionApprovalCard({
   history,
   latestProgress,
   hasFinalEvidence,
+  hasMilestoneSt = false,
   userRole,
   userBranch,
   userSystemRole,
@@ -92,7 +94,16 @@ export function CompletionApprovalCard({
   const [activeModal, setActiveModal] = useState<"submit" | "approve" | "reject" | "close" | null>(null);
   const [notesInput, setNotesInput] = useState("");
 
-  const isCompleted = latestProgress === 100 && hasFinalEvidence;
+  const hasValidCompletionEvidence = Boolean(hasFinalEvidence || hasMilestoneSt);
+  const currentProgress = Math.max(latestProgress || 0, incident.progress || 0);
+  const isProgress100 = currentProgress >= 100;
+  const isCompleted = isProgress100 && hasValidCompletionEvidence;
+
+  const prerequisiteReason = !isProgress100
+    ? `Pekerjaan fisik belum mencapai 100% (progres saat ini: ${currentProgress}%).`
+    : !hasValidCompletionEvidence
+    ? "Wajib melampirkan bukti serah terima (Milestone Serah Terima atau foto FINAL / HANDOVER)."
+    : undefined;
   const isResolved = incident.status === "closed" || incident.status === "resolved" || approval?.status === "CLOSED";
   const status = approval?.status || "WAITING_PIC_SUBMISSION";
 
@@ -906,11 +917,14 @@ export function CompletionApprovalCard({
               </div>
 
               {!isCompleted ? (
-                <span className="text-xs text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4" />
-                  Prasyarat belum lengkap (100% + Bukti Handover)
+                <span
+                  className="text-xs text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-1.5"
+                  title={prerequisiteReason}
+                >
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  {prerequisiteReason}
                 </span>
-              ) : canSubmitCompletion ? (
+              ) : canSubmitCompletion && !isSysAdmin ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -924,7 +938,7 @@ export function CompletionApprovalCard({
                 </button>
               ) : (
                 <span className="text-xs text-slate-400 flex items-center gap-1" title={submitCompletionReason}>
-                  <Lock className="w-3.5 h-3.5" /> Menunggu Pengajuan {picLabel} ({incident.branch})
+                  <Lock className="w-3.5 h-3.5" /> {submitCompletionReason || `Menunggu Pengajuan ${picLabel} (${incident.branch})`}
                 </span>
               )}
             </div>
@@ -942,7 +956,7 @@ export function CompletionApprovalCard({
                 </p>
               </div>
 
-              {canApproveCoordinator ? (
+              {canApproveCoordinator && !isSysAdmin ? (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1131,7 +1145,7 @@ export function CompletionApprovalCard({
                   : activeModal === "close"
                   ? "Konfirmasi Penutupan Laporan (Case Close)"
                   : activeModal === "approve"
-                  ? (userRole?.toLowerCase() === "bm" || isSysAdmin)
+                  ? userRole?.toLowerCase() === "bm"
                     ? "Konfirmasi Persetujuan Final (Final Approval)"
                     : "Persetujuan Koordinator"
                   : "Minta Revisi Pekerjaan"}
@@ -1144,7 +1158,7 @@ export function CompletionApprovalCard({
                 : activeModal === "close"
                 ? "Apakah Anda yakin ingin menutup laporan ini secara resmi? Tindakan Case Close akan mengubah status laporan menjadi CLOSED dan menandai seluruh tahapan penanganan selesai."
                 : activeModal === "approve"
-                ? (userRole?.toLowerCase() === "bm" || isSysAdmin)
+                ? userRole?.toLowerCase() === "bm"
                   ? "Persetujuan final BnM Manajer menyatakan bahwa pekerjaan selesai dan dokumen serah terima lengkap. Tindakan ini BELUM menutup laporan. Laporan akan menunggu tindakan Case Close secara eksplisit."
                   : "Persetujuan Koordinator akan meneruskan berkas serah terima ke tahap akhir (Persetujuan Final BnM Manajer)."
                 : "Tuliskan alasan atau bagian yang perlu direvisi secara jelas agar PIC dapat memperbaikinya."}

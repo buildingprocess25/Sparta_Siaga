@@ -5,12 +5,21 @@ import {
   setTestingModeState,
   getTestingModeAuditLogs,
 } from "@/lib/testing-mode-service";
+import { isUatSimulationAllowed } from "@/lib/environment-policy";
 
 export async function GET() {
   try {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!isUatSimulationAllowed()) {
+      return NextResponse.json({
+        success: true,
+        state: { enabled: false, inProduction: true },
+        auditLogs: [],
+      });
     }
 
     const state = await getTestingModeState();
@@ -32,6 +41,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    if (!isUatSimulationAllowed()) {
+      return NextResponse.json(
+        { error: "Forbidden: Mode Pengujian dan simulasi tidak tersedia di environment Production." },
+        { status: 403 }
+      );
+    }
+
     const sessionUser = await getSessionUser();
     if (!sessionUser || sessionUser.systemRole !== "ADMIN") {
       return NextResponse.json(
@@ -58,8 +74,8 @@ export async function POST(request: Request) {
       success: true,
       state: updatedState,
       message: body.enabled
-        ? "Testing Mode berhasil DIAKTIFKAN. Operasi UAT dialihkan ke database terisolasi."
-        : "Testing Mode berhasil DINONAKTIFKAN. Operasi dikembalikan ke database produksi.",
+        ? "Mode Pengujian berhasil DIAKTIFKAN. Panel kontrol simulasi dan skenario UAT tersedia."
+        : "Mode Pengujian berhasil DINONAKTIFKAN.",
     });
   } catch (error: any) {
     console.error("[API testing-mode POST] Error:", error);

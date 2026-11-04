@@ -1,8 +1,8 @@
 /**
- * SPARTA SIAGA — Report Permission Helpers (Client-Safe)
+ * SPARTA SIAGA - Report Permission Helpers (Client-Safe)
  * 
  * Provides client-side synchronous authorization helpers for UI rendering and modals.
- * Pure logic — does NOT import database or server packages.
+ * Pure logic - does NOT import database or server packages.
  */
 
 import { SpartaRole, IncidentRecord, SystemRole, Scope, IncidentStatus } from "@/types/incident";
@@ -24,7 +24,7 @@ export interface UserContext {
 // ============================================================
 
 /**
- * Aturan Visibilitas Laporan untuk Head Office (HO) — Phase 1 Business Rules
+ * Aturan Visibilitas Laporan untuk Head Office (HO) - Phase 1 Business Rules
  *
  * Prinsip:
  * 1. Seluruh Laporan (Manual & Otomatis Gempa):
@@ -46,7 +46,12 @@ export interface UserContext {
 export function isReportVisibleToHo(report: IncidentRecord): boolean {
   if (!report) return false;
 
-  // 1. Blokir seluruh status yang belum atau tidak menerima konfirmasi/approval resmi BnM
+  // 1. Laporan gempa otomatis (automatic_earthquake) terlihat oleh HO sejak dibuat (read-only monitoring)
+  if (report.reportOrigin === "automatic_earthquake") {
+    return true;
+  }
+
+  // 2. Laporan manual lokal hanya boleh terlihat setelah konfirmasi resmi awal BnM Manajer
   const unapprovedStatuses: IncidentStatus[] = [
     "pending_confirmation",
     "verifying",
@@ -60,7 +65,7 @@ export function isReportVisibleToHo(report: IncidentRecord): boolean {
     return false;
   }
 
-  // 2. Status harus merupakan status pasca-approval yang sah
+  // 3. Status harus merupakan status pasca-approval yang sah
   const postApprovalStatuses: IncidentStatus[] = [
     "confirmed_affected",
     "confirmed_safe",
@@ -81,8 +86,7 @@ export function isReportVisibleToHo(report: IncidentRecord): boolean {
     return false;
   }
 
-  // 3. Wajib memiliki konfirmasi resmi BnM Manajer yang valid ('approved' atau 'safe').
-  // Status pasca-approval yang disematkan tanpa konfirmasi sah BnM Manajer tidak boleh terlihat oleh HO.
+  // 4. Wajib memiliki konfirmasi resmi BnM Manajer yang valid ('approved' atau 'safe')
   const bmDecision = report.verification?.bmApproval?.decision;
   return bmDecision === "approved" || bmDecision === "safe";
 }
@@ -155,7 +159,11 @@ export function canCreateManagementInstruction(
   user: UserContext
 ): boolean {
   if (user.systemRole === "ADMIN") return true; // Admin has full access
-  return user.role === "gm_ho" || user.role === "sm_ho";
+  return (
+    user.role === "gm_ho" ||
+    user.role === "sm_ho" ||
+    ((user.role === "admin" || user.role === "ho_admin") && user.scope === "HO")
+  );
 }
 
 export function canCreateEstimation(

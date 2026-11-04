@@ -71,10 +71,16 @@ export default function UserManagementPage() {
   const [filterRole, setFilterRole] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterScope, setFilterScope] = useState("");
+  const [filterSource, setFilterSource] = useState("");
   const [sortBy, setSortBy] = useState<"hierarchy" | "name-asc" | "name-desc" | "nik-asc" | "status-active">("hierarchy");
-  
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncReport, setSyncReport] = useState<any>(null);
+  const [syncModule, setSyncModule] = useState<"ALL" | "BUILDING" | "MAINTENANCE" | "ENGINEERING">("ALL");
+  const [syncDryRun, setSyncDryRun] = useState(true);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [formMode, setFormMode] = useState<"CREATE" | "EDIT">("CREATE");
   const [initialEditForm, setInitialEditForm] = useState<any>(null);
@@ -118,6 +124,7 @@ export default function UserManagementPage() {
     if (u.systemRole === "ADMIN") return 10;
     const r = (u.businessRole || "").toLowerCase();
     switch (r) {
+      case "admin": return 20;
       case "gm_ho": return 20;
       case "sm_ho": return 25;
       case "ho_admin": return 30;
@@ -140,8 +147,8 @@ export default function UserManagementPage() {
     // Search filter: nama, NIK, or email
     if (searchTerm.trim()) {
       const lower = searchTerm.trim().toLowerCase();
-      result = result.filter(u => 
-        (u.name && u.name.toLowerCase().includes(lower)) || 
+      result = result.filter(u =>
+        (u.name && u.name.toLowerCase().includes(lower)) ||
         (u.nik && u.nik.toLowerCase().includes(lower)) ||
         (u.email && u.email.toLowerCase().includes(lower))
       );
@@ -164,6 +171,15 @@ export default function UserManagementPage() {
     // Scope filter: HO or BRANCH
     if (filterScope) {
       result = result.filter(u => u.scope === filterScope);
+    }
+
+    // Source filter: LOCAL or SPARTA_SYNC
+    if (filterSource) {
+      if (filterSource === "LOCAL") {
+        result = result.filter(u => u.source === "LOCAL");
+      } else {
+        result = result.filter(u => u.source !== "LOCAL");
+      }
     }
 
     // Sort order
@@ -322,7 +338,7 @@ export default function UserManagementPage() {
     setShowPassword(false);
     setShowConfirmPassword(false);
     setIsResetPasswordOpen(false);
-    
+
     // Resolve canonical organizational branch for edit
     if (derived === "BRANCH" && user.branch) {
       const canonical = normalizeBranchCode(user.branch) || user.branch;
@@ -354,7 +370,7 @@ export default function UserManagementPage() {
       setBranchQuery("");
       setSelectedLocationObj(null);
     }
-    
+
     setCurrentStep(1);
     setIsModalOpen(true);
   };
@@ -527,6 +543,42 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleRunSync = async (dryRunMode: boolean) => {
+    try {
+      setIsSyncing(true);
+      const res = await fetch("/api/admin/users/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dryRun: dryRunMode,
+          sourceModule: syncModule,
+          allowUpdates: true,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Gagal menjalankan sinkronisasi user");
+      }
+
+      setSyncReport(json.data);
+      if (!dryRunMode) {
+        await fetchUsers();
+        toast.success("Sinkronisasi SPARTA Berhasil!", {
+          description: `${json.data.newCount} user baru ditambahkan, ${json.data.updatedCount} diperbarui.`,
+        });
+      } else {
+        toast.info("Pratinjau (Dry-Run) Selesai", {
+          description: `${json.data.validCount} valid dari ${json.data.totalScanned} records. Belum ada data disimpan.`,
+        });
+      }
+    } catch (err: any) {
+      toast.error("Gagal sinkronisasi", { description: err.message });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleDelete = async (user: User) => {
     if (user.systemRole === "ADMIN" || user.id === "usr_seed_admin") {
       alert("System Administrator dilindungi dan tidak dapat dihapus.");
@@ -593,12 +645,24 @@ export default function UserManagementPage() {
           </div>
         </div>
         {activeTab === "users" && (
-          <button 
-            onClick={handleOpenCreate}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Tambah User
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                setSyncReport(null);
+                setIsSyncModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-700 transition-colors shadow-xs"
+            >
+              <RotateCcw className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Sinkronisasi SPARTA
+            </button>
+            <button
+              onClick={handleOpenCreate}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Tambah User
+            </button>
+          </div>
         )}
       </div>
 
@@ -663,6 +727,10 @@ export default function UserManagementPage() {
               <span className="text-purple-700 dark:text-purple-400 font-medium">
                 Admin: <span className="font-bold">{users.filter(u => u.systemRole === "ADMIN").length}</span>
               </span>
+              <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+              <span className="text-blue-700 dark:text-blue-400 font-medium">
+                SPARTA Sync: <span className="font-bold">{users.filter(u => u.source !== "LOCAL").length}</span>
+              </span>
             </div>
             <div className="text-slate-500 dark:text-slate-400 text-[11px]">
               Menampilkan <span className="font-bold text-slate-800 dark:text-slate-200">{filteredUsers.length}</span> dari {users.length} akun
@@ -674,15 +742,15 @@ export default function UserManagementPage() {
             {/* Search Input with Clear Button */}
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-              <input 
-                type="text" 
-                placeholder="Cari nama, NIK, atau email..." 
+              <input
+                type="text"
+                placeholder="Cari nama, NIK, atau email..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-8 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
               />
               {searchTerm && (
-                <button 
+                <button
                   type="button"
                   onClick={() => setSearchTerm("")}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 rounded"
@@ -694,8 +762,8 @@ export default function UserManagementPage() {
             </div>
 
             {/* Filter Role Dropdown */}
-            <select 
-              value={filterRole} 
+            <select
+              value={filterRole}
               onChange={e => setFilterRole(e.target.value)}
               className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 min-w-[150px] focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -704,9 +772,7 @@ export default function UserManagementPage() {
                 <option value="ADMIN">System Administrator (ADMIN)</option>
               </optgroup>
               <optgroup label="Head Office (HO)">
-                <option value="gm_ho">GM HO (General Manager)</option>
-                <option value="sm_ho">SM HO (Senior Manager)</option>
-                <option value="ho_admin">HO Admin Monitoring</option>
+                <option value="admin">Admin (HO Administrator)</option>
               </optgroup>
               <optgroup label="Manajemen Cabang">
                 <option value="bm">BnM Manajer (Branch)</option>
@@ -720,13 +786,12 @@ export default function UserManagementPage() {
                 <option value="bms">BMS (Maintenance Staff)</option>
                 <option value="bes">BES (Engineering Staff)</option>
                 <option value="bbs">BBS (Building Staff)</option>
-                <option value="store_crew">Store Crew / Toko</option>
               </optgroup>
             </select>
 
             {/* Filter Status Aktif/Nonaktif */}
-            <select 
-              value={filterStatus} 
+            <select
+              value={filterStatus}
               onChange={e => setFilterStatus(e.target.value)}
               className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 min-w-[130px] focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -736,8 +801,8 @@ export default function UserManagementPage() {
             </select>
 
             {/* Filter Scope */}
-            <select 
-              value={filterScope} 
+            <select
+              value={filterScope}
               onChange={e => setFilterScope(e.target.value)}
               className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 min-w-[130px] focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -746,9 +811,20 @@ export default function UserManagementPage() {
               <option value="BRANCH">BRANCH (Cabang)</option>
             </select>
 
+            {/* Filter Sumber Data */}
+            <select
+              value={filterSource}
+              onChange={e => setFilterSource(e.target.value)}
+              className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 min-w-[130px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Semua Sumber</option>
+              <option value="LOCAL">Lokal (LOCAL)</option>
+              <option value="SPARTA_SYNC">SPARTA Sync</option>
+            </select>
+
             {/* Urutan Akun (Sort By) */}
-            <select 
-              value={sortBy} 
+            <select
+              value={sortBy}
               onChange={e => setSortBy(e.target.value as any)}
               className="border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 min-w-[170px] focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             >
@@ -796,9 +872,14 @@ export default function UserManagementPage() {
                   return (
                     <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900 dark:text-slate-200 flex items-center gap-1.5">
+                        <div className="font-bold text-slate-900 dark:text-slate-200 flex items-center gap-1.5 flex-wrap">
                           {isSystemAdmin && <Shield className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
                           <span>{user.name}</span>
+                          {user.source !== "LOCAL" && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800">
+                              SPARTA
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-col gap-0.5 mt-0.5">
                           <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
@@ -849,18 +930,18 @@ export default function UserManagementPage() {
 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button 
-                            onClick={() => handleOpenEdit(user)} 
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 transition-colors" 
+                          <button
+                            onClick={() => handleOpenEdit(user)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 transition-colors"
                             title={isSystemAdmin ? "Lihat Detail Admin" : "Edit User"}
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           {!isSystemAdmin && user.source === "LOCAL" && (
-                            <button 
-                              onClick={() => handleDelete(user)} 
+                            <button
+                              onClick={() => handleDelete(user)}
                               disabled={isDeleting === user.id}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors disabled:opacity-50" 
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors disabled:opacity-50"
                               title="Hapus / Nonaktifkan User"
                             >
                               {isDeleting === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -921,7 +1002,7 @@ export default function UserManagementPage() {
                 </div>
               </div>
             </div>
-            <button 
+            <button
               type="button"
               onClick={handleCloseModal}
               aria-label="Tutup modal"
@@ -954,7 +1035,7 @@ export default function UserManagementPage() {
               )}
 
               <form id="user-form" onSubmit={handleSave} className="space-y-6">
-                
+
                 {currentStep === 1 && (
                   <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
                     {/* SECTION A: Informasi Pengguna */}
@@ -962,38 +1043,38 @@ export default function UserManagementPage() {
                       <h3 className="text-xs font-bold text-slate-900 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
                         <UserIcon className="w-4 h-4 text-blue-500" /> Informasi Pengguna
                       </h3>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                           <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Nama Lengkap *</label>
-                          <input 
-                            required 
-                            value={editForm.name || ""} 
-                            onChange={e => setEditForm({...editForm, name: e.target.value})} 
-                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100" 
-                            placeholder="Mis. Ahmad Fauzi" 
+                          <input
+                            required
+                            value={editForm.name || ""}
+                            onChange={e => setEditForm({...editForm, name: e.target.value})}
+                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
+                            placeholder="Mis. Ahmad Fauzi"
                           />
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
                             NIK {formMode === "CREATE" && "*"}
                           </label>
-                          <input 
+                          <input
                             required={formMode === "CREATE"}
-                            value={editForm.nik || ""} 
-                            onChange={e => setEditForm({...editForm, nik: e.target.value})} 
-                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100" 
-                            placeholder="Mis. 24001234 atau DEMO-BMS-01" 
+                            value={editForm.nik || ""}
+                            onChange={e => setEditForm({...editForm, nik: e.target.value})}
+                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
+                            placeholder="Mis. 24001234 atau DEMO-BMS-01"
                           />
                         </div>
                         <div className="space-y-1.5 sm:col-span-2">
                           <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Email</label>
-                          <input 
-                            type="email" 
-                            value={editForm.email || ""} 
-                            onChange={e => setEditForm({...editForm, email: e.target.value})} 
-                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100" 
-                            placeholder="user@sparta.com" 
+                          <input
+                            type="email"
+                            value={editForm.email || ""}
+                            onChange={e => setEditForm({...editForm, email: e.target.value})}
+                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
+                            placeholder="user@sparta.com"
                           />
                         </div>
                       </div>
@@ -1006,7 +1087,7 @@ export default function UserManagementPage() {
                           <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-blue-500" /> Peran & Penempatan</div>
                           {formMode === "CREATE" && <span className="text-[10px] text-slate-400 font-medium italic font-normal">Akun operasional (USER)</span>}
                         </h3>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Business Role *</label>
@@ -1046,7 +1127,7 @@ export default function UserManagementPage() {
                               </span>
                             </div>
                           </div>
-                          
+
                           {editForm.scope === "BRANCH" && (
                             <div className="space-y-1.5 relative sm:col-span-2" ref={dropdownRef}>
                               <div className="flex items-center justify-between">
@@ -1059,21 +1140,21 @@ export default function UserManagementPage() {
                                 Menentukan cabang operasional pengguna yang membawahi seluruh gerai dalam wilayahnya.
                               </p>
                               <div className="relative mt-1">
-                                <input 
-                                  placeholder="Cari cabang (misal: CIKOKOL, BANDUNG, G001)..." 
-                                  value={branchQuery} 
+                                <input
+                                  placeholder="Cari cabang (misal: CIKOKOL, BANDUNG, G001)..."
+                                  value={branchQuery}
                                   onChange={e => {
                                     setBranchQuery(e.target.value);
                                     if (editForm.branch) setEditForm({ ...editForm, branch: "" });
                                     setIsBranchDropdownOpen(true);
-                                  }} 
+                                  }}
                                   onFocus={() => {
                                     setIsBranchDropdownOpen(true);
                                   }}
                                   className={`w-full border ${(!editForm.branch && branchQuery) ? 'border-amber-400' : 'border-slate-200 dark:border-slate-700'} rounded-xl pl-10 pr-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100`}
                                 />
                                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                                
+
                                 {/* Search Dropdown */}
                                 {isBranchDropdownOpen && (branchResults.length > 0 || isSearchingBranch || branchQuery.length > 0) && (
                                   <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-64 overflow-y-auto text-sm animate-in fade-in slide-in-from-top-2">
@@ -1087,8 +1168,8 @@ export default function UserManagementPage() {
                                           const code = loc.code || loc.cabang || loc.kode_toko;
                                           const name = loc.name || `Cabang ${code}`;
                                           return (
-                                            <li 
-                                              key={idx} 
+                                            <li
+                                              key={idx}
                                               onClick={() => handleLocationSelect(loc)}
                                               className="px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex flex-col border-b border-slate-50 dark:border-slate-800/50 last:border-0"
                                             >
@@ -1151,7 +1232,7 @@ export default function UserManagementPage() {
                         <h3 className="text-xs font-bold text-slate-900 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
                           <Lock className="w-4 h-4 text-blue-500" /> Keamanan Akun
                         </h3>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Password *</label>
@@ -1197,7 +1278,7 @@ export default function UserManagementPage() {
                         </div>
                       </div>
                     )}
-                    
+
                     {formMode === "EDIT" && (
                       <div className="pt-1">
                         <button
@@ -1221,10 +1302,10 @@ export default function UserManagementPage() {
                       </h3>
                       <div className="space-y-1.5 w-full md:w-1/2">
                         <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Status *</label>
-                        <select 
+                        <select
                           disabled={editForm.systemRole === "ADMIN"}
-                          value={editForm.status || "ACTIVE"} 
-                          onChange={e => setEditForm({...editForm, status: e.target.value as any})} 
+                          value={editForm.status || "ACTIVE"}
+                          onChange={e => setEditForm({...editForm, status: e.target.value as any})}
                           className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${editForm.systemRole === "ADMIN" ? "opacity-60 cursor-not-allowed" : ""}`}
                         >
                           <option value="ACTIVE">ACTIVE</option>
@@ -1243,35 +1324,35 @@ export default function UserManagementPage() {
             {/* Modal Footer */}
             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
               {currentStep === 2 ? (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handlePrevStep}
                   className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Kembali
                 </button>
               ) : (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleCloseModal}
                   className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
                 >
                   Batal
                 </button>
               )}
-              
+
               {currentStep === 1 ? (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleNextStep}
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors"
                 >
                   Lanjut
                 </button>
               ) : (
-                <button 
-                  type="submit" 
-                  form="user-form" 
+                <button
+                  type="submit"
+                  form="user-form"
                   disabled={isSubmitting}
                   className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors disabled:opacity-50"
                 >
@@ -1314,6 +1395,206 @@ export default function UserManagementPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal Sinkronisasi SPARTA */}
+      <AppDialog
+        open={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        title="Sinkronisasi User SPARTA"
+        description="Sinkronisasi pengguna dari data Building, Maintenance, dan Engineering ke 9 peran kanonikal SIAGA"
+        className="sm:!max-w-3xl"
+      >
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85dvh] overscroll-contain">
+          {/* Header */}
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-bold text-lg text-slate-900 dark:text-white">Sinkronisasi User SPARTA</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Idempoten, validasi identitas, proteksi duplikasi NIK, dan isolasi role 9 persona kanonikal.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(false)}
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="p-6 overflow-y-auto space-y-5">
+            {/* Source Module Selection */}
+            <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-3">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                Sumber Data Ekosistem SPARTA:
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: "ALL", label: "Semua Modul" },
+                  { id: "MAINTENANCE", label: "Maintenance" },
+                  { id: "BUILDING", label: "Building" },
+                  { id: "ENGINEERING", label: "Engineering" },
+                ].map((mod) => (
+                  <button
+                    key={mod.id}
+                    type="button"
+                    onClick={() => setSyncModule(mod.id as any)}
+                    className={`py-2 px-3 rounded-lg text-xs font-semibold border transition-all text-center ${
+                      syncModule === mod.id
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {mod.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => handleRunSync(true)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                  Uji Coba (Dry-Run Preview)
+                </button>
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => handleRunSync(false)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2 shadow-xs disabled:opacity-50"
+                >
+                  {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                  Jalankan Sinkronisasi Database
+                </button>
+              </div>
+            </div>
+
+            {/* Sync Report / Results Preview */}
+            {syncReport && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Hasil {syncReport.dryRun ? "Pratinjau (Dry-Run)" : "Eksekusi Sinkronisasi"}
+                  </h3>
+                  <span className="text-[11px] text-slate-400 font-mono">{syncReport.timestamp}</span>
+                </div>
+
+                {/* Counters */}
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center text-xs">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700">
+                    <div className="text-slate-400 text-[10px] uppercase font-semibold">Total Data</div>
+                    <div className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5">
+                      {syncReport.totalScanned}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200/60 dark:border-emerald-800/40">
+                    <div className="text-emerald-700 dark:text-emerald-400 text-[10px] uppercase font-semibold">User Baru</div>
+                    <div className="text-base font-black text-emerald-800 dark:text-emerald-300 mt-0.5">
+                      {syncReport.newCount}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200/60 dark:border-blue-800/40">
+                    <div className="text-blue-700 dark:text-blue-400 text-[10px] uppercase font-semibold">Diperbarui</div>
+                    <div className="text-base font-black text-blue-800 dark:text-blue-300 mt-0.5">
+                      {syncReport.updatedCount}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700">
+                    <div className="text-slate-500 text-[10px] uppercase font-semibold">Tetap / Sesuai</div>
+                    <div className="text-base font-black text-slate-600 dark:text-slate-300 mt-0.5">
+                      {syncReport.unchangedCount}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200/60 dark:border-amber-800/40">
+                    <div className="text-amber-700 dark:text-amber-400 text-[10px] uppercase font-semibold">Dilewati</div>
+                    <div className="text-base font-black text-amber-800 dark:text-amber-300 mt-0.5">
+                      {syncReport.skippedCount}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl border border-purple-200/60 dark:border-purple-800/40">
+                    <div className="text-purple-700 dark:text-purple-400 text-[10px] uppercase font-semibold">Perlu Review</div>
+                    <div className="text-base font-black text-purple-800 dark:text-purple-300 mt-0.5">
+                      {syncReport.flaggedForReviewCount || 0}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detailed Table Preview */}
+                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 sticky top-0">
+                      <tr>
+                        <th className="py-2 px-3">Identitas (NIK/Email/SSO)</th>
+                        <th className="py-2 px-3">Nama</th>
+                        <th className="py-2 px-3">Modul</th>
+                        <th className="py-2 px-3">Role Target</th>
+                        <th className="py-2 px-3">Cabang</th>
+                        <th className="py-2 px-3">Status</th>
+                        <th className="py-2 px-3">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {syncReport.records.map((r: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          <td className="py-2 px-3 font-mono font-bold text-slate-800 dark:text-slate-200 truncate max-w-[130px]" title={r.identifier || r.nik || r.email || "-"}>
+                            {r.identifier || r.nik || r.email || "-"}
+                          </td>
+                          <td className="py-2 px-3 text-slate-900 dark:text-slate-100">{r.name}</td>
+                          <td className="py-2 px-3 font-mono text-[10px] text-slate-500">{r.sourceModule}</td>
+                          <td className="py-2 px-3 font-semibold text-blue-700 dark:text-blue-400">
+                            {r.targetRole ? getRoleDisplayLabel(r.targetRole) : "-"}
+                          </td>
+                          <td className="py-2 px-3 text-slate-600 dark:text-slate-300">{r.targetBranch || "HO"}</td>
+                          <td className="py-2 px-3">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                r.status === "NEW"
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : r.status === "UPDATE"
+                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                  : r.status === "UNCHANGED"
+                                  ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                                  : r.status === "FLAGGED_FOR_REVIEW"
+                                  ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"
+                                  : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                              }`}
+                            >
+                              {r.status === "FLAGGED_FOR_REVIEW" ? "REVIEW" : r.status}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-[11px] text-slate-500 max-w-xs truncate" title={r.reason}>
+                            {r.reason}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end bg-slate-50/50 dark:bg-slate-900/50">
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(false)}
+              className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition-colors"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      </AppDialog>
     </div>
   );
 }

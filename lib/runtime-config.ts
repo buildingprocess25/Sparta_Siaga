@@ -174,7 +174,8 @@ function parseOptionalUrl(
   try {
     const raw = getEnvValue(env, selectedName, nodeEnv)!;
     const url = new URL(raw);
-    if (nodeEnv === "production" && url.protocol !== "https:") {
+    const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (nodeEnv === "production" && url.protocol !== "https:" && !isLocalhost) {
       throw new RuntimeConfigError(`${selectedName} must use HTTPS in production`);
     }
     return url;

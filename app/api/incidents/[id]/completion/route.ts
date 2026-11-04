@@ -7,12 +7,13 @@ import {
   CompletionApprovalService,
   resolveApprovalRoute,
 } from "@/lib/completion-approval-service";
+import { ProgressService } from "@/lib/progress-service";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -32,11 +33,27 @@ export async function GET(_: Request, { params }: RouteContext) {
     const approval = await CompletionApprovalService.getOrCreateApproval(id);
     const history = await CompletionApprovalService.getApprovalHistory(id);
 
+    const hasFinalEvidence = await ProgressService.hasFinalOrHandoverEvidence(id);
+    let hasMilestoneSt = false;
+    try {
+      const { getMilestones } = await import("@/lib/milestone-service");
+      const milestones = await getMilestones(id);
+      const st = milestones.find((m) => m.stageKey === "SERAH_TERIMA");
+      hasMilestoneSt = Boolean(st && st.status === "SUBMITTED" && (st.documentStorageKey || st.documentUrl));
+    } catch {
+      // ignore
+    }
+
+    const isCompleted = (report.progress ?? 0) >= 100 && (hasFinalEvidence || hasMilestoneSt);
+
     return NextResponse.json({
       data: {
         approval,
         route: resolvedRoute,
         history,
+        hasFinalEvidence,
+        hasMilestoneSt,
+        isCompleted,
       },
     });
   } catch (err: any) {

@@ -98,9 +98,10 @@ export default function DashboardPage() {
     const r = (currentUser?.businessRole || currentUser?.role || "").toLowerCase();
     const isBMM = !isAdmin && !isHO && r === "bm";
     const isBES = !isAdmin && !isHO && r === "bes";
-    const isBMS = !isAdmin && !isHO && !isBMM && !isBES;
+    const isBBS = !isAdmin && !isHO && r === "bbs";
+    const isBMS = !isAdmin && !isHO && r === "bms";
 
-    return { isAdmin, isHO, isBMM, isBES, isBMS, roleCode: r };
+    return { isAdmin, isHO, isBMM, isBES, isBBS, isBMS, roleCode: r };
   }, [currentUser]);
 
   // Derived Metrics

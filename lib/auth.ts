@@ -31,6 +31,12 @@ function buildUserContext(dbUser: UserModel): UserContext | null {
 
   const isSystemAdmin = dbUser.systemRole === "ADMIN";
 
+  // Enforce sso_status for synchronized users
+  if (dbUser.ssoStatus && dbUser.ssoStatus !== "ACTIVE") {
+    console.warn(`[Auth] User ${dbUser.id} has non-active SSO status '${dbUser.ssoStatus}'. Access denied.`);
+    return null;
+  }
+
   return {
     id: dbUser.id,
     name: dbUser.name,

@@ -423,17 +423,18 @@ export function MapControls({
         {isMinimized ? (
           <button
             onClick={() => setIsMinimized(false)}
-            className={`p-2.5 rounded-xl shadow-xl backdrop-blur-md transition-all hover:scale-105 flex items-center justify-center ${
+            className={`px-3 py-2 rounded-xl shadow-xl backdrop-blur-md transition-all hover:scale-105 flex items-center gap-2 text-xs font-bold border ${
               isDark
-                ? "bg-slate-900/95 border border-slate-700 text-white hover:bg-slate-800"
-                : "bg-white/95 border border-slate-300 text-slate-800 hover:bg-slate-100 shadow-md"
+                ? "bg-slate-900/95 border-slate-700 text-white hover:bg-slate-800"
+                : "bg-white/95 border-slate-300 text-slate-800 hover:bg-slate-100 shadow-md"
             }`}
             title="Buka Kontrol Peta"
             aria-label="Buka Kontrol Peta"
           >
-            <Layers className="w-4 h-4 text-cyan-500" />
+            <Layers className="w-4 h-4 text-cyan-500 shrink-0" />
+            <span className="hidden xl:inline">Kontrol Peta</span>
             {showRadar && (
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping ml-1" />
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
             )}
           </button>
         ) : (
@@ -487,7 +488,7 @@ export function MapControls({
             onTouchMove={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className={`relative w-full rounded-t-2xl shadow-2xl p-4 sm:p-5 border-t max-h-[82vh] overflow-y-auto overscroll-y-contain pb-20 animate-in slide-in-from-bottom duration-200 z-10 ${
+            className={`relative w-full rounded-t-2xl shadow-2xl p-4 sm:p-5 border-t max-h-[82vh] overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom duration-200 z-10 ${
               isDark
                 ? "bg-slate-900 border-slate-800 text-white"
                 : "bg-white border-slate-200 text-slate-900"

@@ -17,7 +17,79 @@ export async function POST(request: Request) {
       );
     }
 
+    const { isProductionEnvironment, isUatEnvironment } = await import("@/lib/environment-policy");
+    const isProd = isProductionEnvironment();
+    const isUat = isUatEnvironment();
+
+    if (isProd || isUat) {
+      const user = await dbGetUserByIdentifier(identifier);
+      if (
+        isProd &&
+        user &&
+        (user.ssoStatus === "UAT_PERSONA" ||
+          user.email?.endsWith("@sparta-siaga.local") ||
+          user.nik?.startsWith("UAT_") ||
+          user.id.startsWith("USR-DEMO") ||
+          user.id.startsWith("USR-BMS-001") ||
+          user.id.startsWith("USR-BM-G001"))
+      ) {
+        return NextResponse.json(
+          {
+            error: "Akun pengujian UAT tidak dapat digunakan pada environment Production.",
+            code: "UAT_LOGIN_FORBIDDEN_IN_PRODUCTION",
+          },
+          { status: 403 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: "Autentikasi langsung dengan password dinonaktifkan. Wajib masuk melalui Portal SSO SPARTA.",
+          code: "SSO_LOGIN_REQUIRED",
+        },
+        { status: 403 }
+      );
+    }
+
     const user = await dbGetUserByIdentifier(identifier);
+
+    if (user) {
+      const { isProductionEnvironment } = await import("@/lib/environment-policy");
+      if (isProductionEnvironment()) {
+        if (
+          user.ssoStatus === "UAT_PERSONA" ||
+          user.email?.endsWith("@sparta-siaga.local") ||
+          user.nik?.startsWith("UAT_") ||
+          user.id.startsWith("USR-DEMO") ||
+          user.id.startsWith("USR-BMS-001") ||
+          user.id.startsWith("USR-BM-G001")
+        ) {
+          return NextResponse.json(
+            {
+              error: "Akun pengujian UAT tidak dapat digunakan pada environment Production.",
+              code: "UAT_LOGIN_FORBIDDEN_IN_PRODUCTION",
+            },
+            { status: 403 }
+          );
+        }
+      }
+
+      // Enforce SSO authentication for UAT personas and synchronized candidate users (no password bypass)
+      if (
+        user.ssoStatus === "UAT_PERSONA" ||
+        user.ssoStatus === "PENDING_SSO_GRANT" ||
+        user.email?.endsWith("@sparta-siaga.local") ||
+        user.nik?.startsWith("UAT_")
+      ) {
+        return NextResponse.json(
+          {
+            error: "Akun ini wajib masuk melalui Portal SPARTA (SSO).",
+            code: "SSO_LOGIN_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     if (!user) {
       return NextResponse.json(

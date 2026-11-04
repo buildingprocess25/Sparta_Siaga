@@ -241,8 +241,8 @@ export async function sendSinglePushNotification(
 
       // Delivery confirmed by Push Service provider (FCM / Apple APNs / Mozilla)
       await pool.query(
-        `UPDATE user_push_subscriptions 
-         SET last_success_at = NOW(), failure_count = 0 
+        `UPDATE user_push_subscriptions
+         SET last_success_at = NOW(), failure_count = 0
          WHERE endpoint = $1`,
         [sub.endpoint]
       ).catch(() => {});
@@ -289,8 +289,8 @@ export async function sendSinglePushNotification(
 
       // Record failure in database
       await pool.query(
-        `UPDATE user_push_subscriptions 
-         SET last_failure_at = NOW(), failure_count = COALESCE(failure_count, 0) + 1 
+        `UPDATE user_push_subscriptions
+         SET last_failure_at = NOW(), failure_count = COALESCE(failure_count, 0) + 1
          WHERE endpoint = $1`,
         [sub.endpoint]
       ).catch(() => {});
@@ -355,19 +355,21 @@ export async function dispatchEarthquakePushNotifications(params: {
 
   try {
     // 1. Fetch eligible subscriptions:
-    // - Branch-specific subscribers (e.g. BMS/BES in affected branch)
-    // - National subscribers (HO Users with branch IS NULL, 'NASIONAL', or empty)
+    // - National subscribers (all authorized branches & HO when branch is NATIONAL/NASIONAL/ALL)
+    // - Branch-specific subscribers (e.g. BMS/BES in affected branch + HO)
     const targetBranch = params.branch.trim().toUpperCase();
+    const isNational = targetBranch === 'NATIONAL' || targetBranch === 'NASIONAL' || targetBranch === 'ALL';
     const subsRes = await pool.query<PushSubscriptionRecord>(
       `SELECT s.id, s.user_id, s.endpoint, s.p256dh, s.auth, s.user_agent, s.branch, s.device_type, s.failure_count
        FROM user_push_subscriptions s
        LEFT JOIN users u ON s.user_id = u.id
        WHERE (u.id IS NULL OR (u.status = 'ACTIVE' AND LOWER(COALESCE(u.business_role, '')) NOT IN ('tim_toko', 'rekanan')))
-         AND (UPPER(s.branch) = $1 
-          OR s.branch IS NULL 
+         AND ($1::boolean = true
+          OR UPPER(s.branch) = $2
+          OR s.branch IS NULL
           OR UPPER(s.branch) = 'NASIONAL'
           OR s.branch = '')`,
-      [targetBranch]
+      [isNational, targetBranch]
     );
 
     if (subsRes.rows.length === 0) {

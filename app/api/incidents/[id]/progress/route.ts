@@ -41,6 +41,16 @@ export async function GET(request: Request, { params }: RouteContext) {
         checkUserPermission({ user: sessionUser, permission: "REPORT_CLOSE", report: incident }),
       ]);
 
+    let hasMilestoneSt = false;
+    try {
+      const { getMilestones } = await import("@/lib/milestone-service");
+      const milestones = await getMilestones(id);
+      const st = milestones.find((m) => m.stageKey === "SERAH_TERIMA");
+      hasMilestoneSt = Boolean(st && st.status === "SUBMITTED" && (st.documentStorageKey || st.documentUrl));
+    } catch {
+      // ignore
+    }
+
     const isEstimationEligible =
       estimationRoute !== null &&
       (estimationRoute.workStatus === "READY_FOR_WORK" ||
@@ -66,6 +76,7 @@ export async function GET(request: Request, { params }: RouteContext) {
         latestProgress: latestStatus.latestPercentage,
         workStatus: latestStatus.workStatus,
         hasFinalEvidence,
+        hasMilestoneSt,
         history: protectedHistory,
         canUpdateProgress: updateCheck.authorized,
         updateProgressReason: updateCheck.reason || "",
@@ -151,6 +162,33 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
+    // 4b. Strict Facility Category vs Specialist Role Enforcement (Section 5)
+    // BMS for Stores, BES for Distribution Centers, BBS for Office/Buildings
+    const tkp = (incident.tkpType || (incident.locationKind === "FACILITY" ? "dc" : "toko")).toLowerCase();
+    const expectedRole = tkp === "dc" ? "bes" : tkp === "building" ? "bbs" : "bms";
+    const userRole = (sessionUser.role || "").toLowerCase();
+    if (userRole !== expectedRole) {
+      return NextResponse.json(
+        {
+          error: `Pembaruan progress untuk fasilitas '${tkp.toUpperCase()}' hanya dapat dilakukan oleh spesialis ${expectedRole.toUpperCase()} cabang terkait.`,
+          code: "FACILITY_ROLE_MISMATCH",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4c. Branch Scope Enforcement
+    const cleanBranch = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
+    if (sessionUser.systemRole !== "ADMIN" && cleanBranch(sessionUser.branch) !== cleanBranch(incident.branch)) {
+      return NextResponse.json(
+        {
+          error: `Aksi pembaruan progress hanya berlaku untuk cabang sendiri (${sessionUser.branch || "N/A"}), bukan cabang ${incident.branch}.`,
+          code: "BRANCH_MISMATCH",
+        },
+        { status: 403 }
+      );
+    }
+
     // 5. Cek status estimasi dan kesiapan kerja (Section D & I)
     // Update Progress HANYA boleh aktif jika Work Status = READY_FOR_WORK atau IN_PROGRESS.
     const estimationRoute = await EstimationIntegrationService.getRouteByReportId(id);
@@ -206,12 +244,20 @@ export async function POST(request: Request, { params }: RouteContext) {
     const stage = validStages.includes(rawStage.toUpperCase()) ? rawStage.toUpperCase() : "PENGERJAAN";
     const defaultPhotoType = ((formData.get("photo_type") as string) || "PROGRESS").toUpperCase() as PhotoType;
 
-    if (!rawPercentage) {
+    if (rawPercentage === undefined || rawPercentage === null || rawPercentage === "") {
       return NextResponse.json({ error: "Persentase progress wajib diisi." }, { status: 400 });
     }
 
-    const percentage = parseInt(rawPercentage.toString(), 10);
-    if (isNaN(percentage) || percentage < 0 || percentage > 100) {
+    const rawPercentageStr = rawPercentage.toString().trim();
+    if (!/^\d+$/.test(rawPercentageStr)) {
+      return NextResponse.json(
+        { error: "Persentase progress harus berupa bilangan bulat antara 0% dan 100%." },
+        { status: 400 }
+      );
+    }
+
+    const percentage = Number(rawPercentageStr);
+    if (!Number.isInteger(percentage) || percentage < 0 || percentage > 100) {
       return NextResponse.json(
         { error: "Persentase progress harus berada di antara 0% dan 100%." },
         { status: 400 }
@@ -227,10 +273,11 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     // Monotonic check against latest progress
     const latestStatus = await ProgressService.getLatestProgress(id);
-    if (percentage < latestStatus.latestPercentage) {
+    const currentBaseProgress = Math.max(incident.progress || 0, latestStatus.latestPercentage);
+    if (percentage < currentBaseProgress) {
       return NextResponse.json(
         {
-          error: `Progress tidak boleh lebih kecil dari progress sebelumnya (${latestStatus.latestPercentage}%).`,
+          error: `Progress tidak boleh lebih kecil dari progress sebelumnya (${currentBaseProgress}%).`,
         },
         { status: 400 }
       );

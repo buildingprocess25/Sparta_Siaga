@@ -1,4 +1,4 @@
-import { getProductionDbPool } from "./db";
+import { getDbPool } from "./db";
 import { Earthquake } from "@/types/disaster";
 
 export interface EarthquakeEventRecord {
@@ -28,7 +28,7 @@ export interface EarthquakeEventRecord {
  */
 export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
   try {
-    const pool = getProductionDbPool();
+    const pool = getDbPool();
     const occurredAt = new Date(eq.timestamp).toISOString();
     const validatedSource = (eq.source === "BMKG" || eq.source === "USGS") ? eq.source : (eq.source || "UNVERIFIED");
 
@@ -78,7 +78,7 @@ export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
  */
 export async function dbGetEarthquakeEventById(id: string): Promise<EarthquakeEventRecord | null> {
   try {
-    const pool = getProductionDbPool();
+    const pool = getDbPool();
     const { rows } = await pool.query(
       `SELECT * FROM earthquake_events WHERE id = $1 LIMIT 1`,
       [id]
@@ -116,7 +116,7 @@ export async function dbGetEarthquakeEventById(id: string): Promise<EarthquakeEv
  */
 export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<Earthquake[]> {
   try {
-    const pool = getProductionDbPool();
+    const pool = getDbPool();
     const { rows } = await pool.query(
       `SELECT * FROM earthquake_events 
        WHERE occurred_at >= NOW() - ($1 || ' hours')::interval

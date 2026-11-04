@@ -88,6 +88,7 @@ export type TkpType = "toko" | "dc" | "building";
  * Role sesuai glossary yang telah dikonfirmasi
  */
 export type SpartaRole =
+  | "admin"         // Admin Head Office (Konsolidasi HO Admin, GM HO, SM HO)
   | "ho_admin"
   | "gm_ho"         // General Manager HO — dapat memberi instruksi ke cabang
   | "sm_ho"         // Senior Manager HO — dapat memberi instruksi ke cabang

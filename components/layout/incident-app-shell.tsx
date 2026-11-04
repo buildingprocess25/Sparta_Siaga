@@ -8,20 +8,14 @@ import {
   LayoutDashboard,
   MapPin,
   ClipboardList,
-  Activity,
   History,
   Settings,
   Bell,
   Search,
-  Calendar,
   ShieldAlert,
   Store,
-  ChevronDown,
   ChevronUp,
-  Menu,
   X,
-  Sun,
-  Moon,
   UserCog,
   MoreHorizontal,
   PanelLeftClose,
@@ -97,6 +91,7 @@ export function IncidentAppShell({
   const pathname = usePathname();
 
   const businessRoleDisplayMap: Record<string, string> = {
+    admin: "Admin",
     ho_admin: "HO Admin",
     gm_ho: "GM HO",
     sm_ho: "SM HO",
@@ -106,6 +101,7 @@ export function IncidentAppShell({
     bmc: "BMC",
     bec: "BEC",
     bes: "BES",
+    bbs: "BBS",
     bms: "BMS",
     tim_toko: "Tim Toko",
     tim_maintenance: "Sparta Maintenance",
@@ -166,6 +162,18 @@ export function IncidentAppShell({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isRoleDropdownOpen, isMoreSheetOpen]);
+
+  // Close profile dropdown popover when clicking outside
+  React.useEffect(() => {
+    if (!isRoleDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setIsRoleDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isRoleDropdownOpen]);
 
   React.useEffect(() => {
     fetch("/api/auth/me")
@@ -261,6 +269,20 @@ export function IncidentAppShell({
   const isNavActive = (href: string, currentPath: string) => {
     if (href === "/reports") return currentPath === "/reports";
     return currentPath === href || currentPath.startsWith(`${href}/`);
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.redirectTo) {
+        window.location.href = data.redirectTo;
+        return;
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+    window.location.href = '/login';
   };
 
   return (
@@ -489,10 +511,7 @@ export function IncidentAppShell({
               <div className={`p-2 border-t ${isDark ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-white"}`}>
                 <button
                   type="button"
-                  onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                    window.location.href = '/login';
-                  }}
+                  onClick={handleLogout}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-bold transition-colors text-red-600 dark:text-red-400 ${
                     isDark ? "hover:bg-red-950/50" : "hover:bg-red-50"
                   }`}
@@ -520,9 +539,14 @@ export function IncidentAppShell({
                 ⚠️ MODE PENGUJIAN AKTIF — Transaksi UAT dialihkan ke database terisolasi. Notifikasi email &amp; push eksternal diblokir.
               </span>
             </div>
-            <span className="bg-slate-950/20 text-slate-950 px-2 py-0.5 rounded text-[10px] font-mono font-black uppercase tracking-wider shrink-0 ml-2">
-              UAT ISOLATED
-            </span>
+            <Link
+              href="/settings"
+              className="bg-slate-950/20 hover:bg-slate-950/30 text-slate-950 px-2.5 py-1 rounded text-[10px] font-mono font-black uppercase tracking-wider shrink-0 ml-2 transition-colors inline-flex items-center gap-1"
+              title="Buka panel simulasi di Pengaturan Sistem"
+            >
+              <span>🧪 UAT ISOLATED</span>
+              <span className="hidden sm:inline opacity-80">· Panel Kontrol →</span>
+            </Link>
           </div>
         )}
 
@@ -533,7 +557,7 @@ export function IncidentAppShell({
               isDark ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
             }`}
           >
-            {/* Left: Mobile hamburger & title, Desktop Breadcrumbs */}
+            {/* Left: Mobile Brand Title, Desktop Breadcrumbs */}
             <div className="flex items-center gap-3 flex-1 min-w-0">              {/* Mobile Header Title */}
               <div className="lg:hidden flex items-center gap-2.5 min-w-0">
                 <Image src="/brand/building_logo.png" alt="SPARTA" width={28} height={28} className="shrink-0 object-contain" />
@@ -628,7 +652,7 @@ export function IncidentAppShell({
         <main
           className={`relative flex-1 transition-colors duration-200 flex flex-col min-w-0 min-h-0 ${
             isMonitoringPage
-              ? "p-0 m-0 w-full h-full overflow-hidden pb-16 lg:pb-0"
+              ? "p-0 m-0 w-full h-full overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom,0px))] lg:pb-0"
               : `overflow-y-auto pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:pb-6 lg:px-5 ${
                   isDark ? "bg-slate-900" : "bg-[#f5f7fa]"
                 }`
@@ -858,10 +882,7 @@ export function IncidentAppShell({
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                    window.location.href = '/login';
-                  }}
+                  onClick={handleLogout}
                   className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-bold transition-colors min-h-[44px]"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>

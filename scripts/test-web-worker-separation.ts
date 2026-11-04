@@ -200,7 +200,7 @@ function testWebWorkerIsolation() {
 // -----------------------------------------------------------------------------
 async function runAll() {
   console.log("============================================================");
-  console.log("SPARTA SIAGA — ARCHITECTURE SEPARATION: WEB VS WORKER");
+  console.log("SPARTA SIAGA - ARCHITECTURE SEPARATION: WEB VS WORKER");
   console.log("============================================================");
 
   testWebDevelopmentRuntime();

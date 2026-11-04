@@ -5,6 +5,11 @@
 
 # testing
 /coverage
+/artifacts/phase2/test-results/
+/test-results/
+/playwright-report/
+/blob-report/
+/radius_vs_mmi_comparison.csv
 
 # next.js
 /.next/
@@ -57,3 +62,6 @@ graphify-out/
 
 /scratch/
 /.graphifyignore
+
+EVALUATOR_CREDENTIALS*
+*.credentials.local

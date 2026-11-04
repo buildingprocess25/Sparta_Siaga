@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { dbGetAllIncidents, dbCreateIncident } from "@/lib/incident-db";
+import { dbGetAllIncidents, dbCreateIncident, dbGetIncidentById } from "@/lib/incident-db";
 import { IncidentRecord, isActiveStatus, isHistoryStatus } from "@/types/incident";
 import { getSessionUser } from "@/lib/auth";
 import { ReportDistributionService } from "@/lib/distribution-service";
@@ -7,7 +7,7 @@ import { canAccessReport } from "@/lib/report-access-policy";
 import { isReportVisibleToHo } from "@/lib/report-permissions";
 import { checkUserPermission } from "@/lib/permission-service";
 
-export async function GET(request?: Request) {
+export async function GET(request: Request) {
   try {
     const sessionUser = await getSessionUser(request);
     if (!sessionUser) {
@@ -70,7 +70,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (sessionUser.scope === "HO" && sessionUser.systemRole !== "ADMIN") {
+    // System Administrator tidak boleh membuat laporan operasional (khusus audit & administrasi teknis)
+    if (sessionUser.systemRole === "ADMIN") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Akun System Administrator tidak diizinkan membuat laporan operasional.",
+          code: "ADMIN_OPERATIONAL_BYPASS_BLOCKED",
+        },
+        { status: 403 }
+      );
+    }
+
+    if (sessionUser.scope === "HO") {
       return NextResponse.json(
         {
           error: "Forbidden: Pengguna HO hanya memiliki hak akses baca (read-only).",
@@ -91,44 +102,171 @@ export async function POST(request: Request) {
     }
 
     const body: IncidentRecord = await request.json();
-    if (!body.id || !body.disasterType || !body.storeId) {
+    if (!body.id || !body.disasterType || !body.storeId || !body.branch) {
       return NextResponse.json(
-        { error: "Data laporan tidak lengkap (id, disasterType, storeId wajib diisi)" },
+        { error: "Data laporan tidak lengkap (id, disasterType, storeId, branch wajib diisi)" },
         { status: 400 }
       );
     }
 
-    const isAdmin = sessionUser.systemRole === "ADMIN";
-    const isHO = sessionUser.scope === "HO" && !isAdmin;
-    const r = (sessionUser.role || "").toLowerCase();
-    const isBMM = !isAdmin && !isHO && r === "bm";
-    const isBES = !isAdmin && !isHO && r === "bes";
-    const isBMS = !isAdmin && !isHO && !isBMM && !isBES;
-
-    const isFacilityReport =
-      body.locationKind === "FACILITY" ||
-      body.tkpType === "dc" ||
-      (body.tkpType as string) === "DC" ||
-      (body.storeId && (body.storeId.startsWith("FACILITY:") || body.storeId.startsWith("FAC-")));
-
-    if (isBMS && isFacilityReport) {
+    // 1. Guard against unauthorized overwrite / ID collision
+    const existingIncident = await dbGetIncidentById(body.id);
+    if (existingIncident) {
       return NextResponse.json(
         {
-          error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Fasilitas/DC.",
-          code: "BMS_FACILITY_REPORT_FORBIDDEN",
+          error: "Conflict: Laporan dengan ID tersebut sudah terdaftar di sistem. Pembuatan laporan baru tidak boleh menggunakan ID yang sudah ada.",
+          code: "INCIDENT_ID_CONFLICT",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 2. Validate initial lifecycle state server-side
+    const VALID_INITIAL_STATUSES = new Set([
+      "pending_confirmation",
+      "verifying",
+      "investigating",
+      "draft",
+    ]);
+
+    if (body.status && !VALID_INITIAL_STATUSES.has(body.status)) {
+      return NextResponse.json(
+        {
+          error: `Bad Request: Status awal '${body.status}' tidak valid. Laporan baru tidak dapat langsung melewati tahapan verifikasi atau approval.`,
+          code: "INVALID_INITIAL_STATUS",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (typeof body.progress === "number" && body.progress !== 0) {
+      return NextResponse.json(
+        {
+          error: "Bad Request: Progres laporan baru harus bernilai 0.",
+          code: "INVALID_INITIAL_PROGRESS",
+        },
+        { status: 400 }
+      );
+    }
+
+    body.status = body.status || "pending_confirmation";
+    body.progress = 0;
+
+    const r = (sessionUser.role || "").toLowerCase();
+    const isBMM = r === "bm";
+    const isBMS = r === "bms";
+    const isBES = r === "bes";
+    const isBBS = r === "bbs";
+
+    // 3. Reject unknown or unauthorized roles explicitly
+    if (!isBMM && !isBMS && !isBES && !isBBS) {
+      return NextResponse.json(
+        {
+          error: "Akses ditolak: Peran pengguna tidak memiliki hak untuk membuat laporan kejadian baru. Hanya BMS (Toko), BES (DC), dan BBS (Gedung/Kantor) yang berwenang.",
+          code: "UNAUTHORIZED_REPORT_CREATOR_ROLE",
         },
         { status: 403 }
       );
     }
 
-    if (isBES && !isFacilityReport) {
-      return NextResponse.json(
-        {
-          error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Toko.",
-          code: "BES_STORE_REPORT_FORBIDDEN",
-        },
-        { status: 403 }
-      );
+    const isDcReport =
+      body.tkpType === "dc" ||
+      (body.tkpType as string) === "DC" ||
+      body.locationKind === "FACILITY" ||
+      (body.storeId && (body.storeId.startsWith("FACILITY:") || body.storeId.startsWith("FAC-") || body.storeId.startsWith("DC-")));
+
+    const isBuildingReport =
+      body.tkpType === "building" ||
+      (body.locationKind as string) === "BUILDING" ||
+      (body.storeId && (body.storeId.startsWith("KANTOR-") || body.storeId.startsWith("BLD-") || body.storeId.startsWith("OFFICE-")));
+
+    const isStoreReport = !isDcReport && !isBuildingReport;
+
+    // 4. Validate explicit facility-role mapping
+    if (isStoreReport) {
+      if (isBES) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Toko.",
+            code: "BES_STORE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (isBBS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Toko.",
+            code: "BBS_STORE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isBMS && !isBMM) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Hanya BMS cabang terkait yang berwenang membuat laporan untuk Toko.",
+            code: "BMS_STORE_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+    } else if (isDcReport) {
+      if (isBMS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Fasilitas/DC.",
+            code: "BMS_FACILITY_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (isBBS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BBS tidak berwenang membuat laporan untuk Fasilitas/DC.",
+            code: "BBS_FACILITY_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isBES && !isBMM) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Hanya BES cabang terkait yang berwenang membuat laporan untuk Fasilitas/DC.",
+            code: "BES_FACILITY_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
+    } else if (isBuildingReport) {
+      if (isBMS) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BMS tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+            code: "BMS_OFFICE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (isBES) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Petugas BES tidak berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+            code: "BES_OFFICE_REPORT_FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+      if (!isBBS && !isBMM) {
+        return NextResponse.json(
+          {
+            error: "Akses ditolak: Hanya BBS cabang terkait yang berwenang membuat laporan untuk Gedung/Kantor Cabang.",
+            code: "BBS_OFFICE_REQUIRED",
+          },
+          { status: 403 }
+        );
+      }
     }
 
     if (body.disasterType === "strong_wind") {
@@ -141,13 +279,11 @@ export async function POST(request: Request) {
       );
     }
 
-    if (sessionUser.scope !== "HO" && !isAdmin) {
-      if (body.branch.trim().toLowerCase() !== (sessionUser.branch || "").trim().toLowerCase()) {
-        return NextResponse.json(
-          { error: "Unauthorized: Tidak dapat membuat laporan untuk cabang lain" },
-          { status: 403 }
-        );
-      }
+    if (body.branch.trim().toLowerCase() !== (sessionUser.branch || "").trim().toLowerCase()) {
+      return NextResponse.json(
+        { error: "Unauthorized: Tidak dapat membuat laporan untuk cabang lain" },
+        { status: 403 }
+      );
     }
 
     // Default dates if omitted

@@ -154,6 +154,15 @@ export async function recordReportApprovalEvent(event: ReportApprovalEvent): Pro
     console.warn(`[approval-event-service] Failed to persist approval notification log for ${event.reportId}:`, err);
   }
 
+  // Trigger async approval outbox email distribution (Phase 3)
+  import("./approval-email-service")
+    .then(({ processReportApprovalOutbox }) => {
+      processReportApprovalOutbox({ reportId: event.reportId }).catch((outboxErr) => {
+        console.warn(`[approval-event-service] Non-fatal outbox dispatch error for ${event.reportId}:`, outboxErr);
+      });
+    })
+    .catch(() => {});
+
   return event;
 }
 
@@ -182,7 +191,7 @@ export async function commitAtomicBmApprovalTransaction(params: {
 
     // 1. Concurrency protection: row-level lock on incident
     const checkRes = await client.query(
-      `SELECT id, status, verification, timeline, branch, store_id, store_name, location_city, disaster_type, report_origin
+      `SELECT id, status, progress, verification, timeline, branch, store_id, store_name, location_city, disaster_type, report_origin
        FROM incidents
        WHERE id = $1
        FOR UPDATE`,
@@ -212,18 +221,21 @@ export async function commitAtomicBmApprovalTransaction(params: {
       };
     }
 
-    // 2. Update incident record
+    // 2. Update incident record (confirmed_safe completes directly with progress = 100)
     const updatedTimeline = [...(current.timeline || []), params.timelineEntry];
+    const updatedProgress = params.newStatus === "confirmed_safe" ? 100 : (current.progress ?? 0);
     await client.query(
       `UPDATE incidents
        SET status = $2,
-           verification = $3::jsonb,
-           timeline = $4::jsonb,
+           progress = $3,
+           verification = $4::jsonb,
+           timeline = $5::jsonb,
            updated_at = NOW()
        WHERE id = $1`,
       [
         params.reportId,
         params.newStatus,
+        updatedProgress,
         JSON.stringify(params.updatedVerification),
         JSON.stringify(updatedTimeline),
       ]
@@ -310,6 +322,17 @@ export async function commitAtomicBmApprovalTransaction(params: {
     }).catch((notifErr) => {
       console.warn(`[approval-event-service] Non-fatal notification log error for ${params.reportId}:`, notifErr);
     });
+
+    // Trigger async approval outbox email distribution outside transaction boundary (Phase 3)
+    import("./approval-email-service")
+      .then(({ processReportApprovalOutbox }) => {
+        processReportApprovalOutbox({ reportId: params.approvalEvent.reportId }).catch((outboxErr) => {
+          console.warn(`[approval-event-service] Non-fatal outbox processing error for ${params.reportId}:`, outboxErr);
+        });
+      })
+      .catch((importErr) => {
+        console.warn(`[approval-event-service] Failed loading approval-email-service for ${params.reportId}:`, importErr);
+      });
 
     return { success: true };
   } catch (err) {

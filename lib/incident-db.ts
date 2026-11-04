@@ -86,17 +86,24 @@ export async function dbGetIncidentById(
   id: string
 ): Promise<IncidentRecord | null> {
   const pool = getDbPool();
-  const { rows } = await pool.query(
-    `SELECT i.*, u.name AS primary_pic_name,
+  const sql = `SELECT i.*, u.name AS primary_pic_name,
             ca.status AS completion_approval_status
      FROM incidents i
      LEFT JOIN users u ON u.id = i.primary_pic_user_id
      LEFT JOIN report_completion_approvals ca ON ca.report_id = i.id
-     WHERE i.id = $1`,
-    [id]
-  );
-  if (rows.length === 0) return null;
-  return rowToIncident(rows[0]);
+     WHERE i.id = $1`;
+  try {
+    const { rows } = await pool.query(sql, [id]);
+    if (rows.length === 0) return null;
+    return rowToIncident(rows[0]);
+  } catch (err: any) {
+    if (err?.message && err.message.includes("Connection terminated unexpectedly")) {
+      const { rows } = await pool.query(sql, [id]);
+      if (rows.length === 0) return null;
+      return rowToIncident(rows[0]);
+    }
+    throw err;
+  }
 }
 
 // Lookup existing auto-report by event and store, falling back to branch for legacy data.
@@ -230,19 +237,6 @@ export async function dbCreateIncident(
       timeline, created_at, updated_at, closed_at,
       canonical_event_id, location_kind, location_id
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
-    ON CONFLICT (id) DO UPDATE SET
-      status                   = EXCLUDED.status,
-      progress                 = EXCLUDED.progress,
-      reporter                 = COALESCE(EXCLUDED.reporter, incidents.reporter),
-      disaster_metadata        = EXCLUDED.disaster_metadata,
-      affected_stores          = EXCLUDED.affected_stores,
-      affected_store_count     = EXCLUDED.affected_store_count,
-      danger_store_count       = EXCLUDED.danger_store_count,
-      verification             = EXCLUDED.verification,
-      maintenance_ticket       = EXCLUDED.maintenance_ticket,
-      field_photos             = EXCLUDED.field_photos,
-      timeline                 = EXCLUDED.timeline,
-      updated_at               = NOW()
     RETURNING *`,
     [
       inc.id,
