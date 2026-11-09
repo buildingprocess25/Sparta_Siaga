@@ -989,3 +989,7 @@ export async function checkAndEscalateShakeMapFallback(params: {
   };
 }
 
+// Re-export V1 + MMI workflow service (6 November 2026 decision)
+export * from "./earthquake-v1-mmi-service";
+
+

@@ -29,8 +29,39 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const token = requestUrl.searchParams.get("token");
 
-  // Determine base URL safely for redirects
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_BASE_URL || requestUrl.origin;
+  // Determine base URL safely from trusted host origin (strictly block untrusted/poisoned forwarded hosts)
+  const configuredUrl = (process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/+$/, "");
+  const rawHost = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").toLowerCase().trim();
+  const hostOnly = rawHost.split(":")[0];
+
+  const TRUSTED_HOSTS = new Set([
+    "siaga.sparta-alfamart.web.id",
+    "localhost",
+    "127.0.0.1",
+    "::1",
+  ]);
+
+  const isTrusted =
+    TRUSTED_HOSTS.has(hostOnly) ||
+    hostOnly.endsWith(".nip.io") ||
+    hostOnly.endsWith(".loca.lt") ||
+    hostOnly.endsWith(".ngrok-free.app") ||
+    hostOnly.endsWith(".trycloudflare.com");
+
+  let baseUrl: string;
+  if (process.env.NODE_ENV === "production" && configuredUrl.startsWith("https://")) {
+    baseUrl = configuredUrl;
+  } else if (isTrusted && rawHost) {
+    const proto =
+      request.headers.get("x-forwarded-proto") ||
+      (requestUrl.protocol ? requestUrl.protocol.replace(":", "") : "http");
+    baseUrl = `${proto}://${rawHost}`;
+  } else if (configuredUrl) {
+    baseUrl = configuredUrl;
+  } else {
+    baseUrl = "https://siaga.sparta-alfamart.web.id";
+  }
+  const isHttps = baseUrl.startsWith("https://");
 
   // 1. Validate launch token presence
   if (!token || !token.trim()) {
@@ -95,12 +126,12 @@ export async function GET(request: Request) {
     response.cookies.set(
       ACCESS_TOKEN_COOKIE,
       sessionResult.accessToken,
-      getAccessTokenCookieOptions()
+      getAccessTokenCookieOptions(process.env, isHttps)
     );
     response.cookies.set(
       REFRESH_TOKEN_COOKIE,
       sessionResult.refreshToken,
-      getRefreshTokenCookieOptions()
+      getRefreshTokenCookieOptions(process.env, isHttps)
     );
 
     // Also attempt setting in cookie store if accessible
@@ -109,12 +140,12 @@ export async function GET(request: Request) {
       cookieStore.set(
         ACCESS_TOKEN_COOKIE,
         sessionResult.accessToken,
-        getAccessTokenCookieOptions()
+        getAccessTokenCookieOptions(process.env, isHttps)
       );
       cookieStore.set(
         REFRESH_TOKEN_COOKIE,
         sessionResult.refreshToken,
-        getRefreshTokenCookieOptions()
+        getRefreshTokenCookieOptions(process.env, isHttps)
       );
     } catch {
       // Ignored outside Next.js async storage context

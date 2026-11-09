@@ -210,7 +210,7 @@ export function getSsoPortalUrl(): string {
   return (
     process.env.SPARTA_LOGIN_URL ||
     process.env.NEXT_PUBLIC_SPARTA_LOGIN_URL ||
-    "https://login.sparta-alfamart.web.id"
+    "https://sparta-alfamart.web.id"
   ).replace(/\/+$/, "");
 }
 

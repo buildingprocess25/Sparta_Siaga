@@ -17,6 +17,7 @@ export interface DispatchNotificationParams {
   canonicalEventId?: string;
   recipientGroup?: "BMS" | "BES" | "BMM" | "HO";
   category?: "INFORMATION" | "ASSIGNMENT" | "APPROVAL";
+  clientOrPool?: any;
 }
 
 /**
@@ -223,7 +224,7 @@ export async function isNotificationCooldownActive(disasterType: DisasterNotific
  * Do not set status = 'sent' just because the record was written to the database.
  */
 export async function recordNotificationLog(params: DispatchNotificationParams): Promise<NotificationLog> {
-  const pool = getDbPool();
+  const pool = params.clientOrPool || getDbPool();
   const id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const ticketNumber = params.ticketNumber || `ESC-${params.branch.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const now = new Date().toISOString();
@@ -304,7 +305,7 @@ export async function recordNotificationLog(params: DispatchNotificationParams):
     params.title,
     params.message,
     params.affectedStores.length,
-    JSON.stringify(params.affectedStores.slice(0, 10)),
+    JSON.stringify(params.affectedStores),
     ticketNumber,
     deliveryStatus,
     now,

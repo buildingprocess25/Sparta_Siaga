@@ -168,7 +168,7 @@ async function runTestSuite() {
 
     const hoInspectPerm = await checkUserPermission({
       user: adminHoUser,
-      permission: "REPORT_INSPECT",
+      permission: "REPORT_CONFIRM",
       targetBranch: "BANDUNG",
     });
     testAssert(

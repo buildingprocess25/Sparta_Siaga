@@ -111,7 +111,7 @@ export default function LoginPage() {
   const [selectedBranch, setSelectedBranch] = useState("BANDUNG");
   const [error, setError] = useState("");
   const [ssoPortalUrl, setSsoPortalUrl] = useState(
-    process.env.NEXT_PUBLIC_SPARTA_LOGIN_URL || "https://login.sparta-alfamart.web.id"
+    process.env.NEXT_PUBLIC_SPARTA_LOGIN_URL || "https://sparta-alfamart.web.id"
   );
 
   useEffect(() => {

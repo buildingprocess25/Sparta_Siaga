@@ -13,6 +13,7 @@ import {
   dispatchStageOneNationalNotification,
   checkAndEscalateShakeMapFallback,
 } from './earthquake-intensity-service';
+import { executeEarthquakeV1MmiWorkflow } from './earthquake-v1-mmi-service';
 import { createReconciliationCase } from './reconciliation-service';
 import {
   hasEventAlreadyBeenProcessed,
@@ -526,6 +527,13 @@ export async function processEarthquakeAlertsAndReports(
     // Guarantee canonical event recording in earthquake_events table
     await dbUpsertEarthquakeEvent(eq);
 
+    // Operational decision revised on 6 November 2026:
+    // Magnitude below 4.0: display only; do not trigger this automatic inspection workflow.
+    if (eq.magnitude < 4.0) {
+      console.log(`[Autonomous Daemon] Earthquake ${eq.id} (M ${eq.magnitude} < 4.0): Recorded for display only; automatic inspection workflow suppressed.`);
+      continue;
+    }
+
     // Stage 1: Instant nationwide informational notification (when earthquake intensity system is active)
     if (isEarthquakeIntensityEnabled() && isAlertEligible) {
       await dispatchStageOneNationalNotification({
@@ -540,6 +548,19 @@ export async function processEarthquakeAlertsAndReports(
       }).catch((err) => {
         console.warn('[Autonomous Daemon] Error in Stage 1 national notification:', err);
       });
+
+      // Magnitude 4.0 or above: evaluate stores using the agreed V1 + MMI rules
+      try {
+        const v1MmiRes = await executeEarthquakeV1MmiWorkflow({
+          earthquake: eq,
+          stores,
+        });
+        dispatchedAlerts += v1MmiRes.dispatchedBranchNotifications;
+        createdReports += v1MmiRes.createdInspectionReports;
+        continue;
+      } catch (err) {
+        console.error('[Autonomous Daemon] Error in V1+MMI workflow execution:', err);
+      }
     }
 
     const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(eq.magnitude, eq.depthKm);

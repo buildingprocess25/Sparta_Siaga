@@ -1,3 +1,4 @@
+import type { Pool, PoolClient } from "pg";
 import { getDbPool } from "./db";
 
 export type EarthquakeLocationKind = "STORE" | "FACILITY";
@@ -20,6 +21,7 @@ export interface EnsureEarthquakeReportInput {
   source: string;
   location: EarthquakeReportLocation;
   reconciliationWindowMinutes?: number;
+  clientOrPool?: Pool | PoolClient;
 }
 
 export type EnsureEarthquakeReportResult =
@@ -29,7 +31,12 @@ export type EnsureEarthquakeReportResult =
 export async function ensureEarthquakeReport(
   input: EnsureEarthquakeReportInput
 ): Promise<EnsureEarthquakeReportResult> {
-  const client = await getDbPool().connect();
+  const isAcquiredClient = !input.clientOrPool || typeof (input.clientOrPool as any).connect === "function";
+  const client: PoolClient = input.clientOrPool
+    ? (typeof (input.clientOrPool as any).connect === "function"
+      ? await (input.clientOrPool as Pool).connect()
+      : (input.clientOrPool as PoolClient))
+    : await getDbPool().connect();
   const windowMinutes = input.reconciliationWindowMinutes ?? 120;
   try {
     await client.query("BEGIN");
@@ -191,6 +198,8 @@ export async function ensureEarthquakeReport(
     await client.query("ROLLBACK");
     throw error;
   } finally {
-    client.release();
+    if (isAcquiredClient && typeof client.release === "function") {
+      client.release();
+    }
   }
 }
