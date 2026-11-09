@@ -136,6 +136,7 @@ function createSyntheticShakeMap(params: {
 
 // Mock database pool for safe unit-testing execution without real network/DB writes
 function createMockPool() {
+  const states = new Map<string, any>();
   const recordedNotificationLogs: any[] = [];
   const recordedReports: any[] = [];
   const recordedFacilityIntensities: any[] = [];
@@ -144,6 +145,13 @@ function createMockPool() {
   const queryFn = async (sql: string, values?: any[]) => {
     const trimmed = sql.trim().toUpperCase();
 
+    if (trimmed.startsWith("SELECT RAW_METADATA FROM EARTHQUAKE_EVENTS")) {
+      return { rows: [{ raw_metadata: states.get(values?.[0]) || {} }] };
+    }
+    if (trimmed.startsWith("UPDATE EARTHQUAKE_EVENTS")) {
+      states.set(values?.[1], JSON.parse(values?.[0]));
+      return { rows: [] };
+    }
     if (trimmed.startsWith("SELECT CURRENT_DATABASE")) {
       return { rows: [{ current_database: "sparta_siaga_isolated" }] };
     }
@@ -232,7 +240,7 @@ async function runTestSuite() {
 
     const stores: Store[] = [
       {
-        kode_toko: "TK01",
+        kode_toko: "TK01", id: "TK01", alamat: "Test fixture",
         nama_toko: "Alfamart Dago",
         cabang: "BANDUNG",
         latitude: -6.91,
@@ -242,6 +250,7 @@ async function runTestSuite() {
 
     const evalRes = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eqBelow4,
+      windowStartedAt: eqBelow4.occurredAt,
       stores,
       currentTime: new Date("2026-11-09T08:05:00Z"),
     });
@@ -354,14 +363,14 @@ async function runTestSuite() {
     // 2 stores inside V1 (distance ~10 km and ~20 km, V1 distance is 50 km)
     const stores: Store[] = [
       {
-        kode_toko: "T01",
+        kode_toko: "T01", id: "T01", alamat: "Test fixture",
         nama_toko: "Toko Dago 10km",
         cabang: "BANDUNG",
         latitude: -6.82,
         longitude: 107.6,
       },
       {
-        kode_toko: "T02",
+        kode_toko: "T02", id: "T02", alamat: "Test fixture",
         nama_toko: "Toko Lembang 20km",
         cabang: "BANDUNG",
         latitude: -6.75,
@@ -384,6 +393,7 @@ async function runTestSuite() {
     // Evaluate at t = 2 minutes (far before 10-minute deadline)
     const evalRes = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eqM55,
+      windowStartedAt: eqM55.occurredAt,
       stores,
       officialGrids: [officialGrid],
       currentTime: new Date("2026-11-09T08:02:00Z"),
@@ -420,9 +430,9 @@ async function runTestSuite() {
     };
 
     const stores: Store[] = [
-      { kode_toko: "T_58", nama_toko: "Store 5.8", cabang: "SEMARANG", latitude: -7.0, longitude: 110.05 },
-      { kode_toko: "T_60", nama_toko: "Store 6.0", cabang: "SEMARANG", latitude: -7.0, longitude: 110.03 },
-      { kode_toko: "T_65", nama_toko: "Store 6.5", cabang: "SEMARANG", latitude: -7.0, longitude: 110.01 },
+      { kode_toko: "T_58", id: "T_58", alamat: "Test fixture", nama_toko: "Store 5.8", cabang: "SEMARANG", latitude: -7.0, longitude: 110.05 },
+      { kode_toko: "T_60", id: "T_60", alamat: "Test fixture", nama_toko: "Store 6.0", cabang: "SEMARANG", latitude: -7.0, longitude: 110.03 },
+      { kode_toko: "T_65", id: "T_65", alamat: "Test fixture", nama_toko: "Store 6.5", cabang: "SEMARANG", latitude: -7.0, longitude: 110.01 },
     ];
 
     // Grid where center is 6.5, T_60 is ~6.0, T_58 is ~5.8
@@ -440,6 +450,7 @@ async function runTestSuite() {
 
     const evalRes = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [officialGrid],
       currentTime: new Date("2026-11-09T08:02:00Z"),
@@ -492,7 +503,7 @@ async function runTestSuite() {
     // Store is only 8 km from epicenter (well inside V1 distance of 50 km)
     const stores: Store[] = [
       {
-        kode_toko: "T_INSIDE_LOW",
+        kode_toko: "T_INSIDE_LOW", id: "T_INSIDE_LOW", alamat: "Test fixture",
         nama_toko: "Store Close Inside V1",
         cabang: "SEMARANG",
         latitude: -7.05,
@@ -514,6 +525,7 @@ async function runTestSuite() {
 
     const evalRes = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [officialGrid],
       currentTime: new Date("2026-11-09T08:02:00Z"),
@@ -551,7 +563,7 @@ async function runTestSuite() {
     // Store is 75 km away (outside V1 distance of 50 km for M 5.0)
     const stores: Store[] = [
       {
-        kode_toko: "T_OUTSIDE_HIGH",
+        kode_toko: "T_OUTSIDE_HIGH", id: "T_OUTSIDE_HIGH", alamat: "Test fixture",
         nama_toko: "Store Outside V1 High MMI",
         cabang: "SEMARANG",
         latitude: -7.67,
@@ -573,6 +585,7 @@ async function runTestSuite() {
 
     const evalRes = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [officialGrid],
       currentTime: new Date("2026-11-09T08:02:00Z"),
@@ -615,8 +628,8 @@ async function runTestSuite() {
     // Store 1: close (distance ~10 km, covered by small grid)
     // Store 2: further (distance ~40 km, OUTSIDE small grid bounding box)
     const stores: Store[] = [
-      { kode_toko: "T_COV", nama_toko: "Covered Inside V1", cabang: "SEMARANG", latitude: -7.05, longitude: 110.0 },
-      { kode_toko: "T_UNCOV", nama_toko: "Uncovered Inside V1", cabang: "SEMARANG", latitude: -7.35, longitude: 110.0 },
+      { kode_toko: "T_COV", id: "T_COV", alamat: "Test fixture", nama_toko: "Covered Inside V1", cabang: "SEMARANG", latitude: -7.05, longitude: 110.0 },
+      { kode_toko: "T_UNCOV", id: "T_UNCOV", alamat: "Test fixture", nama_toko: "Uncovered Inside V1", cabang: "SEMARANG", latitude: -7.35, longitude: 110.0 },
     ];
 
     // Partial grid covering only center (spanDeg 0.1 deg ~ 11 km)
@@ -634,6 +647,7 @@ async function runTestSuite() {
     // 7A: Evaluate at t = 4 minutes (< 10 minutes) -> MUST WAIT
     const evalAt4m = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [partialGrid],
       currentTime: new Date("2026-11-09T08:04:00Z"),
@@ -651,6 +665,7 @@ async function runTestSuite() {
     // 7C: Evaluate at t = 10.0 minutes -> DEADLINE REACHED!
     const evalAt10m = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [partialGrid],
       currentTime: new Date("2026-11-09T08:10:00Z"),
@@ -699,13 +714,14 @@ async function runTestSuite() {
     };
 
     const stores: Store[] = [
-      { kode_toko: "T_INSIDE", nama_toko: "Inside V1 80km", cabang: "SEMARANG", latitude: -7.7, longitude: 110.0 }, // ~78 km <= 160 km
-      { kode_toko: "T_OUTSIDE", nama_toko: "Outside V1 220km", cabang: "SEMARANG", latitude: -9.0, longitude: 110.0 }, // ~222 km > 160 km
+      { kode_toko: "T_INSIDE", id: "T_INSIDE", alamat: "Test fixture", nama_toko: "Inside V1 80km", cabang: "SEMARANG", latitude: -7.7, longitude: 110.0 }, // ~78 km <= 160 km
+      { kode_toko: "T_OUTSIDE", id: "T_OUTSIDE", alamat: "Test fixture", nama_toko: "Outside V1 220km", cabang: "SEMARANG", latitude: -9.0, longitude: 110.0 }, // ~222 km > 160 km
     ];
 
     // Case 8A: t = 5m without MMI -> WAITING
     const evalAt5m = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [], // No MMI available
       currentTime: new Date("2026-11-09T08:05:00Z"),
@@ -717,6 +733,7 @@ async function runTestSuite() {
     // Case 8B: t = 10m without MMI -> V1 Fallback Alone
     const evalAt10m = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [],
       currentTime: new Date("2026-11-09T08:10:00Z"),
@@ -769,11 +786,12 @@ async function runTestSuite() {
 
     // Store is 60 km away (> 20 km V1 distance)
     const stores: Store[] = [
-      { kode_toko: "T_FAR", nama_toko: "Store Far Away", cabang: "SEMARANG", latitude: -7.54, longitude: 110.0 },
+      { kode_toko: "T_FAR", id: "T_FAR", alamat: "Test fixture", nama_toko: "Store Far Away", cabang: "SEMARANG", latitude: -7.54, longitude: 110.0 },
     ];
 
     const result = await executeEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [],
       currentTime: new Date("2026-11-09T08:12:00Z"), // Deadline passed
@@ -815,12 +833,13 @@ async function runTestSuite() {
     };
 
     const stores: Store[] = [
-      { kode_toko: "T_IDEMP", nama_toko: "Store Kendal", cabang: "SEMARANG", latitude: -7.05, longitude: 110.0 },
+      { kode_toko: "T_IDEMP", id: "T_IDEMP", alamat: "Test fixture", nama_toko: "Store Kendal", cabang: "SEMARANG", latitude: -7.05, longitude: 110.0 },
     ];
 
     // Pass 1: Finalize at deadline via Rule C (V1 fallback)
     const pass1 = await executeEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [],
       currentTime: new Date("2026-11-09T08:11:00Z"),
@@ -834,6 +853,7 @@ async function runTestSuite() {
     // Pass 2: Repeated worker tick for same earthquake
     const pass2 = await executeEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [],
       currentTime: new Date("2026-11-09T08:12:00Z"),
@@ -857,6 +877,7 @@ async function runTestSuite() {
 
     const pass3 = await executeEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [lateGrid],
       currentTime: new Date("2026-11-09T08:25:00Z"),
@@ -903,7 +924,7 @@ async function runTestSuite() {
     const stores: Store[] = [];
     for (let i = 1; i <= 15; i++) {
       stores.push({
-        kode_toko: `SMG_${String(i).padStart(2, "0")}`,
+        kode_toko: `SMG_${String(i).padStart(2, "0")}`, id: `SMG_${i}`, alamat: "Test fixture",
         nama_toko: `Alfamart Semarang ${i}`,
         cabang: "SEMARANG",
         latitude: -7.0 + i * 0.02,
@@ -913,7 +934,7 @@ async function runTestSuite() {
 
     for (let j = 1; j <= 2; j++) {
       stores.push({
-        kode_toko: `SOL_${String(j).padStart(2, "0")}`,
+        kode_toko: `SOL_${String(j).padStart(2, "0")}`, id: `SOL_${j}`, alamat: "Test fixture",
         nama_toko: `Alfamart Solo ${j}`,
         cabang: "SOLO",
         latitude: -7.5 + j * 0.02,
@@ -935,6 +956,7 @@ async function runTestSuite() {
 
     const executionRes = await executeEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [grid],
       currentTime: new Date("2026-11-09T08:02:00Z"),
@@ -990,7 +1012,7 @@ async function runTestSuite() {
     };
 
     const stores: Store[] = [
-      { kode_toko: "T_PRIO", nama_toko: "Store Dual Covered", cabang: "SEMARANG", latitude: -7.02, longitude: 110.02 },
+      { kode_toko: "T_PRIO", id: "T_PRIO", alamat: "Test fixture", nama_toko: "Store Dual Covered", cabang: "SEMARANG", latitude: -7.02, longitude: 110.02 },
     ];
 
     // BMKG grid gives MMI 6.2
@@ -1018,6 +1040,7 @@ async function runTestSuite() {
     // Provide both grids
     const evalRes = evaluateEarthquakeV1MmiWorkflow({
       earthquake: eq,
+      windowStartedAt: eq.occurredAt,
       stores,
       officialGrids: [bmkgGrid, usgsGrid],
       currentTime: new Date("2026-11-09T08:02:00Z"),

@@ -44,7 +44,7 @@ export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
         shakemap_url = COALESCE(EXCLUDED.shakemap_url, earthquake_events.shakemap_url),
         felt_area = COALESCE(EXCLUDED.felt_area, earthquake_events.felt_area),
         potensi_text = COALESCE(EXCLUDED.potensi_text, earthquake_events.potensi_text),
-        raw_metadata = EXCLUDED.raw_metadata;`,
+        raw_metadata = COALESCE(earthquake_events.raw_metadata, '{}'::jsonb) || EXCLUDED.raw_metadata;`,
       [
         eq.id,
         eq.id,
@@ -155,4 +155,22 @@ export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<E
     console.warn("[Earthquake DB] Warning fetching recent earthquake events from DB:", err);
     return [];
   }
+}
+
+export async function dbGetPendingEarthquakeEvents(): Promise<Earthquake[]> {
+  const { rows } = await getDbPool().query(
+    `SELECT * FROM earthquake_events
+      WHERE raw_metadata->'v1_mmi_workflow'->>'status' IN ('WAITING_WINDOW', 'DECIDED')
+        AND occurred_at >= NOW() - INTERVAL '24 hours'
+        AND source_primary IN ('BMKG', 'USGS')
+      ORDER BY first_seen_at`
+  );
+  return rows.map((row) => ({
+    id: row.id, source: row.source_primary, title: row.title,
+    magnitude: Number(row.magnitude), depth: `${row.depth_km} km`, depthKm: Number(row.depth_km),
+    latitude: Number(row.latitude), longitude: Number(row.longitude),
+    timestamp: new Date(row.occurred_at).getTime(), time: new Date(row.occurred_at).toISOString(),
+    potensiTsunami: Boolean(row.potensi_tsunami),
+    priorityRadiusKm: Number(row.priority_radius_km), monitoringRadiusKm: Number(row.monitoring_radius_km),
+  }));
 }

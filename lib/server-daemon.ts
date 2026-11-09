@@ -1,39 +1,19 @@
 // Explicit global marker tracking whether this module has been evaluated in the current Node process
 (globalThis as Record<string, unknown>).__sparta_server_daemon_module_loaded = true;
 
-import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import { getDbPool } from './db';
 import { fetchDisasterFeed } from './disaster-service';
-import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
-import { dbUpsertEarthquakeEvent } from './earthquake-db';
-import { ensureEarthquakeReport } from './earthquake-report-service';
-import { isEarthquakeIntensityEnabled } from './earthquake-intensity-config';
-import {
-  dispatchStageOneNationalNotification,
-  checkAndEscalateShakeMapFallback,
-} from './earthquake-intensity-service';
+import { dbUpsertEarthquakeEvent, dbGetPendingEarthquakeEvents } from './earthquake-db';
 import { executeEarthquakeV1MmiWorkflow } from './earthquake-v1-mmi-service';
-import { createReconciliationCase } from './reconciliation-service';
 import {
   hasEventAlreadyBeenProcessed,
   isNotificationCooldownActive,
-  recordNotificationLog,
-  updateNotificationLogForEvent,
-  generateEmergencyEmailHtml
+  recordNotificationLog
 } from './notification-service';
-import {
-  dbFindAutoEarthquakeReport,
-  dbFindManualEarthquakeReportByEvent,
-  dbFindUnlinkedManualEarthquakeCandidates,
-  dbCreateIncident,
-  dbUpdateIncident
-} from './incident-db';
 import { AffectedStoreSummary } from '@/types/notification';
-import { ReportAffectedStore } from '@/types/incident';
 import { Store } from '@/types/store';
 import { Earthquake } from '@/types/disaster';
-import { dispatchEarthquakePushNotifications } from './web-push-service';
 import { getExternalApiConfig } from './runtime-config';
 
 import {
@@ -202,6 +182,13 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
     if (isEligibleForAlert && stores.length > 0 && disasterFeed.activeEarthquakes && disasterFeed.activeEarthquakes.length > 0) {
       const result = await processEarthquakeAlertsAndReports(disasterFeed.activeEarthquakes, stores, isEligibleForAlert);
       dispatchedEarthquakeAlerts = result.dispatchedAlerts;
+    }
+
+    // Pending decisions must reach their deadline even when the live feed stops updating.
+    const pendingEarthquakes = await dbGetPendingEarthquakeEvents();
+    if (stores.length && pendingEarthquakes.length) {
+      const pending = await processEarthquakeAlertsAndReports(pendingEarthquakes, stores, true, true);
+      dispatchedEarthquakeAlerts += pending.dispatchedAlerts;
     }
 
     // 4. Automatic weather notifications are disabled by default.
@@ -520,10 +507,6 @@ export async function processEarthquakeAlertsAndReports(
       continue;
     }
 
-    // Outdated emergency alerts are strictly prevented for events older than 60m.
-    const isAlertEligible = isEligibleForAlert && (eventAgeMinutes <= AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES);
-    const isBackfill = eventAgeMinutes > AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES;
-
     // Guarantee canonical event recording in earthquake_events table
     await dbUpsertEarthquakeEvent(eq);
 
@@ -534,450 +517,14 @@ export async function processEarthquakeAlertsAndReports(
       continue;
     }
 
-    // Stage 1: Instant nationwide informational notification (when earthquake intensity system is active)
-    if (isEarthquakeIntensityEnabled() && isAlertEligible) {
-      await dispatchStageOneNationalNotification({
-        canonicalEventId: eq.id,
-        title: eq.title,
-        magnitude: eq.magnitude,
-        depthKm: eq.depthKm,
-        latitude: eq.latitude,
-        longitude: eq.longitude,
-        occurredAt: new Date(eventTimestamp),
-        sourceProvider: eq.source,
-      }).catch((err) => {
-        console.warn('[Autonomous Daemon] Error in Stage 1 national notification:', err);
-      });
-
-      // Magnitude 4.0 or above: evaluate stores using the agreed V1 + MMI rules
-      try {
-        const v1MmiRes = await executeEarthquakeV1MmiWorkflow({
-          earthquake: eq,
-          stores,
-        });
-        dispatchedAlerts += v1MmiRes.dispatchedBranchNotifications;
-        createdReports += v1MmiRes.createdInspectionReports;
-        continue;
-      } catch (err) {
-        console.error('[Autonomous Daemon] Error in V1+MMI workflow execution:', err);
-      }
-    }
-
-    const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(eq.magnitude, eq.depthKm);
-
-    // 1. Evaluate Active Verified Facilities (DCs, Warehouses, Regional Offices)
-    let activeFacilities: Array<{
-      id: string;
-      code: string;
-      name: string;
-      facility_type: string;
-      branch_id: string | null;
-      latitude: number | null;
-      longitude: number | null;
-      operational_status?: string;
-      auto_report_enabled?: boolean;
-      mapping_verified_at?: string | null;
-    }> = [];
-
     try {
-      const pool = getDbPool();
-      const facRes = await pool.query(
-        `SELECT id::text, code, name, facility_type, branch_id, latitude, longitude,
-                operational_status, auto_report_enabled, mapping_verified_at
-           FROM facilities`
-      );
-      activeFacilities = facRes.rows || [];
-    } catch {
-      // In offline or non-DB testing
-    }
-
-    const affectedFacilitiesByBranch = new Map<string, AffectedStoreSummary[]>();
-
-    for (const facility of activeFacilities) {
-      if (
-        facility.latitude == null ||
-        facility.longitude == null ||
-        !Number.isFinite(Number(facility.latitude)) ||
-        !Number.isFinite(Number(facility.longitude))
-      ) {
-        continue;
-      }
-
-      const distanceKm = calculateHaversineDistance(
-        eq.latitude,
-        eq.longitude,
-        Number(facility.latitude),
-        Number(facility.longitude)
-      );
-
-      if (isNaN(distanceKm) || distanceKm > monitoringRadiusKm) continue;
-
-      const branchKey = facility.branch_id?.trim();
-      if (!branchKey) {
-        console.warn(`[Autonomous Daemon] Unmapped facility detected: ${facility.code} (${facility.name}) has no operational branch mapping. Flagging and excluding from branch-specific notification dispatch.`);
-        continue;
-      }
-
-      const isVerifiedActive =
-        facility.operational_status === 'ACTIVE' &&
-        facility.auto_report_enabled === true &&
-        Boolean(facility.mapping_verified_at);
-
-      if (!isVerifiedActive) continue;
-
-      const facilityStatus = distanceKm <= priorityRadiusKm ? 'PRIORITY_MONITOR' : 'MONITOR';
-      const facilitySummary: AffectedStoreSummary = {
-        kode_toko: facility.code,
-        nama_toko: facility.name,
-        cabang: branchKey,
-        distance_km: Math.round(distanceKm * 10) / 10,
-        status: facilityStatus,
-        fr_type: facility.facility_type,
-      };
-
-      if (!affectedFacilitiesByBranch.has(branchKey)) {
-        affectedFacilitiesByBranch.set(branchKey, []);
-      }
-      affectedFacilitiesByBranch.get(branchKey)!.push(facilitySummary);
-
-      // In legacy mode, priority radius generates facility reports.
-      // In intensity mode, reports are generated strictly by Stage 2 ShakeMap evaluation when MMI >= 6.0.
-      if (distanceKm <= priorityRadiusKm && !isEarthquakeIntensityEnabled()) {
-        const reportHash = crypto
-          .createHash('sha256')
-          .update(`${eq.id}:FACILITY:${facility.id}`)
-          .digest('hex')
-          .slice(0, 16)
-          .toUpperCase();
-
-        try {
-          const res = await ensureEarthquakeReport({
-            reportId: `LAP-EQ-FAC-${reportHash}`,
-            canonicalEventId: eq.id,
-            eventOccurredAt: new Date(eventTimestamp),
-            source: eq.source || 'UNVERIFIED',
-            location: {
-              kind: 'FACILITY',
-              id: facility.id,
-              code: facility.code,
-              name: facility.name,
-              type: facility.facility_type,
-              branch: branchKey,
-              latitude: Number(facility.latitude),
-              longitude: Number(facility.longitude),
-            },
-          });
-          if (res.outcome === 'created') {
-            createdReports++;
-            console.log(`[Autonomous Daemon] Auto-report created: LAP-EQ-FAC-${reportHash} for facility ${facility.code} (${facility.name})`);
-          }
-        } catch (facReportErr) {
-          console.error(`[Autonomous Daemon] Error creating report for facility ${facility.code}:`, facReportErr);
-        }
-      }
-    }
-
-    if (isAlertEligible) {
-      for (const [branch, facilities] of affectedFacilitiesByBranch) {
-        facilities.sort((a, b) => a.distance_km - b.distance_km);
-        const priorityCount = facilities.filter((item) => item.status === 'PRIORITY_MONITOR').length;
-        if (priorityCount > 0) {
-          try {
-            await recordNotificationLog({
-              disasterId: eq.id,
-              canonicalEventId: eq.id,
-              disasterType: 'earthquake',
-              channel: 'pwa_only',
-              branch,
-              recipientGroup: 'BES',
-              category: 'ASSIGNMENT',
-              recipientContact: `in-app://bes/${branch.toLowerCase().replace(/\s+/g, '-')}`,
-              title: `Pemeriksaan fasilitas · Gempa M ${eq.magnitude}`,
-              message: `${facilities.length} fasilitas perlu diperiksa; ${priorityCount} berada di Zona Prioritas Pantau. Buka Shared Queue untuk mengambil PIC.`,
-              affectedStores: facilities,
-            });
-          } catch (besErr) {
-            console.warn('[Autonomous Daemon] Error recording BES notification log:', besErr);
-          }
-        }
-      }
-    }
-
-    // 2. Evaluate Stores (21,550 master stores)
-    const branchStoresMap = new Map<string, AffectedStoreSummary[]>();
-    const priorityStoresByBranch = new Map<string, AffectedStoreSummary[]>();
-
-    for (const store of stores) {
-      if (store.latitude == null || store.longitude == null) continue;
-      const distance = calculateHaversineDistance(eq.latitude, eq.longitude, store.latitude, store.longitude);
-
-      if (distance <= priorityRadiusKm) {
-        const affected: AffectedStoreSummary = {
-          kode_toko: store.kode_toko,
-          nama_toko: store.nama_toko,
-          cabang: store.cabang,
-          distance_km: distance,
-          status: 'PRIORITY_MONITOR',
-          alamat: store.alamat,
-          fr_type: store.fr_type,
-        };
-        if (!branchStoresMap.has(store.cabang)) branchStoresMap.set(store.cabang, []);
-        branchStoresMap.get(store.cabang)!.push(affected);
-
-        if (!priorityStoresByBranch.has(store.cabang)) priorityStoresByBranch.set(store.cabang, []);
-        priorityStoresByBranch.get(store.cabang)!.push(affected);
-      } else if (distance <= monitoringRadiusKm) {
-        const affected: AffectedStoreSummary = {
-          kode_toko: store.kode_toko,
-          nama_toko: store.nama_toko,
-          cabang: store.cabang,
-          distance_km: distance,
-          status: 'MONITOR',
-          alamat: store.alamat,
-          fr_type: store.fr_type,
-        };
-        if (!branchStoresMap.has(store.cabang)) branchStoresMap.set(store.cabang, []);
-        branchStoresMap.get(store.cabang)!.push(affected);
-      }
-    }
-
-    for (const [branch, branchStores] of branchStoresMap.entries()) {
-      const priorityStores = priorityStoresByBranch.get(branch) || [];
-
-      // Branch DC Notification (Email & PWA alert log)
-      // Only dispatch emergency alert if event is fresh (<= 60m); suppress during downtime recovery
-      if (isAlertEligible) {
-        const isProcessed = await hasEventAlreadyBeenProcessed(eq.id, 'earthquake', branch);
-        const inCooldown = await isNotificationCooldownActive('earthquake', branch);
-
-        branchStores.sort((a, b) => a.distance_km - b.distance_km);
-        const disasterTitle = `⚠️ PERINGATAN DARURAT GEMPA M ${eq.magnitude} - CABANG ${branch.toUpperCase()}`;
-        const disasterDetail = `Gempa bumi tektonik terdeteksi oleh BMKG/USGS dengan Magnitudo ${eq.magnitude} pada kedalaman ${eq.depthKm} km di wilayah ${eq.title}. Zona Prioritas Pantau SPARTA terhitung ${priorityRadiusKm} km. ${priorityStores.length} gerai toko cabang Anda berada di Zona Prioritas Pantau SPARTA.`;
-
-        if (isProcessed) {
-          await updateNotificationLogForEvent(eq.id, branch, {
-            title: disasterTitle,
-            message: disasterDetail,
-            affectedStores: branchStores,
-          });
-        } else if (!inCooldown) {
-          const ticketNumber = `ESC-${branch.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-          const instructions = [
-            'Duty Officer DC Cabang segera melakukan panggilan radio/telepon siaga ke Area Coordinator (AC) terkait.',
-            'Instruksikan personil toko melakukan evakuasi pelanggan dan kru jika struktur bangunan menunjukkan keretakan.',
-            'Matikan aliran listrik utama (MCB) dan amankan tabung gas jika tercium bau kebocoran.',
-            'Laporkan status operasional (Buka / Tutup Sementara / Kerusakan) melalui Command Center SPARTA.',
-          ];
-
-          generateEmergencyEmailHtml({
-            ticketNumber,
-            branch,
-            disasterTitle,
-            disasterDetail,
-            affectedCount: branchStores.length,
-            stores: branchStores,
-            instructions,
-            sentAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
-          });
-
-          await recordNotificationLog({
-            disasterId: eq.id,
-            disasterType: 'earthquake',
-            channel: 'email_and_pwa',
-            branch,
-            recipientContact: `dc.${branch.toLowerCase().replace(/\s+/g, '')}@alfamart.co.id`,
-            title: disasterTitle,
-            message: disasterDetail,
-            affectedStores: branchStores,
-            ticketNumber,
-          });
-
-          // Deliver real background Web Push to registered PWA devices (Android, iOS PWA, Desktop)
-          await dispatchEarthquakePushNotifications({
-            title: disasterTitle,
-            body: disasterDetail,
-            branch,
-            eventId: eq.id,
-            magnitude: eq.magnitude,
-            priorityStoresCount: priorityStores.length,
-            url: `/monitoring?disasterId=${encodeURIComponent(eq.id)}`,
-          }).catch((pushErr) => {
-            console.error('[Autonomous Daemon] Error during background Web Push dispatch:', pushErr);
-          });
-
-          dispatchedAlerts++;
-        }
-      } else {
-        console.log(`[Autonomous Daemon] Suppressed outdated emergency alert for event ${eq.id} at branch ${branch} (event age: ${eventAgeMinutes.toFixed(1)}m > ${AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES}m)`);
-      }
-
-      // Operational Reports for stores in Priority Monitoring Zone
-      // When intensity mode is active, circular radius auto-report loop is stopped.
-      if (!isEarthquakeIntensityEnabled()) {
-        for (const store of priorityStores) {
-        const existingAuto = await dbFindAutoEarthquakeReport(eq.id, store.kode_toko, branch);
-        if (existingAuto) {
-          await dbUpdateIncident(existingAuto.id, {
-            earthquakeSource: eq.source || 'UNVERIFIED',
-            disasterMetadata: {
-              magnitude: eq.magnitude,
-              depth: eq.depth,
-              coordinates: [eq.latitude, eq.longitude],
-              place: eq.title,
-              time: eq.time,
-            },
-          });
-          continue;
-        }
-
-        const existingManual = await dbFindManualEarthquakeReportByEvent(eq.id, store.kode_toko, branch);
-        if (existingManual) {
-          continue;
-        }
-
-        const unlinkedCandidates = await dbFindUnlinkedManualEarthquakeCandidates(
-          store.kode_toko,
-          eventTimestamp,
-          MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES
-        );
-        if (unlinkedCandidates.length === 1) {
-          const candidate = unlinkedCandidates[0];
-          await dbUpdateIncident(candidate.id, {
-            earthquakeEventId: eq.id,
-            canonicalEventId: eq.id,
-            locationKind: 'STORE',
-            locationId: store.kode_toko,
-            earthquakeSource: eq.source || 'UNVERIFIED',
-            earthquakeProvenance: `Ditautkan otomatis ke event ${eq.source || 'UNVERIFIED'} ${eq.id} (jendela ${MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES}m)`,
-            disasterMetadata: {
-              magnitude: eq.magnitude,
-              depth: eq.depth,
-              coordinates: [eq.latitude, eq.longitude],
-              place: eq.title,
-              time: eq.time,
-            },
-          });
-          continue;
-        } else if (unlinkedCandidates.length > 1) {
-          console.warn(`[Autonomous Daemon] Ambiguous unlinked manual reports found for Store ${store.kode_toko}. Routing to reconciliation.`);
-          for (const cand of unlinkedCandidates) {
-            await createReconciliationCase({
-              incidentId: cand.id,
-              candidateCanonicalEventId: eq.id,
-              candidateLocationKind: 'STORE',
-              candidateLocationId: store.kode_toko,
-              reason: 'MULTIPLE_MANUAL_CANDIDATES',
-              details: {
-                matchCount: unlinkedCandidates.length,
-                candidateIds: unlinkedCandidates.map(c => c.id),
-                earthquakeTitle: eq.title,
-                magnitude: eq.magnitude,
-              },
-            });
-          }
-          continue;
-        }
-
-        const randSuffix = Math.floor(1000 + Math.random() * 9000);
-        const reportId = `LAP-EQ-${store.kode_toko.toUpperCase()}-${randSuffix}`;
-        const todayStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-
-        const reportAffectedStores: ReportAffectedStore[] = [{
-          kode_toko: store.kode_toko,
-          nama_toko: store.nama_toko,
-          cabang: store.cabang,
-          alamat: store.alamat,
-          fr_type: store.fr_type,
-          distance_km: store.distance_km,
-          exposure_zone: 'PRIORITY_MONITOR',
-          confirmation_status: 'pending',
-        }];
-
-        try {
-          const createdIncident = await dbCreateIncident({
-            id: reportId,
-            date: todayStr,
-            disasterType: 'earthquake',
-            reportOrigin: 'automatic_earthquake',
-            earthquakeEventId: eq.id,
-            canonicalEventId: eq.id,
-            locationKind: 'STORE',
-            locationId: store.kode_toko,
-            locationCodeSnapshot: store.kode_toko,
-            locationNameSnapshot: store.nama_toko,
-            locationTypeSnapshot: store.fr_type || 'Reguler',
-            latitudeSnapshot: store.latitude,
-            longitudeSnapshot: store.longitude,
-            branchSnapshot: branch,
-            earthquakeSource: eq.source || 'UNVERIFIED',
-            earthquakeProvenance: isBackfill
-              ? `Estimasi area dampak berdasarkan data gempa ${eq.source || 'UNVERIFIED'} dan perhitungan SPARTA (Pemulihan pasca-downtime, usia event: ${Math.round(eventAgeMinutes)}m).`
-              : `Estimasi area dampak berdasarkan data gempa ${eq.source || 'UNVERIFIED'} dan perhitungan SPARTA.`,
-            tkpType: 'toko',
-            storeId: store.kode_toko,
-            storeName: store.nama_toko,
-            branch,
-            locationCity: branch,
-            status: 'pending_confirmation',
-            progress: 0,
-            disasterMetadata: {
-              magnitude: eq.magnitude,
-              depth: eq.depth,
-              coordinates: [eq.latitude, eq.longitude],
-              place: eq.title,
-              time: eq.time,
-            },
-            affectedStores: reportAffectedStores,
-            affectedStoreCount: 1,
-            dangerStoreCount: 1,
-            fieldPhotos: [],
-            timeline: [
-              {
-                stage: isBackfill ? 'Laporan Otomatis Di-backfill (Pasca-Downtime)' : 'Laporan Otomatis Dibuat',
-                label: isBackfill
-                  ? `Laporan gempa dipulihkan pasca-downtime (usia event ${Math.round(eventAgeMinutes)} menit). Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi lapangan.`
-                  : `Gempa M${eq.magnitude} terdeteksi oleh ${eq.source || 'UNVERIFIED'}. Gerai ${store.nama_toko} (${store.kode_toko}) berada dalam radius zona prioritas pantau (${store.distance_km.toFixed(1)} km) dan memerlukan konfirmasi kondisi lapangan.`,
-                timestamp: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) + ' WIB',
-                actor: 'SPARTA Siaga - Autonomous Engine',
-                notes: `Event ID: ${eq.id}`,
-              },
-            ],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-          if (createdIncident.id === reportId) {
-            createdReports++;
-            console.log(`[Autonomous Daemon] Auto-report created: ${reportId} for store ${store.kode_toko}${isBackfill ? ' (Downtime Recovery Backfill)' : ''}`);
-          } else {
-            console.log(`[Autonomous Daemon] Existing report found on race condition for store ${store.kode_toko} / event ${eq.id}: ${createdIncident.id}`);
-          }
-        } catch (err: unknown) {
-          const pgError = err as { code?: string };
-          if (pgError?.code === '23505') {
-            console.log(`[Autonomous Daemon] Unique constraint caught duplicate insert for Store ${store.kode_toko} / Event ${eq.id}`);
-          } else {
-            console.error(`[Autonomous Daemon] Failed to create incident report for Store ${store.kode_toko}:`, err);
-          }
-        }
-      }
+      const result = await executeEarthquakeV1MmiWorkflow({ earthquake: eq, stores });
+      dispatchedAlerts += result.dispatchedBranchNotifications;
+      createdReports += result.createdInspectionReports;
+    } catch (error) {
+      console.error(`[Autonomous Daemon] V1 + MMI assessment deferred for ${eq.id}:`, error);
     }
   }
-
-  if (isEarthquakeIntensityEnabled()) {
-    // Intensity mode active: circular radius auto-reports are disabled!
-    // Stage 2 ShakeMap evaluation handles candidate report creation when MMI >= 6.0.
-    // Fallback check triggers informational advisory if ShakeMap is pending > 30 minutes.
-    await checkAndEscalateShakeMapFallback({
-      canonicalEventId: eq.id,
-      title: eq.title,
-      magnitude: eq.magnitude,
-      depthKm: eq.depthKm,
-      eventOccurredAt: new Date(eventTimestamp),
-    }).catch((fallbackErr) => {
-      console.warn('[Autonomous Daemon] Error during ShakeMap fallback check:', fallbackErr);
-    });
-  }
-}
 
 return { dispatchedAlerts, createdReports };
 }

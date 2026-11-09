@@ -3,9 +3,11 @@ import { getSessionUser } from "@/lib/auth";
 import { getOperationalDbPool } from "@/lib/db";
 import {
   parseShakeMapCovJson,
-  processStageTwoIntensityEvaluation,
-  EvaluatedFacilityTarget,
+  dbSaveShakeMapRecord,
 } from "@/lib/earthquake-intensity-service";
+
+import { executeEarthquakeV1MmiWorkflow } from "@/lib/earthquake-v1-mmi-service";
+import type { Store } from "@/types/store";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -36,7 +38,10 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
-    const sourceProvider = body.sourceProvider || "USGS";
+    const sourceProvider = body.sourceProvider;
+    if (sourceProvider !== "BMKG" && sourceProvider !== "USGS") {
+      return NextResponse.json({ error: "A verified BMKG or USGS provider is required" }, { status: 400 });
+    }
     const versionNumber = Number.isInteger(body.versionNumber) ? body.versionNumber : 1;
 
     // Validate and parse CovJSON into grid
@@ -56,76 +61,27 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const pool = getOperationalDbPool();
 
-    // Load active facilities (DCs / Warehouses)
-    const facRes = await pool.query(
-      `SELECT id::text, code, name, facility_type, branch_id, latitude, longitude
-         FROM facilities
-        WHERE operational_status = 'ACTIVE'`
-    );
-
-    const facilities: EvaluatedFacilityTarget[] = [];
-    for (const r of facRes.rows) {
-      if (r.latitude != null && r.longitude != null && r.branch_id) {
-        facilities.push({
-          kind: "FACILITY",
-          id: r.id,
-          code: r.code,
-          name: r.name,
-          type: r.facility_type,
-          branch: r.branch_id,
-          latitude: Number(r.latitude),
-          longitude: Number(r.longitude),
-        });
-      }
+    const { rows } = await pool.query("SELECT * FROM earthquake_events WHERE id = $1", [id]);
+    const event = rows[0];
+    if (!event) return NextResponse.json({ error: "Earthquake not found" }, { status: 404 });
+    if (event.source_primary !== "BMKG" && event.source_primary !== "USGS") {
+      return NextResponse.json({ error: "Unverified earthquake" }, { status: 400 });
     }
-
-    // Load candidate stores within and surrounding ShakeMap grid bounding box
-    const latMin = grid.yMin - 0.5;
-    const latMax = grid.yMax + 0.5;
-    const lonMin = grid.xMin - 0.5;
-    const lonMax = grid.xMax + 0.5;
-
-    const storeRes = await pool.query(
-      `SELECT kode_toko, nama_toko, cabang, latitude, longitude, fr_type
-         FROM stores
-        WHERE latitude BETWEEN $1 AND $2
-          AND longitude BETWEEN $3 AND $4
-        LIMIT 2000`,
-      [latMin, latMax, lonMin, lonMax]
-    );
-
-    for (const r of storeRes.rows) {
-      if (r.latitude != null && r.longitude != null && r.cabang) {
-        facilities.push({
-          kind: "STORE",
-          id: r.kode_toko,
-          code: r.kode_toko,
-          name: r.nama_toko,
-          type: r.fr_type || "store",
-          branch: r.cabang,
-          latitude: Number(r.latitude),
-          longitude: Number(r.longitude),
-        });
-      }
+    if (covJson.spartaProvenance?.canonicalEventId && covJson.spartaProvenance.canonicalEventId !== id) {
+      return NextResponse.json({ error: "ShakeMap event mismatch" }, { status: 400 });
     }
-
-    // Process Stage 2 evaluation
-    const result = await processStageTwoIntensityEvaluation({
-      dataset: {
-        eventId: id,
-        title: body.title || `Earthquake ${id}`,
-        sourceProvider,
-        versionNumber,
-        magnitude: Number(body.magnitude) || 5.0,
-        depthKm: Number(body.depthKm) || 10,
-        latitude: grid.yMin + (grid.yMax - grid.yMin) / 2,
-        longitude: grid.xMin + (grid.xMax - grid.xMin) / 2,
-        maxMmi: grid.maxMmi,
-        grid,
-        occurredAt: body.occurredAt ? new Date(body.occurredAt) : new Date(),
+    await dbSaveShakeMapRecord(grid, pool);
+    const storeRes = await pool.query<Store>(
+      "SELECT kode_toko AS id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type FROM stores WHERE latitude IS NOT NULL AND longitude IS NOT NULL"
+    );
+    const result = await executeEarthquakeV1MmiWorkflow({
+      earthquake: {
+        id, source: event.source_primary, title: event.title,
+        magnitude: Number(event.magnitude), depthKm: Number(event.depth_km),
+        latitude: Number(event.latitude), longitude: Number(event.longitude),
+        timestamp: new Date(event.occurred_at).getTime(),
       },
-      facilities,
-      dbPool: pool,
+      stores: storeRes.rows, dbPool: pool,
     });
 
     return NextResponse.json({

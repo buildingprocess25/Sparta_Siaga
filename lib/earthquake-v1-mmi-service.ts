@@ -32,12 +32,11 @@
 
 import crypto from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { getOperationalDbPool, getDbPool } from "./db";
+import { getOperationalDbPool } from "./db";
 import { calculateHaversineDistance } from "./haversine";
-import { ensureEarthquakeReport, EarthquakeLocationKind } from "./earthquake-report-service";
+import { ensureEarthquakeReport } from "./earthquake-report-service";
 import { recordNotificationLog } from "./notification-service";
-import { dbUpsertEarthquakeEvent } from "./earthquake-db";
-import { Earthquake } from "@/types/disaster";
+import { fetchOfficialMmiForEarthquake } from "./official-earthquake-mmi";
 import { Store } from "@/types/store";
 import {
   ShakeMapGrid,
@@ -81,6 +80,7 @@ export interface EvaluatedStoreTarget {
   mmiRounded: number | null;
   mmiRoman: string;
   mmiSource: "BMKG" | "USGS" | null;
+  selectedGridChecksum?: string;
   qualifies: boolean;
   assessmentBasis: AssessmentBasis;
   notes: string;
@@ -132,17 +132,6 @@ export interface WorkflowExecutionResult {
 
 // In-memory / cache tracker for event window start to prevent timer resets on event updates
 const eventWindowStartMap = new Map<string, Date>();
-// In-memory / cache tracker for completed decisions to enforce idempotency
-const finalizedDecisionsMap = new Map<
-  string,
-  {
-    finalizedAt: Date;
-    ruleApplied: WaitingWindowRule;
-    qualifyingStoreCodes: string[];
-    affectedBranches: string[];
-  }
->();
-
 // ============================================================================
 // V1 Parameter Table & Depth Groups
 // ============================================================================
@@ -258,7 +247,6 @@ export function getOrCreateWindowStartTime(
  */
 export function resetWorkflowMemoryState(): void {
   eventWindowStartMap.clear();
-  finalizedDecisionsMap.clear();
 }
 
 // ============================================================================
@@ -273,6 +261,7 @@ export interface EvaluateWorkflowParams {
     latitude: number;
     longitude: number;
     occurredAt?: Date | string | number;
+    timestamp?: number;
     title?: string;
     source?: string;
   };
@@ -301,11 +290,9 @@ export function evaluateEarthquakeV1MmiWorkflow(
     ? params.windowStartedAt instanceof Date
       ? params.windowStartedAt
       : new Date(params.windowStartedAt)
-    : earthquake.occurredAt
-    ? earthquake.occurredAt instanceof Date
-      ? earthquake.occurredAt
-      : new Date(earthquake.occurredAt)
-    : new Date();
+    : new Date(params.currentTime ?? Date.now());
+
+  if (params.windowStartedAt) eventWindowStartMap.set(canonicalEventId, initialWindowTs);
 
   const windowStartedAt = getOrCreateWindowStartTime(
     canonicalEventId,
@@ -358,8 +345,9 @@ export function evaluateEarthquakeV1MmiWorkflow(
   }
 
   // 2. Separate BMKG and USGS grids (BMKG prioritized over USGS)
-  const bmkgGrids = officialGrids.filter((g) => g.provider === "BMKG");
-  const usgsGrids = officialGrids.filter((g) => g.provider === "USGS");
+  const matchingGrids = officialGrids.filter((g) => g.grid.eventId === canonicalEventId);
+  const bmkgGrids = matchingGrids.filter((g) => g.provider === "BMKG");
+  const usgsGrids = matchingGrids.filter((g) => g.provider === "USGS");
 
   // 3. Evaluate each store's distance to epicenter and interpolate official MMI
   const evaluatedStores: EvaluatedStoreTarget[] = [];
@@ -393,12 +381,14 @@ export function evaluateEarthquakeV1MmiWorkflow(
     // Check BMKG first
     let mmi: number | null = null;
     let mmiSource: "BMKG" | "USGS" | null = null;
+    let selectedGridChecksum: string | undefined;
 
     for (const bGrid of bmkgGrids) {
       const val = interpolateMmiFromGrid(bGrid.grid, lat, lon);
       if (val !== null && Number.isFinite(val)) {
         mmi = val;
         mmiSource = "BMKG";
+        selectedGridChecksum = bGrid.grid.checksumSha256;
         break;
       }
     }
@@ -410,6 +400,7 @@ export function evaluateEarthquakeV1MmiWorkflow(
         if (val !== null && Number.isFinite(val)) {
           mmi = val;
           mmiSource = "USGS";
+          selectedGridChecksum = uGrid.grid.checksumSha256;
           break;
         }
       }
@@ -429,6 +420,7 @@ export function evaluateEarthquakeV1MmiWorkflow(
       mmiRounded: mmi !== null ? Math.round(mmi * 100) / 100 : null,
       mmiRoman: numberToRoman(mmi),
       mmiSource,
+      selectedGridChecksum,
       qualifies: false,
       assessmentBasis: "OUT_OF_V1_AND_MMI",
       notes: "",
@@ -552,6 +544,7 @@ export function evaluateEarthquakeV1MmiWorkflow(
 
 export interface ExecuteWorkflowParams extends EvaluateWorkflowParams {
   dbPool?: Pool;
+  fetchOfficialMmi?: typeof fetchOfficialMmiForEarthquake;
   suppressWebPush?: boolean;
 }
 
@@ -575,18 +568,19 @@ export async function loadOfficialGridsForEvent(
       max_mmi: number;
       raw_payload: any;
     }>(
-      `SELECT source_provider, version_number, grid_bounds_x_min, grid_bounds_x_max,
+      `SELECT DISTINCT ON (source_provider) source_provider, version_number, grid_bounds_x_min, grid_bounds_x_max,
               grid_bounds_y_min, grid_bounds_y_max, grid_num_x, grid_num_y,
               max_mmi, raw_payload
          FROM earthquake_shakemaps
         WHERE canonical_event_id = $1
-        ORDER BY version_number DESC`,
+        ORDER BY source_provider, version_number DESC`,
       [canonicalEventId]
     );
 
     const result: Array<{ provider: "BMKG" | "USGS"; grid: ShakeMapGrid; versionNumber?: number }> = [];
     for (const r of rows) {
-      const provider = r.source_provider.toUpperCase() === "BMKG" ? "BMKG" : "USGS";
+      const provider = r.source_provider.toUpperCase();
+      if (provider !== "BMKG" && provider !== "USGS") continue;
       if (r.raw_payload) {
         try {
           const parsed = parseShakeMapCovJson(r.raw_payload, {
@@ -601,8 +595,8 @@ export async function loadOfficialGridsForEvent(
       }
     }
     return result;
-  } catch {
-    return [];
+  } catch (error) {
+    throw new Error("Cannot load official MMI cache", { cause: error });
   }
 }
 
@@ -615,254 +609,180 @@ export async function loadOfficialGridsForEvent(
  *    - Persists evaluation records in database idempotently.
  *    - Late MMI is recorded for monitoring without triggering duplicate outputs.
  */
-export async function executeEarthquakeV1MmiWorkflow(
-  params: ExecuteWorkflowParams
-): Promise<WorkflowExecutionResult> {
-  const pool = params.dbPool || getOperationalDbPool();
-  const { earthquake } = params;
-  const canonicalEventId = earthquake.id;
+type StoredDecision = Omit<EarthquakeWorkflowEvaluation, "allEvaluatedStores">;
+interface WorkflowState {
+  status: "WAITING_WINDOW" | "DECIDED" | "FINALIZED";
+  window_started_at: string;
+  deadline_at: string;
+  decision?: StoredDecision;
+  finalized_at?: string;
+}
 
-  let officialGrids = params.officialGrids;
-  if (!officialGrids) {
-    officialGrids = await loadOfficialGridsForEvent(canonicalEventId, pool);
+async function withWorkflowLock<T>(pool: Pool, eventId: string, work: (client: PoolClient, state: WorkflowState | undefined) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`v1-mmi:${eventId}`]);
+    const { rows } = await client.query("SELECT raw_metadata FROM earthquake_events WHERE id = $1 FOR UPDATE", [eventId]);
+    if (!rows[0]) throw new Error(`Earthquake ${eventId} must be recorded before assessment`);
+    const result = await work(client, rows[0].raw_metadata?.v1_mmi_workflow);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
+}
 
-  const evaluation = evaluateEarthquakeV1MmiWorkflow({
-    ...params,
-    officialGrids,
-  });
+async function saveWorkflowState(client: PoolClient, eventId: string, state: WorkflowState): Promise<void> {
+  await client.query(
+    `UPDATE earthquake_events
+        SET raw_metadata = COALESCE(raw_metadata, '{}'::jsonb) || $1::jsonb
+      WHERE id = $2`,
+    [JSON.stringify({ v1_mmi_workflow: state }), eventId]
+  );
+}
 
-  // 1. Check if already finalized (in-memory or DB check)
-  const existingFinalized = finalizedDecisionsMap.get(canonicalEventId);
-
-  // If already finalized, handle potential late-arriving MMI
-  if (existingFinalized) {
-    if (params.officialGrids && params.officialGrids.length > 0) {
-      await recordLateMmiForMonitoring(params, evaluation, pool);
-    }
-    return {
-      evaluation: {
-        ...evaluation,
-        ruleApplied: "ALREADY_FINALIZED",
-        canFinalizeDecision: false,
-      },
-      dispatchedBranchNotifications: 0,
-      createdInspectionReports: 0,
-      preservedInspectionReports: existingFinalized.qualifyingStoreCodes.length,
-      notificationTicketNumbers: {},
-      createdReportIds: [],
-      isDuplicateSuppressed: true,
-    };
-  }
-
-  // 2. If decision cannot be finalized yet (waiting window active)
-  if (!evaluation.canFinalizeDecision) {
-    return {
-      evaluation,
-      dispatchedBranchNotifications: 0,
-      createdInspectionReports: 0,
-      preservedInspectionReports: 0,
-      notificationTicketNumbers: {},
-      createdReportIds: [],
-      isDuplicateSuppressed: false,
-    };
-  }
-
-  // 3. Finalize decision:
-  // If magnitude < 4.0 or 0 qualifying stores:
-  // Keep earthquake recorded for monitoring without triggering notifications or reports
-  if (evaluation.qualifyingStoresCount === 0) {
-    finalizedDecisionsMap.set(canonicalEventId, {
-      finalizedAt: evaluation.currentTime,
-      ruleApplied: evaluation.ruleApplied,
-      qualifyingStoreCodes: [],
-      affectedBranches: [],
-    });
-
-    await persistWorkflowMetadata(canonicalEventId, evaluation, pool);
-    return {
-      evaluation,
-      dispatchedBranchNotifications: 0,
-      createdInspectionReports: 0,
-      preservedInspectionReports: 0,
-      notificationTicketNumbers: {},
-      createdReportIds: [],
-      isDuplicateSuppressed: false,
-    };
-  }
-
-  // 4. When at least one store qualifies:
-  // - Send one notification per affected branch for that earthquake
-  // - Create one inspection report per qualifying store
-  let dispatchedBranchNotifications = 0;
-  let createdInspectionReports = 0;
-  let preservedInspectionReports = 0;
-  const notificationTicketNumbers: Record<string, string> = {};
-  const createdReportIds: string[] = [];
-
-  // Group qualifying stores by branch
-  const qualifyingByBranch = new Map<string, EvaluatedStoreTarget[]>();
-  for (const store of evaluation.qualifyingStores) {
-    if (!qualifyingByBranch.has(store.cabang)) {
-      qualifyingByBranch.set(store.cabang, []);
-    }
-    qualifyingByBranch.get(store.cabang)!.push(store);
-  }
-
-  const occurredDate = earthquake.occurredAt
-    ? earthquake.occurredAt instanceof Date
-      ? earthquake.occurredAt
-      : new Date(earthquake.occurredAt)
-    : new Date();
-
-  // A. Create inspection report for each qualifying store
-  for (const store of evaluation.qualifyingStores) {
-    const reportHash = crypto
-      .createHash("sha256")
-      .update(`${canonicalEventId}:STORE:${store.kode_toko}`)
-      .digest("hex")
-      .slice(0, 16)
-      .toUpperCase();
-
-    const reportId = `LAP-EQ-STR-${reportHash}`;
-
-    try {
-      const res = await ensureEarthquakeReport({
-        reportId,
-        canonicalEventId,
-        eventOccurredAt: occurredDate,
-        source: earthquake.source || "BMKG",
-        location: {
-          kind: "STORE",
-          id: store.kode_toko,
-          code: store.kode_toko,
-          name: store.nama_toko,
-          type: store.fr_type || "REGULER",
-          branch: store.cabang,
-          latitude: store.latitude,
-          longitude: store.longitude,
-        },
-        clientOrPool: pool,
-      });
-
-      if (res.outcome === "created" || res.outcome === "linked_manual") {
-        createdInspectionReports++;
-        createdReportIds.push(res.incidentId);
-      } else if (res.outcome === "existing") {
-        preservedInspectionReports++;
-      }
-    } catch (reportErr) {
-      console.warn(`[V1+MMI Workflow] Notice ensuring report for ${store.kode_toko}:`, reportErr);
-    }
-  }
-
-  // B. Send one notification per affected branch
-  for (const [branch, branchStores] of qualifyingByBranch.entries()) {
-    branchStores.sort((a, b) => a.distanceKm - b.distanceKm);
-
-    const ticketNumber = `EQ-${branch.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    notificationTicketNumbers[branch] = ticketNumber;
-
-    const notifTitle = `Peringatan Siaga Gempa M ${evaluation.magnitude.toFixed(1)}: Cabang ${branch.toUpperCase()}`;
-    const notifMessage =
-      `Gempa bumi tektonik M ${evaluation.magnitude.toFixed(1)} kedalaman ${evaluation.depthKm} km terdeteksi. ` +
-      `Berdasarkan evaluasi V1 (${evaluation.v1Coverage.v1DistanceKm ? evaluation.v1Coverage.v1DistanceKm + " km" : "dikecualikan"}) ` +
-      `dan data intensitas resmi MMI, terdapat ${branchStores.length} gerai toko di cabang Anda yang memenuhi kualifikasi inspeksi. ` +
-      `Status kualifikasi inspeksi tidak menetapkan kerusakan fisik bangunan aktual; pemeriksaan fisik PIC tetap diperlukan.`;
-
-    const affectedStoresSummary = branchStores.map((s) => ({
-      kode_toko: s.kode_toko,
-      nama_toko: s.nama_toko,
-      cabang: s.cabang,
-      distance_km: Math.round(s.distanceKm * 10) / 10,
-      status: "PRIORITY_MONITOR" as const,
-      alamat: s.alamat,
-      fr_type: s.fr_type,
-    }));
-
-    try {
-      await recordNotificationLog({
-        disasterId: canonicalEventId,
-        canonicalEventId,
-        disasterType: "earthquake",
-        channel: "pwa_only",
-        branch,
-        recipientGroup: "BMS",
-        category: "ASSIGNMENT",
-        recipientContact: `in-app://branch/${branch.toLowerCase().replace(/\s+/g, "-")}`,
-        title: notifTitle,
-        message: notifMessage,
-        affectedStores: affectedStoresSummary,
-        ticketNumber,
-        clientOrPool: pool,
-      });
-      dispatchedBranchNotifications++;
-    } catch (notifErr) {
-      console.warn(`[V1+MMI Workflow] Notice recording notification for branch ${branch}:`, notifErr);
-    }
-  }
-
-  // 5. Save facility intensities in DB for persistent audit
-  await persistFacilityIntensities(params, evaluation, pool);
-
-  // 6. Record finalized decision in memory and DB
-  finalizedDecisionsMap.set(canonicalEventId, {
-    finalizedAt: evaluation.currentTime,
-    ruleApplied: evaluation.ruleApplied,
-    qualifyingStoreCodes: evaluation.qualifyingStores.map((s) => s.kode_toko),
-    affectedBranches: evaluation.affectedBranches,
-  });
-
-  await persistWorkflowMetadata(canonicalEventId, evaluation, pool);
-
+function restoreDecision(decision: StoredDecision): EarthquakeWorkflowEvaluation {
   return {
-    evaluation,
-    dispatchedBranchNotifications,
-    createdInspectionReports,
-    preservedInspectionReports,
-    notificationTicketNumbers,
-    createdReportIds,
-    isDuplicateSuppressed: false,
+    ...decision,
+    windowStartedAt: new Date(decision.windowStartedAt),
+    deadlineAt: new Date(decision.deadlineAt),
+    currentTime: new Date(decision.currentTime),
+    allEvaluatedStores: decision.qualifyingStores,
   };
 }
 
-// ============================================================================
-// Internal Monitoring and Persistence Helpers
-// ============================================================================
+function emptyExecution(evaluation: EarthquakeWorkflowEvaluation, duplicate = false): WorkflowExecutionResult {
+  return {
+    evaluation,
+    dispatchedBranchNotifications: 0,
+    createdInspectionReports: 0,
+    preservedInspectionReports: duplicate ? evaluation.qualifyingStoresCount : 0,
+    notificationTicketNumbers: {},
+    createdReportIds: [],
+    isDuplicateSuppressed: duplicate,
+  };
+}
 
-async function persistWorkflowMetadata(
-  canonicalEventId: string,
-  evaluation: EarthquakeWorkflowEvaluation,
-  pool: Pool
-): Promise<void> {
-  try {
-    const metadataUpdate = {
-      v1_mmi_workflow: {
-        status: evaluation.canFinalizeDecision ? "FINALIZED" : "WAITING_WINDOW",
-        rule_applied: evaluation.ruleApplied,
-        qualifying_stores_count: evaluation.qualifyingStoresCount,
-        affected_branches: evaluation.affectedBranches,
-        decided_at: evaluation.canFinalizeDecision ? evaluation.currentTime.toISOString() : null,
-        window_started_at: evaluation.windowStartedAt.toISOString(),
-        deadline_at: evaluation.deadlineAt.toISOString(),
-      },
-    };
-
-    await pool.query(
-      `UPDATE earthquake_events
-          SET raw_metadata = COALESCE(raw_metadata, '{}'::jsonb) || $1::jsonb
-        WHERE id = $2`,
-      [JSON.stringify(metadataUpdate), canonicalEventId]
-    );
-  } catch (err) {
-    // Non-fatal metadata update notice
+export async function executeEarthquakeV1MmiWorkflow(params: ExecuteWorkflowParams): Promise<WorkflowExecutionResult> {
+  const pool = params.dbPool || getOperationalDbPool();
+  const { earthquake } = params;
+  const eventId = earthquake.id;
+  const now = new Date(params.currentTime ?? Date.now());
+  if (![earthquake.magnitude, earthquake.depthKm, earthquake.latitude, earthquake.longitude].every(Number.isFinite) || earthquake.depthKm < 0) {
+    throw new Error("Sufficient valid official earthquake parameters are required");
   }
+
+  // Persist receipt time before network calls; earthquake origin time is not the waiting-window start.
+  const initialState = await withWorkflowLock(pool, eventId, async (client, state) => {
+    if (state) return state;
+    const start = new Date(params.windowStartedAt ?? now);
+    const initial: WorkflowState = {
+      status: "WAITING_WINDOW",
+      window_started_at: start.toISOString(),
+      deadline_at: new Date(start.getTime() + 10 * 60_000).toISOString(),
+    };
+    await saveWorkflowState(client, eventId, initial);
+    return initial;
+  });
+
+  let officialGrids = params.officialGrids;
+  if (!officialGrids) {
+    officialGrids = await loadOfficialGridsForEvent(eventId, pool);
+    const needsFallback = params.stores.some((store) => !officialGrids!.some((item) =>
+      item.provider === "BMKG" && interpolateMmiFromGrid(item.grid, Number(store.latitude), Number(store.longitude)) !== null
+    ));
+    if (earthquake.magnitude >= 4 && needsFallback) {
+      const fetched = await (params.fetchOfficialMmi ?? fetchOfficialMmiForEarthquake)(earthquake);
+      if (fetched) {
+        await dbSaveShakeMapRecord(fetched.grid, pool);
+        officialGrids = [...officialGrids.filter((g) => g.provider !== fetched.provider), fetched];
+      }
+    }
+  }
+  officialGrids = officialGrids.filter((item) => item.grid.eventId === eventId);
+  const evaluated = evaluateEarthquakeV1MmiWorkflow({
+    ...params,
+    officialGrids,
+    windowStartedAt: new Date(initialState.window_started_at),
+    currentTime: params.currentTime ?? new Date(),
+  });
+
+  // Freeze targets independently of delivery so retries cannot adopt late MMI as a new decision.
+  const state = await withWorkflowLock(pool, eventId, async (client, existing) => {
+    if (!existing) throw new Error("Missing persisted earthquake workflow state");
+    await persistFacilityIntensities({ ...params, officialGrids }, evaluated, client);
+    if (existing.status !== "WAITING_WINDOW" || !evaluated.canFinalizeDecision) return existing;
+    const { allEvaluatedStores: _, ...decision } = evaluated;
+    const decided: WorkflowState = { ...existing, status: "DECIDED", decision };
+    await saveWorkflowState(client, eventId, decided);
+    return decided;
+  });
+  if (state.status === "WAITING_WINDOW") return emptyExecution(evaluated);
+
+  return withWorkflowLock(pool, eventId, async (client, current) => {
+    if (current?.status === "FINALIZED") {
+      const evaluation = current.decision ? restoreDecision(current.decision) : evaluated;
+      return emptyExecution({ ...evaluation, ruleApplied: "ALREADY_FINALIZED", canFinalizeDecision: false }, true);
+    }
+    if (!current?.decision) throw new Error("Missing persisted earthquake decision");
+    const evaluation = restoreDecision(current.decision);
+    const result = emptyExecution(evaluation);
+    const occurredAt = new Date(earthquake.occurredAt ?? earthquake.timestamp ?? now);
+    const byBranch = new Map<string, EvaluatedStoreTarget[]>();
+    for (const store of evaluation.qualifyingStores) {
+      const reportHash = crypto.createHash("sha256").update(`${eventId}:STORE:${store.kode_toko}`).digest("hex").slice(0, 16).toUpperCase();
+      const report = await ensureEarthquakeReport({
+        reportId: `LAP-EQ-STR-${reportHash}`,
+        canonicalEventId: eventId,
+        eventOccurredAt: occurredAt,
+        source: earthquake.source || "BMKG",
+        location: {
+          kind: "STORE", id: store.kode_toko, code: store.kode_toko,
+          name: store.nama_toko, type: store.fr_type || "REGULER", branch: store.cabang,
+          latitude: store.latitude, longitude: store.longitude,
+        },
+        clientOrPool: client,
+        manageTransaction: false,
+      });
+      if (report.outcome === "ambiguous") throw new Error(`Unresolved manual reports for ${store.kode_toko}`);
+      if (report.outcome === "existing") result.preservedInspectionReports++;
+      else { result.createdInspectionReports++; result.createdReportIds.push(report.incidentId); }
+      const targets = byBranch.get(store.cabang) ?? [];
+      targets.push(store);
+      byBranch.set(store.cabang, targets);
+    }
+    for (const [branch, targets] of byBranch) {
+      targets.sort((a, b) => a.distanceKm - b.distanceKm);
+      const ticketNumber = `EQ-${crypto.createHash("sha256").update(`${eventId}:${branch}`).digest("hex").slice(0, 12).toUpperCase()}`;
+      await recordNotificationLog({
+        disasterId: eventId, canonicalEventId: eventId, disasterType: "earthquake",
+        channel: "pwa_only", branch, recipientGroup: "BMS", category: "ASSIGNMENT",
+        recipientContact: `in-app://branch/${encodeURIComponent(branch)}`,
+        title: `Pemeriksaan gempa M ${evaluation.magnitude.toFixed(1)}: ${branch}`,
+        message: `${targets.length} toko memenuhi kriteria pemeriksaan V1 + MMI. Pemeriksaan fisik tetap diperlukan.`,
+        affectedStores: targets.map((store) => ({
+          kode_toko: store.kode_toko, nama_toko: store.nama_toko, cabang: store.cabang,
+          distance_km: Math.round(store.distanceKm * 10) / 10, status: "PRIORITY_MONITOR" as const,
+          alamat: store.alamat, fr_type: store.fr_type,
+        })),
+        ticketNumber, clientOrPool: client,
+      });
+      result.notificationTicketNumbers[branch] = ticketNumber;
+      result.dispatchedBranchNotifications++;
+    }
+    await saveWorkflowState(client, eventId, { ...current, status: "FINALIZED", finalized_at: now.toISOString() });
+    return result;
+  });
 }
 
 async function persistFacilityIntensities(
   params: ExecuteWorkflowParams,
   evaluation: EarthquakeWorkflowEvaluation,
-  pool: Pool
+  pool: Pool | PoolClient
 ): Promise<void> {
   try {
     const officialGrids = params.officialGrids || [];
@@ -873,6 +793,7 @@ async function persistFacilityIntensities(
       const intensityRecords: FacilityIntensityRecord[] = [];
 
       for (const store of evaluation.allEvaluatedStores) {
+        if (store.selectedGridChecksum !== item.grid.checksumSha256 || store.mmiSource !== item.provider) continue;
         intensityRecords.push({
           shakemapId: shakemapRecord.id,
           canonicalEventId: params.earthquake.id,
@@ -897,22 +818,6 @@ async function persistFacilityIntensities(
       await dbSaveFacilityIntensities(intensityRecords, pool);
     }
   } catch (err) {
-    // Non-fatal persistence notice
-  }
-}
-
-async function recordLateMmiForMonitoring(
-  params: ExecuteWorkflowParams,
-  evaluation: EarthquakeWorkflowEvaluation,
-  pool: Pool
-): Promise<void> {
-  try {
-    // Persist late ShakeMap records for internal monitoring without sending notifications or reports
-    await persistFacilityIntensities(params, evaluation, pool);
-    console.log(
-      `[V1+MMI Workflow] Recorded late official MMI for event ${params.earthquake.id} for internal monitoring. Zero duplicate notifications sent.`
-    );
-  } catch (err) {
-    console.warn(`[V1+MMI Workflow] Notice recording late MMI for ${params.earthquake.id}:`, err);
+    throw new Error("Cannot persist earthquake intensity audit", { cause: err });
   }
 }
