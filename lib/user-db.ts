@@ -283,11 +283,11 @@ export async function dbCheckUserDependencies(id: string): Promise<{ hasDependen
 }
 
 export async function dbDeleteUser(id: string): Promise<boolean> {
-  if (id === "usr_seed_admin") {
+  if (id === "usr_seed_admin" || id === "usr_sysadmin_01") {
     throw new Error("System Admin dilindungi dan tidak dapat dihapus.");
   }
   const existing = await dbGetUserById(id);
-  if (existing?.systemRole === "ADMIN") {
+  if (existing?.systemRole === "ADMIN" || existing?.email?.toLowerCase() === "siaga@admin.com") {
     throw new Error("Akun dengan System Role ADMIN tidak dapat dihapus.");
   }
 

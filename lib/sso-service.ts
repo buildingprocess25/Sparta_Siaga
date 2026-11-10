@@ -146,7 +146,6 @@ export async function exchangeSpartaLaunchToken(
     };
   }
 }
-
 /**
  * Validates whether a user has an approved role and branch assignment in SIAGA.
  * - System Administrator: systemRole === 'ADMIN' (always approved)
@@ -449,5 +448,242 @@ export function mapSsoErrorCodeToRedirect(errorCode: string): string {
     default:
       return "InvalidToken";
   }
+}
+export interface SsoModuleGrantResult {
+  status: "ACTIVE" | "REVOKED" | "NO_GRANT" | "UNVERIFIED" | "LOCAL";
+  label: string;
+  error?: string | null;
+  verifiedAt: string | null;
+  role?: string | null;
+}
+
+// In-memory cache for batch queries: externalUserId -> { result, cachedAt }
+const grantCache = new Map<string, { result: SsoModuleGrantResult; cachedAt: number }>();
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL
+
+export function clearGrantCache(): void {
+  grantCache.clear();
+}
+
+/**
+ * Batch queries Portal Login Sparta backend for UserModuleAccess status based on externalUserIds.
+ * - Read-only query using authorized service key
+ * - Chunks requests to maximum 100 users per API call
+ * - Caches results in-memory for 60 seconds
+ * - Fail-safe: timeouts or API errors are strictly mapped to UNVERIFIED (Never NO_GRANT)
+ */
+export async function querySpartaBatchModuleGrants(
+  externalUserIds: string[],
+  options?: {
+    spartaApiUrl?: string;
+    internalApiKey?: string;
+    fetchFn?: typeof fetch;
+    timeoutMs?: number;
+    skipCache?: boolean;
+  }
+): Promise<Map<string, SsoModuleGrantResult>> {
+  const results = new Map<string, SsoModuleGrantResult>();
+  if (!externalUserIds || externalUserIds.length === 0) {
+    return results;
+  }
+
+  const spartaApiUrl = (
+    options?.spartaApiUrl ||
+    process.env.SPARTA_API_URL ||
+    "http://localhost:10000"
+  ).replace(/\/+$/, "");
+
+  const apiKey =
+    options?.internalApiKey ||
+    process.env.SPARTA_INTERNAL_API_KEY ||
+    "sparta-internal-sync-key-2026";
+
+  const customFetch = options?.fetchFn || fetch;
+  const timeoutMs = options?.timeoutMs || 4000;
+  const now = Date.now();
+
+  const toFetch: string[] = [];
+
+  for (const rawId of externalUserIds) {
+    const id = (rawId || "").trim();
+    if (!id) continue;
+
+    if (!options?.skipCache) {
+      const cached = grantCache.get(id);
+      if (cached && now - cached.cachedAt < CACHE_TTL_MS) {
+        results.set(id, cached.result);
+        continue;
+      }
+    }
+    toFetch.push(id);
+  }
+
+  if (toFetch.length === 0) {
+    return results;
+  }
+
+  // Chunk IDs into batches of at most 100
+  const CHUNK_SIZE = 100;
+  const chunks: string[][] = [];
+  for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
+    chunks.push(toFetch.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (const chunk of chunks) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await customFetch(
+        `${spartaApiUrl}/v1/sso/module-access/batch`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "x-sparta-internal-key": apiKey,
+          },
+          body: JSON.stringify({
+            moduleId: "SIAGA",
+            userIds: chunk,
+          }),
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        // Any non-200 HTTP response falls back to UNVERIFIED (Never NO_GRANT)
+        for (const id of chunk) {
+          const res: SsoModuleGrantResult = {
+            status: "UNVERIFIED",
+            label: "Belum Diverifikasi",
+            error: `Login Sparta merespons status HTTP ${response.status} (${response.statusText}).`,
+            verifiedAt: null,
+          };
+          results.set(id, res);
+        }
+        continue;
+      }
+
+      const json = await response.json().catch(() => null);
+      const items: any[] = json?.data;
+      const verifiedAt = json?.verifiedAt || new Date().toISOString();
+
+      if (!Array.isArray(items)) {
+        for (const id of chunk) {
+          const res: SsoModuleGrantResult = {
+            status: "UNVERIFIED",
+            label: "Belum Diverifikasi",
+            error: "Format respons batch Login Sparta tidak valid.",
+            verifiedAt: null,
+          };
+          results.set(id, res);
+        }
+        continue;
+      }
+
+      const itemMap = new Map<string, any>(items.map((it: any) => [it.userId, it]));
+
+      for (const id of chunk) {
+        const item = itemMap.get(id);
+        let grantResult: SsoModuleGrantResult;
+
+        if (!item) {
+          grantResult = {
+            status: "NO_GRANT",
+            label: "Tidak Ada Grant",
+            verifiedAt,
+          };
+        } else if (item.status === "ACTIVE" || (item.hasGrant === true && !item.revokedAt)) {
+          grantResult = {
+            status: "ACTIVE",
+            label: "Aktif",
+            verifiedAt: item.grantedAt || verifiedAt,
+            role: item.role,
+          };
+        } else if (item.status === "REVOKED" || item.revokedAt || item.status === "INACTIVE") {
+          grantResult = {
+            status: "REVOKED",
+            label: "Dicabut / Tidak Aktif",
+            verifiedAt: item.revokedAt || verifiedAt,
+            role: item.role,
+          };
+        } else if (item.status === "NO_GRANT" || item.hasGrant === false) {
+          grantResult = {
+            status: "NO_GRANT",
+            label: "Tidak Ada Grant",
+            verifiedAt,
+          };
+        } else {
+          grantResult = {
+            status: "UNVERIFIED",
+            label: "Belum Diverifikasi",
+            verifiedAt: null,
+          };
+        }
+
+        results.set(id, grantResult);
+        grantCache.set(id, { result: grantResult, cachedAt: Date.now() });
+      }
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      const isTimeout = err?.name === "AbortError";
+      const errorMsg = isTimeout
+        ? "Koneksi ke Login Sparta batas waktu habis (timeout)."
+        : `Gagal terhubung ke Login Sparta: ${err?.message || "Layanan tidak tersedia"}`;
+
+      // Strictly UNVERIFIED on network errors/timeouts
+      for (const id of chunk) {
+        const res: SsoModuleGrantResult = {
+          status: "UNVERIFIED",
+          label: "Belum Diverifikasi",
+          error: errorMsg,
+          verifiedAt: null,
+        };
+        results.set(id, res);
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Queries Portal Login Sparta backend for UserModuleAccess status based on externalUserId (User.id in SSO).
+ * - Read-only query using authorized service key
+ * - Matches by external_user_id
+ * - Status: ACTIVE ("Aktif"), REVOKED ("Dicabut / Tidak Aktif"), NO_GRANT ("Tidak Ada Grant"), UNVERIFIED ("Belum Diverifikasi")
+ * - API failures / timeouts are strictly handled and NEVER misclassified as "Tidak Ada Grant".
+ */
+export async function querySpartaUserModuleGrant(
+  externalUserId: string,
+  options?: {
+    spartaApiUrl?: string;
+    internalApiKey?: string;
+    fetchFn?: typeof fetch;
+    timeoutMs?: number;
+    skipCache?: boolean;
+  }
+): Promise<SsoModuleGrantResult> {
+  const cleanId = (externalUserId || "").trim();
+  if (!cleanId) {
+    return {
+      status: "UNVERIFIED",
+      label: "Belum Diverifikasi",
+      error: "ID pengguna eksternal SSO kosong.",
+      verifiedAt: null,
+    };
+  }
+
+  const batchResults = await querySpartaBatchModuleGrants([cleanId], options);
+  return (
+    batchResults.get(cleanId) ?? {
+      status: "UNVERIFIED",
+      label: "Belum Diverifikasi",
+      verifiedAt: null,
+    }
+  );
 }
 

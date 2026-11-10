@@ -9,6 +9,7 @@ import {
   Building,
   AlertTriangle,
   CheckCircle,
+  Clock,
   Sun,
   Wind,
   Droplets,
@@ -114,6 +115,10 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
                   ? "bg-red-600 text-white animate-pulse border-red-600"
                   : store.status === "MONITOR"
                   ? "bg-amber-600 text-white border-amber-600"
+                  : store.status === "UNASSESSED"
+                  ? isDark
+                    ? "bg-slate-800 text-slate-300 border-slate-700"
+                    : "bg-slate-100 text-slate-700 border-slate-300"
                   : isDark 
                     ? "bg-emerald-600/30 text-emerald-300 border-emerald-500/30"
                     : "bg-emerald-100 text-emerald-700 border-emerald-200"
@@ -122,17 +127,22 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
               {store.status === "PRIORITY_MONITOR" ? (
                 <>
                   <AlertTriangle className="w-3 h-3" />
-                  Zona Prioritas Pantau
+                  Zona Prioritas Pantau (Dalam V1)
                 </>
               ) : store.status === "MONITOR" ? (
                 <>
                   <AlertTriangle className="w-3 h-3" />
                   Zona Pantau
                 </>
+              ) : store.status === "UNASSESSED" ? (
+                <>
+                  <Clock className="w-3 h-3" />
+                  Di Luar V1 (Belum Terkaji)
+                </>
               ) : (
                 <>
                   <CheckCircle className="w-3 h-3" />
-                  Operasional Aman
+                  Normal (Tidak Terdampak)
                 </>
               )}
             </span>
@@ -159,22 +169,30 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
 
       {/* Content scroll area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Disaster alert context if in danger/warning */}
-        {store.distanceFromDisasterKm !== undefined && store.status !== "SAFE" && (
+        {/* Disaster alert context if in active earthquake footprint */}
+        {store.distanceFromDisasterKm !== undefined && (store.status === "PRIORITY_MONITOR" || store.status === "MONITOR" || store.status === "UNASSESSED") && (
           <div
             className={`p-3 rounded-xl border text-xs ${
               store.status === "PRIORITY_MONITOR"
                 ? isDark 
                   ? "bg-red-950/70 border-red-700/60 text-red-200" 
                   : "bg-red-50 border-red-200 text-red-800"
-                : isDark
+                : store.status === "MONITOR"
+                ? isDark
                   ? "bg-amber-950/70 border-amber-700/60 text-amber-200"
                   : "bg-amber-50 border-amber-200 text-amber-800"
+                : isDark
+                  ? "bg-slate-900 border-slate-800 text-slate-300"
+                  : "bg-slate-50 border-slate-200 text-slate-700"
             }`}
           >
             <div className="flex items-center gap-2 font-bold mb-1">
-              <AlertTriangle className={`w-4 h-4 ${store.status === "PRIORITY_MONITOR" ? "text-red-500" : "text-amber-500"}`} />
-              <span>Peringatan Kedekatan Episentrum Gempa BMKG</span>
+              <AlertTriangle className={`w-4 h-4 ${store.status === "PRIORITY_MONITOR" ? "text-red-500" : store.status === "MONITOR" ? "text-amber-500" : "text-slate-400"}`} />
+              <span>
+                {store.status === "UNASSESSED"
+                  ? "Informasi Kedekatan Episentrum Gempa"
+                  : "Peringatan Kedekatan Episentrum Gempa"}
+              </span>
             </div>
             <p>
               Toko ini berjarak{" "}
@@ -182,6 +200,11 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
                 {store.distanceFromDisasterKm} km
               </strong>{" "}
               dari episentrum ({store.nearestDisasterTitle || "Gempa Terkini"}).
+              {store.status === "UNASSESSED" && (
+                <span className="block mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Status: Di luar radius V1. Intensitas getaran resmi belum terkaji (berada di luar V1 tidak membuktikan keamanan fisik).
+                </span>
+              )}
             </p>
           </div>
         )}

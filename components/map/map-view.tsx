@@ -2,7 +2,7 @@
 
 import React from "react";
 import dynamic from "next/dynamic";
-import { Store } from "@/types/store";
+import { Store, SpatialRisk } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
 import { Loader2 } from "lucide-react";
 
@@ -25,7 +25,7 @@ interface MapViewProps {
   floodReports?: any[];
   basemap: "esri-dark" | "esri-light" | "osm";
   incidentOnly: boolean;
-  statusFilter: "all" | "PRIORITY_MONITOR" | "MONITOR" | "SAFE";
+  statusFilter: "all" | SpatialRisk;
   selectedStore: Store | null;
   onSelectStore: (store: Store) => void;
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;

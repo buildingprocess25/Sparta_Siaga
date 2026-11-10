@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { dbGetAllUsers, dbCreateUser, dbGetUserByNik } from "@/lib/user-db";
 import { isValidHumanBusinessRole, deriveScopeFromBusinessRole } from "@/lib/role-catalog";
+import { getDbPool } from "@/lib/db";
+import { querySpartaBatchModuleGrants } from "@/lib/sso-service";
 import bcrypt from "bcryptjs";
 
-export async function GET() {
+export async function GET(request?: Request) {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     
     if (!sessionUser || sessionUser.systemRole !== "ADMIN") {
       return NextResponse.json(
@@ -15,9 +17,119 @@ export async function GET() {
       );
     }
 
-    const users = await dbGetAllUsers();
-    // Never expose passwordHash in API response
-    const safeUsers = users.map(({ passwordHash, ...u }) => u);
+    const [users, overridesRes] = await Promise.all([
+      dbGetAllUsers(),
+      getDbPool().query(
+        `SELECT user_id, permission_key, effect, scope_type, branch_code, reason, expires_at
+         FROM user_permission_overrides
+         WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())`
+      ),
+    ]);
+
+    const overridesMap = new Map<string, Array<{ key: string; effect: string; reason: string }>>();
+    for (const row of overridesRes.rows) {
+      if (!overridesMap.has(row.user_id)) {
+        overridesMap.set(row.user_id, []);
+      }
+      overridesMap.get(row.user_id)!.push({
+        key: row.permission_key,
+        effect: row.effect,
+        reason: row.reason || "",
+      });
+    }
+
+    const HO_INSTRUCTION_ROLES = ["admin", "ho_admin", "gm_ho", "sm_ho"];
+
+    // Collect externalUserIds for batch lookup against Portal Login Sparta
+    const ssoExternalUserIds = users
+      .filter((u) => u.source !== "LOCAL" && u.externalUserId)
+      .map((u) => u.externalUserId as string);
+
+    const grantMap = await querySpartaBatchModuleGrants(ssoExternalUserIds);
+
+    // Enrich users with accurate SSO integration status and effective permission classification
+    const safeUsers = users.map(({ passwordHash, ...u }) => {
+      const isSystemAdmin = u.systemRole === "ADMIN";
+      const userOverrides = overridesMap.get(u.id) || [];
+      const micDeny = userOverrides.some(
+        (o) => o.key === "MANAGEMENT_INSTRUCTION_CREATE" && o.effect === "DENY"
+      );
+      const micAllow = userOverrides.some(
+        (o) => o.key === "MANAGEMENT_INSTRUCTION_CREATE" && o.effect === "ALLOW"
+      );
+
+      let hasManagementInstruction = false;
+      if (isSystemAdmin) {
+        hasManagementInstruction = true;
+      } else if (u.scope === "HO") {
+        if (micDeny) {
+          hasManagementInstruction = false;
+        } else if (micAllow) {
+          hasManagementInstruction = true;
+        } else {
+          hasManagementInstruction = HO_INSTRUCTION_ROLES.includes((u.businessRole || "").toLowerCase());
+        }
+      }
+
+      let classification: "SYSTEM_ADMIN" | "HO_MANAGEMENT" | "HO_MONITORING" | "BRANCH_USER" | "OTHER" = "OTHER";
+      if (isSystemAdmin) {
+        classification = "SYSTEM_ADMIN";
+      } else if (u.scope === "HO") {
+        classification = hasManagementInstruction ? "HO_MANAGEMENT" : "HO_MONITORING";
+      } else if (u.scope === "BRANCH") {
+        classification = "BRANCH_USER";
+      }
+
+      const ssoConnected = Boolean(
+        u.externalUserId || (u.source && u.source.toUpperCase().includes("SSO"))
+      );
+
+      const ssoStatusUpper = (u.ssoStatus || "").toUpperCase().trim();
+      let ssoGrantStatus: "ACTIVE" | "REVOKED" | "NO_GRANT" | "UNVERIFIED" | "LOCAL" = "UNVERIFIED";
+      let ssoGrantStatusLabel = "Belum Diverifikasi";
+      let lastVerifiedAt: string | null = null;
+      let ssoGrantError: string | null = null;
+
+      if (u.source === "LOCAL") {
+        ssoGrantStatus = "LOCAL";
+        ssoGrantStatusLabel = "Akun Lokal";
+      } else if (u.externalUserId && grantMap.has(u.externalUserId)) {
+        const liveGrant = grantMap.get(u.externalUserId)!;
+        ssoGrantStatus = liveGrant.status;
+        ssoGrantStatusLabel = liveGrant.label;
+        lastVerifiedAt = liveGrant.verifiedAt;
+        ssoGrantError = liveGrant.error || null;
+      } else if (ssoStatusUpper === "ACTIVE") {
+        ssoGrantStatus = "ACTIVE";
+        ssoGrantStatusLabel = "Aktif";
+        lastVerifiedAt = u.updatedAt || null;
+      } else if (ssoStatusUpper === "BLOCKED" || ssoStatusUpper === "REVOKED") {
+        ssoGrantStatus = "REVOKED";
+        ssoGrantStatusLabel = "Tidak Aktif / Dicabut";
+        lastVerifiedAt = u.updatedAt || null;
+      } else if (ssoStatusUpper === "PENDING_SSO_GRANT" || ssoStatusUpper === "UNMATCHED_SSO") {
+        ssoGrantStatus = "NO_GRANT";
+        ssoGrantStatusLabel = "Tidak Ada Grant";
+      } else {
+        // Fallback: Jika status grant SSO belum diverifikasi, jangan asumsikan grant aktif
+        ssoGrantStatus = "UNVERIFIED";
+        ssoGrantStatusLabel = "Belum Diverifikasi";
+      }
+
+      return {
+        ...u,
+        isSystemAdmin,
+        hasManagementInstruction,
+        classification,
+        ssoConnected,
+        ssoGrantStatus,
+        ssoGrantStatusLabel,
+        ssoGrantError,
+        lastVerifiedAt,
+        activeOverrides: userOverrides,
+      };
+    });
+
     return NextResponse.json({ data: safeUsers });
   } catch (error) {
     console.error("[GET /api/admin/users]", error);
@@ -27,7 +139,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     
     if (!sessionUser || sessionUser.systemRole !== "ADMIN") {
       return NextResponse.json(

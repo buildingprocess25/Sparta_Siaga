@@ -47,18 +47,23 @@ import {
   numberToRoman,
   parseShakeMapCovJson,
 } from "./earthquake-intensity-service";
+import {
+  type V1CoverageResult,
+  getV1DepthGroup,
+  getV1Coverage,
+  isEarthquakeV1Eligible,
+} from "./earthquake-v1-parameters";
+
+export type { V1CoverageResult };
+export {
+  getV1DepthGroup,
+  getV1Coverage,
+  isEarthquakeV1Eligible,
+};
 
 // ============================================================================
 // Types and Interfaces
 // ============================================================================
-
-export interface V1CoverageResult {
-  magnitude: number;
-  depthKm: number;
-  depthGroup: string;
-  isCovered: boolean;
-  v1DistanceKm: number | null;
-}
 
 export type AssessmentBasis =
   | "MMI"
@@ -132,87 +137,6 @@ export interface WorkflowExecutionResult {
 
 // In-memory / cache tracker for event window start to prevent timer resets on event updates
 const eventWindowStartMap = new Map<string, Date>();
-// ============================================================================
-// V1 Parameter Table & Depth Groups
-// ============================================================================
-
-/**
- * Returns the V1 depth group string for a given depth in km.
- * Groups:
- * - 0–10 km
- * - >10–20 km
- * - >20–30 km (e.g. 20.5 km)
- * - >30–40 km
- * - >40–50 km
- * - >50 km
- */
-export function getV1DepthGroup(depthKm: number): string {
-  if (!Number.isFinite(depthKm) || depthKm < 0) return "0–10 km";
-  if (depthKm <= 10) return "0–10 km";
-  if (depthKm <= 20) return ">10–20 km";
-  if (depthKm <= 30) return ">20–30 km";
-  if (depthKm <= 40) return ">30–40 km";
-  if (depthKm <= 50) return ">40–50 km";
-  return ">50 km";
-}
-
-/**
- * Evaluates whether an earthquake is covered by the supervisor-provided V1 parameter table.
- * Preserves original V1 depth groups and excluded/red cells:
- * - 4.0 <= M < 5.0: Covered depth up to 30 km -> V1 distance 0-20 km. Depth > 30 km excluded.
- * - 5.0 <= M < 6.0: Covered depth up to 30 km -> V1 distance 0-50 km. Depth > 30 km excluded.
- * - 6.0 <= M < 7.0: Covered depth up to 40 km -> V1 distance 0-160 km. Depth > 40 km excluded.
- * - 7.0 <= M < 8.0: Covered depth up to 50 km -> V1 distance 0-200 km. Depth > 50 km excluded.
- * - M >= 8.0: All depth groups covered by V1 -> V1 distance 0-250 km.
- * - M < 4.0: Not eligible for automatic inspection (display only).
- */
-export function getV1Coverage(magnitude: number, depthKm: number): V1CoverageResult {
-  const safeMag = Number.isFinite(magnitude) ? magnitude : 0;
-  const safeDepth = Number.isFinite(depthKm) && depthKm >= 0 ? depthKm : 10;
-  const depthGroup = getV1DepthGroup(safeDepth);
-
-  if (safeMag < 4.0) {
-    return {
-      magnitude: safeMag,
-      depthKm: safeDepth,
-      depthGroup,
-      isCovered: false,
-      v1DistanceKm: null,
-    };
-  }
-
-  if (safeMag < 5.0) {
-    if (safeDepth <= 30) {
-      return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: true, v1DistanceKm: 20 };
-    }
-    return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: false, v1DistanceKm: null };
-  }
-
-  if (safeMag < 6.0) {
-    if (safeDepth <= 30) {
-      return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: true, v1DistanceKm: 50 };
-    }
-    return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: false, v1DistanceKm: null };
-  }
-
-  if (safeMag < 7.0) {
-    if (safeDepth <= 40) {
-      return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: true, v1DistanceKm: 160 };
-    }
-    return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: false, v1DistanceKm: null };
-  }
-
-  if (safeMag < 8.0) {
-    if (safeDepth <= 50) {
-      return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: true, v1DistanceKm: 200 };
-    }
-    return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: false, v1DistanceKm: null };
-  }
-
-  // M >= 8.0: All depth groups covered by V1
-  return { magnitude: safeMag, depthKm: safeDepth, depthGroup, isCovered: true, v1DistanceKm: 250 };
-}
-
 // ============================================================================
 // Waiting Window Timer Management
 // ============================================================================

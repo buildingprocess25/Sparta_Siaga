@@ -123,26 +123,35 @@ export function LocationDetailPanel({
         icon: ShieldAlert,
       };
     }
-    if (location.status === "PRIORITY_MONITOR" || (distanceKm !== null && distanceKm <= 50)) {
+    if (location.status === "PRIORITY_MONITOR") {
       return {
-        label: "Dalam Radius Evaluasi",
-        sub: "Dalam zona prioritas pantau gempa (< 50 km). Menunggu pemeriksaan fisik.",
+        label: "Dalam Radius Evaluasi (V1)",
+        sub: "Dalam radius evaluasi gempa (V1). Menunggu konfirmasi pemeriksaan fisik.",
         bg: "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
         icon: AlertTriangle,
       };
     }
-    if (location.status === "MONITOR" || (distanceKm !== null && distanceKm <= 110)) {
+    if (location.status === "MONITOR") {
       return {
-        label: "Dalam Radius Evaluasi (Pantau)",
-        sub: "Dalam zona pemantauan (50–110 km). Waspada potensi dampak gempa.",
+        label: "Dalam Radius Pemantauan",
+        sub: "Dalam area pemantauan operasional. Waspada potensi dampak gempa.",
         bg: "bg-yellow-50 text-yellow-800 border-yellow-300 dark:bg-yellow-950/40 dark:text-yellow-300 dark:border-yellow-800",
         icon: Clock,
       };
     }
 
+    if (location.status === "UNASSESSED") {
+      return {
+        label: "Di Luar V1 (Belum Terkaji)",
+        sub: "Di luar radius pencarian V1. Intensitas getaran belum terkaji (bukan konfirmasi aman).",
+        bg: "bg-slate-50 text-slate-700 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700",
+        icon: Clock,
+      };
+    }
+
     return {
-      label: "Normal / Aman",
-      sub: "Kondisi operasional normal dan aman di luar radius gempa",
+      label: "Normal",
+      sub: "Kondisi normal; tidak terdeteksi gempa signifikan di wilayah gerai.",
       bg: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700",
       icon: CheckCircle2,
     };
@@ -238,9 +247,15 @@ export function LocationDetailPanel({
               </strong>
             </div>
             <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-              <span>Status Zona Pantau:</span>
+              <span>Status Radius Evaluasi:</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {distanceKm <= 50 ? "Zona Prioritas Pantau (≤ 50 km)" : "Zona Pantau (50–110 km)"}
+                {location.status === "PRIORITY_MONITOR"
+                  ? "Dalam Radius V1"
+                  : location.status === "MONITOR"
+                  ? "Area Pantau"
+                  : location.status === "UNASSESSED"
+                  ? "Di Luar V1 (Belum Terkaji)"
+                  : "Di Luar Wilayah Gempa"}
               </span>
             </div>
           </div>

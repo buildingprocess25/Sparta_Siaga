@@ -14,7 +14,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     
     if (!sessionUser || sessionUser.systemRole !== "ADMIN") {
       return NextResponse.json(
@@ -51,7 +51,13 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     // 3. PROTEKSI SYSTEM ADMIN (Zero Operational Bypass & Immutability)
-    if (id === "usr_seed_admin" || existingUser.systemRole === "ADMIN") {
+    const isProtectedAdmin =
+      existingUser.systemRole === "ADMIN" ||
+      id === "usr_seed_admin" ||
+      id === "usr_sysadmin_01" ||
+      existingUser.email?.toLowerCase() === "siaga@admin.com";
+
+    if (isProtectedAdmin) {
       if (body.systemRole === "USER") {
         return NextResponse.json({ error: "Action Denied: Tidak dapat mencabut hak akses ADMIN dari antarmuka ini." }, { status: 400 });
       }
@@ -123,8 +129,17 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       body.nik = trimmedNik;
     }
 
-    // 6. Reset Password jika dikirimkan
+    // 6. Reset Password jika dikirimkan (Hanya untuk pengguna LOCAL)
     if (body.password !== undefined && body.password !== null && body.password !== "") {
+      if (existingUser.source !== "LOCAL") {
+        return NextResponse.json(
+          {
+            error: "Action Denied: Password pengguna SSO dikelola terpusat di Portal Login Sparta dan tidak dapat diubah dari SIAGA.",
+          },
+          { status: 400 }
+        );
+      }
+
       if (typeof body.password !== "string" || body.password.length < 8) {
         return NextResponse.json({ error: "Password minimal 8 karakter." }, { status: 400 });
       }
@@ -152,9 +167,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
   try {
-    const sessionUser = await getSessionUser();
+    const sessionUser = await getSessionUser(request);
     
     if (!sessionUser || sessionUser.systemRole !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden: Hanya System Administrator yang dapat menghapus user." }, { status: 403 });
@@ -172,8 +187,24 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     }
 
     // PROTEKSI SYSTEM ADMIN
-    if (id === "usr_seed_admin" || existingUser.systemRole === "ADMIN") {
-      return NextResponse.json({ error: "Action Denied: System ADMIN dilindungi dan tidak dapat dihapus." }, { status: 400 });
+    const isProtectedAdmin =
+      existingUser.systemRole === "ADMIN" ||
+      id === "usr_seed_admin" ||
+      id === "usr_sysadmin_01" ||
+      existingUser.email?.toLowerCase() === "siaga@admin.com";
+
+    if (isProtectedAdmin) {
+      return NextResponse.json({ error: "Action Denied: System ADMIN dilindungi dan tidak dapat dihapus." }, { status: 403 });
+    }
+
+    // PROTEKSI PENGGUNA SSO
+    if (existingUser.source !== "LOCAL") {
+      return NextResponse.json(
+        {
+          error: "Action Denied: Pengguna SSO tidak dapat dihapus dari SIAGA. Kredensial dan akun dikelola melalui Portal Login Sparta. Silakan ubah status pengguna menjadi INACTIVE jika ingin mencabut akses SIAGA.",
+        },
+        { status: 400 }
+      );
     }
 
     // Pemeriksaan dependensi audit & data historis

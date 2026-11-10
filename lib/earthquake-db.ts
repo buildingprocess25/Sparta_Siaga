@@ -1,5 +1,6 @@
 import { getDbPool } from "./db";
 import { Earthquake } from "@/types/disaster";
+import { getV1Coverage } from "./earthquake-v1-parameters";
 
 export interface EarthquakeEventRecord {
   id: string; // canonical_event_key
@@ -59,8 +60,8 @@ export async function dbUpsertEarthquakeEvent(eq: Earthquake): Promise<void> {
         eq.potensiText || null,
         eq.feltArea || null,
         eq.shakemapUrl || null,
-        eq.priorityRadiusKm || 50,
-        eq.monitoringRadiusKm || 110,
+        eq.v1DistanceKm ?? eq.priorityRadiusKm ?? 0,
+        eq.monitoringRadiusKm ?? 0,
         JSON.stringify({
           time: eq.time,
           informationType: eq.informationType,
@@ -127,6 +128,9 @@ export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<E
       const timestamp = new Date(r.occurred_at).getTime();
       const sourceLabel = r.source_primary || "UNVERIFIED";
       const verificationStatus = (r.source_primary === "BMKG" ? "official" : r.source_primary === "USGS" ? "official_external" : "unverified") as any;
+      const mag = parseFloat(r.magnitude);
+      const depthKm = r.depth_km;
+      const v1Coverage = getV1Coverage(mag, depthKm);
       return {
         id: r.id,
         source: sourceLabel,
@@ -135,9 +139,9 @@ export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<E
         informationType: "official_event",
         verificationStatus,
         title: r.title,
-        magnitude: parseFloat(r.magnitude),
-        depth: `${r.depth_km} km`,
-        depthKm: r.depth_km,
+        magnitude: mag,
+        depth: `${depthKm} km`,
+        depthKm,
         latitude: parseFloat(r.latitude),
         longitude: parseFloat(r.longitude),
         time: new Date(r.occurred_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) + " WIB",
@@ -146,9 +150,11 @@ export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<E
         potensiText: r.potensi_text || undefined,
         feltArea: r.felt_area || undefined,
         shakemapUrl: r.shakemap_url || undefined,
-        isSignificant: parseFloat(r.magnitude) >= 5.5,
-        priorityRadiusKm: r.priority_radius_km || 50,
-        monitoringRadiusKm: r.monitoring_radius_km || 110,
+        isSignificant: mag >= 5.5,
+        v1DistanceKm: v1Coverage.v1DistanceKm,
+        v1Coverage,
+        priorityRadiusKm: v1Coverage.v1DistanceKm ?? undefined,
+        monitoringRadiusKm: undefined,
       };
     });
   } catch (err) {
@@ -158,19 +164,38 @@ export async function dbGetRecentEarthquakeEvents(hours: number = 72): Promise<E
 }
 
 export async function dbGetPendingEarthquakeEvents(): Promise<Earthquake[]> {
+  const { isUatSimulationAllowed } = await import("./environment-policy");
+  const allowSim = isUatSimulationAllowed();
+  const sourceFilter = allowSim
+    ? `source_primary IN ('BMKG', 'USGS', 'SIMULASI UAT')`
+    : `source_primary IN ('BMKG', 'USGS')`;
   const { rows } = await getDbPool().query(
     `SELECT * FROM earthquake_events
       WHERE raw_metadata->'v1_mmi_workflow'->>'status' IN ('WAITING_WINDOW', 'DECIDED')
         AND occurred_at >= NOW() - INTERVAL '24 hours'
-        AND source_primary IN ('BMKG', 'USGS')
+        AND ${sourceFilter}
       ORDER BY first_seen_at`
   );
-  return rows.map((row) => ({
-    id: row.id, source: row.source_primary, title: row.title,
-    magnitude: Number(row.magnitude), depth: `${row.depth_km} km`, depthKm: Number(row.depth_km),
-    latitude: Number(row.latitude), longitude: Number(row.longitude),
-    timestamp: new Date(row.occurred_at).getTime(), time: new Date(row.occurred_at).toISOString(),
-    potensiTsunami: Boolean(row.potensi_tsunami),
-    priorityRadiusKm: Number(row.priority_radius_km), monitoringRadiusKm: Number(row.monitoring_radius_km),
-  }));
+  return rows.map((row) => {
+    const mag = Number(row.magnitude);
+    const depthKm = Number(row.depth_km);
+    const v1Coverage = getV1Coverage(mag, depthKm);
+    return {
+      id: row.id,
+      source: row.source_primary,
+      title: row.title,
+      magnitude: mag,
+      depth: `${depthKm} km`,
+      depthKm,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      timestamp: new Date(row.occurred_at).getTime(),
+      time: new Date(row.occurred_at).toISOString(),
+      potensiTsunami: Boolean(row.potensi_tsunami),
+      v1DistanceKm: v1Coverage.v1DistanceKm,
+      v1Coverage,
+      priorityRadiusKm: v1Coverage.v1DistanceKm ?? undefined,
+      monitoringRadiusKm: undefined,
+    };
+  });
 }

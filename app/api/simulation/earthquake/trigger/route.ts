@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { assertSimulationAllowed } from "@/lib/environment-policy";
 import { processEarthquakeAlertsAndReports } from "@/lib/server-daemon";
 import { getOrLoadMasterStores } from "@/lib/store-master-loader";
-import { calculateSpartaMonitoringZone } from "@/lib/haversine";
+import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 import { Earthquake } from "@/types/disaster";
 
 export async function POST(request: Request) {
@@ -57,7 +57,8 @@ export async function POST(request: Request) {
     const timestamp = Date.now();
     const timeFormatted = new Date(timestamp).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) + " WIB";
 
-    const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(parsedMag, parsedDepth);
+    const v1Coverage = getV1Coverage(parsedMag, parsedDepth);
+    const v1DistanceKm = v1Coverage.v1DistanceKm;
 
     const simulationEarthquake: Earthquake = {
       id: simEventId,
@@ -75,8 +76,10 @@ export async function POST(request: Request) {
       time: timeFormatted,
       timestamp,
       potensiTsunami: false,
-      priorityRadiusKm,
-      monitoringRadiusKm,
+      v1DistanceKm,
+      v1Coverage,
+      priorityRadiusKm: v1DistanceKm ?? null,
+      monitoringRadiusKm: null,
       isSignificant: parsedMag >= 5.0,
     };
 
@@ -103,8 +106,9 @@ export async function POST(request: Request) {
         magnitude: parsedMag,
         depthKm: parsedDepth,
         coordinates: [parsedLat, parsedLon],
-        priorityRadiusKm,
-        monitoringRadiusKm,
+        v1DistanceKm,
+        priorityRadiusKm: v1DistanceKm ?? null,
+        monitoringRadiusKm: null,
         occurredAt: timeFormatted,
         scenarioKey: scenarioKey || "custom",
       },

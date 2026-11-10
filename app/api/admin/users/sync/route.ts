@@ -76,6 +76,24 @@ export async function POST(request: Request) {
     const allowUpdates = body.allowUpdates !== false;
     const sourceModule = body.sourceModule || "ALL";
 
+    // Proteksi Otorisasi Khusus untuk Mutasi Sinkronisasi Lama
+    if (!dryRun) {
+      const explicitAuthorization = request.headers.get("x-sparta-sync-authorization");
+      const isMutationAllowed =
+        process.env.ALLOW_LEGACY_SYNC_MUTATION === "true" ||
+        (explicitAuthorization && explicitAuthorization === process.env.SPARTA_INTERNAL_WORKER_SECRET);
+
+      if (!isMutationAllowed) {
+        return NextResponse.json(
+          {
+            error:
+              "Action Denied: Mutasi sinkronisasi dataset lama dinonaktifkan di lingkungan operasional. Integrasi pengguna sekarang dikelola terpusat melalui Portal Login Sparta SSO.",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     let recordsToSync: RawSpartaUserRecord[] = [];
 
     if (body.csvContent && typeof body.csvContent === "string") {

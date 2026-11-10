@@ -185,9 +185,11 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
     }
 
     // Pending decisions must reach their deadline even when the live feed stops updating.
+    const { isUatSimulationAllowed } = await import("./environment-policy");
+    const allowSimulation = isUatSimulationAllowed();
     const pendingEarthquakes = await dbGetPendingEarthquakeEvents();
     if (stores.length && pendingEarthquakes.length) {
-      const pending = await processEarthquakeAlertsAndReports(pendingEarthquakes, stores, true, true);
+      const pending = await processEarthquakeAlertsAndReports(pendingEarthquakes, stores, true, true, allowSimulation);
       dispatchedEarthquakeAlerts += pending.dispatchedAlerts;
     }
 

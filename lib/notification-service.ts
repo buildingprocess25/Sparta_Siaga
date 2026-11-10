@@ -2,7 +2,7 @@ import { getDbPool } from './db';
 import { sendEmergencyEmail, getBranchDutyOfficerEmail } from './email-service';
 import { DisasterNotificationType, NotificationChannel, NotificationLog, AffectedStoreSummary } from '@/types/notification';
 import { Store } from '@/types/store';
-import { calculateHaversineDistance, calculateSpartaMonitoringZone } from './haversine';
+import { calculateHaversineDistance } from './haversine';
 
 export interface DispatchNotificationParams {
   disasterId: string;

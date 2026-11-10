@@ -14,8 +14,9 @@ import {
   ZoomControl,
 } from "react-leaflet";
 import L from "leaflet";
-import { Store } from "@/types/store";
+import { Store, SpatialRisk } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
+import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 import {
   Building,
   ChevronRight,
@@ -29,7 +30,7 @@ interface MapInnerProps {
   earthquakes: Earthquake[];
   basemap: "esri-dark" | "esri-light" | "osm";
   incidentOnly: boolean;
-  statusFilter: "all" | "PRIORITY_MONITOR" | "MONITOR" | "SAFE";
+  statusFilter: "all" | SpatialRisk;
   selectedStore: Store | null;
   onSelectStore: (store: Store) => void;
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
@@ -798,39 +799,28 @@ export default function MapInner({
         <MapFlyController target={flyToTarget} />
         <ViewportTracker onZoomChange={setCurrentZoom} onBoundsChange={handleBoundsChange} />
 
-        {/* 1. DISASTER EPICENTERS & SPARTA MONITORING ZONES (Requirement 30) */}
+        {/* 1. DISASTER EPICENTERS & V1 EVALUATION RADIUS (6 November 2026 Operational Decision) */}
         {showEarthquakes &&
           earthquakes.map((eq) => {
-            const priorityRadius = eq.priorityRadiusKm || 50;
-            const monitoringRadius = eq.monitoringRadiusKm || 110;
+            const coverage = eq.v1Coverage ?? getV1Coverage(eq.magnitude, eq.depthKm ?? 10);
+            const v1Radius = eq.v1DistanceKm ?? coverage.v1DistanceKm;
 
             return (
               <React.Fragment key={eq.id}>
-                {/* Zona Prioritas Pantau SPARTA */}
-                <Circle
-                  center={[eq.latitude, eq.longitude]}
-                  radius={priorityRadius * 1000}
-                  pathOptions={{
-                    color: "#dc2626",
-                    fillColor: "#dc2626",
-                    fillOpacity: 0.16,
-                    weight: 2,
-                    dashArray: "6, 6",
-                  }}
-                />
-
-                {/* Zona Pantau SPARTA */}
-                <Circle
-                  center={[eq.latitude, eq.longitude]}
-                  radius={monitoringRadius * 1000}
-                  pathOptions={{
-                    color: "#f59e0b",
-                    fillColor: "#f59e0b",
-                    fillOpacity: 0.05,
-                    weight: 1.5,
-                    dashArray: "4, 8",
-                  }}
-                />
+                {/* Radius Pencarian / Fallback V1 Operasional SPARTA (Bukan Batas Kerusakan Mutlak) */}
+                {v1Radius !== null && v1Radius > 0 && (
+                  <Circle
+                    center={[eq.latitude, eq.longitude]}
+                    radius={v1Radius * 1000}
+                    pathOptions={{
+                      color: "#dc2626",
+                      fillColor: "#dc2626",
+                      fillOpacity: 0.14,
+                      weight: 2,
+                      dashArray: "6, 6",
+                    }}
+                  />
+                )}
 
                 {/* Epicenter Marker */}
                 <Marker
@@ -869,17 +859,19 @@ export default function MapInner({
                         isDark ? "bg-slate-950/70 border-slate-800" : "bg-slate-50 border-slate-200 text-slate-700"
                       }`}>
                         <div className="flex justify-between items-center">
-                          <span className={`font-bold ${isDark ? "text-red-400" : "text-red-600"}`}>Zona Prioritas Pantau SPARTA:</span>
-                          <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{priorityRadius} km</span>
+                          <span className={`font-bold ${isDark ? "text-red-400" : "text-red-600"}`}>Radius Pencarian/Fallback V1:</span>
+                          <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                            {v1Radius !== null ? `${v1Radius} km` : (eq.magnitude < 4.0 ? "Hanya Pemantauan" : "Tidak Berlaku")}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className={`font-bold ${isDark ? "text-amber-400" : "text-amber-600"}`}>Zona Pantau SPARTA:</span>
-                          <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{monitoringRadius} km</span>
+                          <span className={isDark ? "text-slate-400" : "text-slate-600"}>Kelompok Kedalaman:</span>
+                          <span className={`font-mono ${isDark ? "text-slate-300" : "text-slate-700"}`}>{coverage.depthGroup}</span>
                         </div>
                       </div>
 
                       <p className={`text-[9px] italic leading-tight ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                        Zona pantau merupakan estimasi operasional SPARTA berdasarkan parameter gempa dari BMKG.
+                        Radius V1 adalah batas pencarian awal / fallback operasional SPARTA, bukan batas mutlak kerusakan. Toko di luar V1 tetap dapat terkualifikasi jika intensitas MMI resmi &ge; 6.0; berada di luar V1 tidak membuktikan keamanan fisik.
                       </p>
 
                       <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
@@ -1138,10 +1130,14 @@ export default function MapInner({
                         <span className={isDark ? "text-slate-400" : "text-slate-500"}>Status Spasial:</span>
                         <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
                           {store.spatialRisk === "PRIORITY_MONITOR"
-                            ? "Prioritas Pantau"
+                            ? (store.officialMmi && store.officialMmi >= 6.0 && store.isInsideV1 === false
+                              ? `Memenuhi Ambang MMI (${store.officialMmi})`
+                              : "Prioritas Pantau (Dalam V1)")
                             : store.spatialRisk === "MONITOR"
                             ? "Perlu Dipantau"
-                            : "Aman"}
+                            : store.spatialRisk === "UNASSESSED"
+                            ? "Di Luar V1 (Intensitas Belum Terkaji)"
+                            : "Normal"}
                         </span>
                       </div>
                       <div className="flex justify-between">
