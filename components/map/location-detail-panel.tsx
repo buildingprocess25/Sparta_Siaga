@@ -20,8 +20,10 @@ import {
   Activity,
   Layers,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { Store as StoreType } from "@/types/store";
+import type { AhoStoreDetailResponse } from "@/lib/maintenance-aho-db";
 
 export type FacilityDetail = {
   id: string;
@@ -36,6 +38,26 @@ export type FacilityDetail = {
   mapping_verified_at: string | null;
 };
 
+function formatWibDateTime(isoStr?: string | null): string {
+  if (!isoStr) return "-";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return (
+      d.toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Jakarta",
+      }) + " WIB"
+    );
+  } catch {
+    return isoStr;
+  }
+}
+
 interface LocationDetailPanelProps {
   location: StoreType | null;
   facility?: FacilityDetail | null;
@@ -48,6 +70,7 @@ interface LocationDetailPanelProps {
     title?: string;
   } | null;
   activeRole?: string;
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
 }
 
 export function LocationDetailPanel({
@@ -57,6 +80,7 @@ export function LocationDetailPanel({
   isMobile = false,
   currentEarthquake,
   activeRole,
+  activeLayer,
 }: LocationDetailPanelProps) {
   const [incidentInfo, setIncidentInfo] = useState<{
     id: string;
@@ -65,6 +89,48 @@ export function LocationDetailPanel({
     pic?: { name: string; nik?: string; role?: string } | null;
   } | null>(null);
   const [loadingIncident, setLoadingIncident] = useState(false);
+
+  // SPARTA Maintenance AHO tickets and personnel state
+  const [ahoData, setAhoData] = useState<AhoStoreDetailResponse | null>(null);
+  const [loadingAho, setLoadingAho] = useState(false);
+  const [ahoError, setAhoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Only fetch AHO details for real store locations, not DC facilities
+    const isFac = Boolean(facility || location?.id?.startsWith("FACILITY:"));
+    if (!location || isFac) {
+      setAhoData(null);
+      return;
+    }
+
+    const code = (location.kode_toko || "").trim().toUpperCase();
+    if (!code) return;
+
+    const controller = new AbortController();
+    setLoadingAho(true);
+    setAhoError(null);
+
+    fetch(`/api/aho/stores/${encodeURIComponent(code)}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const payload = await res.json();
+        if (!res.ok || !payload.success) {
+          throw new Error(payload.error || "Gagal memuat data AHO toko");
+        }
+        setAhoData(payload.data || null);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setAhoError(err.message || "Gagal memuat tiket AHO");
+        }
+      })
+      .finally(() => {
+        setLoadingAho(false);
+      });
+
+    return () => controller.abort();
+  }, [location?.kode_toko, facility, location?.id]);
 
   // Compute distance from current earthquake epicenter if available
   const distanceKm = React.useMemo(() => {
@@ -280,6 +346,186 @@ export function LocationDetailPanel({
             </span>
           </div>
         </div>
+
+        {/* =========================================================================
+            BAGIAN B: Penanggung Jawab Toko (BMS, BMC, BnM Manager)
+            Kondisi A: Sumber/hak akses belum dibuka -> tampilkan "Data belum tersedia"
+            Kondisi B: Otomatis tampil saat hak akses tabel personel diperluas
+           ========================================================================= */}
+        {!isFacility && (
+          <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/80 dark:border-slate-700/80">
+              <div className="flex items-center gap-1.5">
+                <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <strong className="text-slate-900 dark:text-white font-bold text-xs">
+                  Penanggung Jawab Toko
+                </strong>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 font-medium">
+                SPARTA Maintenance
+              </span>
+            </div>
+
+            <div className="space-y-2 pt-0.5">
+              {/* BMS */}
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 truncate">
+                    BMS (Building Maintenance Supervisor)
+                  </div>
+                  <div className="font-semibold text-xs text-slate-800 dark:text-slate-200 mt-0.5 truncate">
+                    {ahoData?.personnel?.bms || "Data belum tersedia"}
+                  </div>
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 font-medium ${
+                  ahoData?.personnel?.bms
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                }`}>
+                  {ahoData?.personnel?.bms ? "Aktif" : "Menunggu Akses"}
+                </span>
+              </div>
+
+              {/* BMC */}
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 truncate">
+                    BMC (Building Maintenance Coordinator)
+                  </div>
+                  <div className="font-semibold text-xs text-slate-800 dark:text-slate-200 mt-0.5 truncate">
+                    {ahoData?.personnel?.bmc || "Data belum tersedia"}
+                  </div>
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 font-medium ${
+                  ahoData?.personnel?.bmc
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                }`}>
+                  {ahoData?.personnel?.bmc ? "Aktif" : "Menunggu Akses"}
+                </span>
+              </div>
+
+              {/* BnM Manager */}
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 truncate">
+                    BnM Manager (Branch Maintenance Manager)
+                  </div>
+                  <div className="font-semibold text-xs text-slate-800 dark:text-slate-200 mt-0.5 truncate">
+                    {ahoData?.personnel?.bnmManager || "Data belum tersedia"}
+                  </div>
+                </div>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 font-medium ${
+                  ahoData?.personnel?.bnmManager
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                }`}>
+                  {ahoData?.personnel?.bnmManager ? "Aktif" : "Menunggu Akses"}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 italic leading-snug pt-1">
+              * Informasi penanggung jawab toko bersumber dari database SPARTA Maintenance. Tampilan disiapkan untuk integrasi langsung saat hak akses diperluas.
+            </p>
+          </div>
+        )}
+
+        {/* =========================================================================
+            BAGIAN C: Informasi Tiket AHO (SPARTA Maintenance)
+            Menampilkan jumlah tiket, nomor tiket, status, dan waktu terakhir diperbarui
+           ========================================================================= */}
+        {!isFacility && (
+          <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/80 dark:border-slate-700/80">
+              <div className="flex items-center gap-1.5">
+                <Wrench className="w-4 h-4 text-amber-500" />
+                <strong className="text-slate-900 dark:text-white font-bold text-xs">
+                  Informasi Tiket AHO
+                </strong>
+              </div>
+              {loadingAho ? (
+                <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Memuat...</span>
+                </span>
+              ) : ahoData ? (
+                <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                  ahoData.totalActive > 0
+                    ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
+                    : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                }`}>
+                  {ahoData.totalActive > 0 ? `${ahoData.totalActive} Tiket Aktif` : "0 Tiket Aktif"}
+                </span>
+              ) : null}
+            </div>
+
+            {loadingAho ? (
+              <div className="py-4 flex flex-col items-center justify-center gap-2 text-slate-400 text-xs">
+                <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                <span>Mengambil data tiket SPARTA Maintenance...</span>
+              </div>
+            ) : ahoError ? (
+              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span className="leading-tight">{ahoError}</span>
+              </div>
+            ) : ahoData && ahoData.totalActive > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                  <span className="uppercase font-bold">Daftar Tiket Aktif:</span>
+                  {ahoData.lastUpdated && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      <span>Terakhir: {formatWibDateTime(ahoData.lastUpdated)}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {ahoData.tickets.map((ticket, idx) => (
+                    <div
+                      key={ticket.id || idx}
+                      className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 space-y-1"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                          {ticket.problemNo}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            ticket.status === "New"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-300 dark:border-blue-700"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                          }`}
+                        >
+                          {ticket.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5">
+                        <span>Cabang: {ticket.branchName || ticket.branchCode || branchName}</span>
+                        <span>Diperbarui: {formatWibDateTime(ticket.updatedAt)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-start gap-2.5 text-xs text-emerald-900 dark:text-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-semibold">Tidak Ada Tiket AHO Aktif</strong>
+                  <p className="text-[11px] opacity-90 mt-0.5 leading-relaxed">
+                    Toko ini tidak memiliki tiket berstatus New atau Progress pada sistem SPARTA Maintenance.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <p className="text-[9px] text-slate-400 italic leading-snug pt-1">
+              * Data tiket bersumber langsung dari tabel MasterAhoTicket SPARTA Maintenance (read-only).
+            </p>
+          </div>
+        )}
 
         {/* Facility Specific Verification State */}
         {isFacility && (

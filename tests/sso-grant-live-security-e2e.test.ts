@@ -5,6 +5,7 @@ import { querySpartaBatchModuleGrants, clearGrantCache } from "../lib/sso-servic
 
 test("End-to-End Cross-Service Integration & Security Scope Audit", async (t) => {
   // 1. Dynamically import createApp and SsoRepository from login-sparta
+  // @ts-expect-error dynamic local file import
   const { createApp } = await import("file:///C:/buildingprocess25/login-sparta/apps/api/src/app.ts");
 
   const ADMIN_MUTATION_KEY = "admin-secret-sync-key-32characters-min";

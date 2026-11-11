@@ -47,8 +47,8 @@ interface MapToolbarProps {
   // Map Quick View Controls
   basemap: "esri-dark" | "esri-light" | "osm";
   onChangeBasemap: (basemap: "esri-dark" | "esri-light" | "osm") => void;
-  activeLayer: "all" | "earthquake" | "stores" | "weather" | "flood";
-  onLayerChange: (layer: "all" | "earthquake" | "stores" | "weather" | "flood") => void;
+  activeLayer: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
+  onLayerChange: (layer: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho") => void;
   mapTimeFilter: "24h" | "3d";
   onChangeMapTimeFilter: (filter: "24h" | "3d") => void;
   incidentOnly: boolean;

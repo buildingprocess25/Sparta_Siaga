@@ -42,6 +42,12 @@ export function IncidentDetailModal({
   onFlyToLocation,
   theme = "dark",
 }: IncidentDetailModalProps) {
+  const [currentPage, setCurrentPage] = React.useState(1);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [incident?.id]);
+
   if (!isOpen || !incident) return null;
 
   const isDark = theme === "dark";
@@ -49,14 +55,9 @@ export function IncidentDetailModal({
   const stores = incident.affected_stores_sample || [];
   const totalStores = incident.affected_stores_count || stores.length;
 
-  const [currentPage, setCurrentPage] = React.useState(1);
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(stores.length / pageSize));
   const paginatedStores = stores.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [incident?.id]);
 
   const displayTitle = cleanDisplayTitle(incident.title);
   const displayMessage = cleanDisplayText(incident.message);

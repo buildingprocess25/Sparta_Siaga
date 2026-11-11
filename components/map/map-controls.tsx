@@ -15,6 +15,9 @@ import {
   Waves,
   Store,
   Clock,
+  Wrench,
+  Maximize2,
+  Minimize2,
   X,
 } from "lucide-react";
 import { Earthquake } from "@/types/disaster";
@@ -34,8 +37,8 @@ interface MapControlsProps {
   radarTimeString?: string;
   hidden?: boolean;
   theme?: "dark" | "light";
-  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood";
-  onLayerChange?: (layer: "all" | "earthquake" | "stores" | "weather" | "flood") => void;
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
+  onLayerChange?: (layer: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho") => void;
 
   // Requirement 3 & 22: Map Time Filter (24 Jam vs 3 Hari Segmented Control)
   mapTimeFilter?: "24h" | "3d";
@@ -44,6 +47,10 @@ interface MapControlsProps {
   // Requirement 7 & 32: Compact Event Focus Mode Banner
   selectedEarthquake?: Earthquake | null;
   onClearEventFocus?: () => void;
+
+  // Fullscreen support (Phase 9 & 14)
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 
   // Store Sync Update Info
   lastStoreUpdate?: string | null;
@@ -95,6 +102,8 @@ export function MapControls({
   onChangeMapTimeFilter,
   selectedEarthquake,
   onClearEventFocus,
+  isFullscreen = false,
+  onToggleFullscreen,
   isMobileSheetOpen = false,
   onCloseMobileSheet,
 }: MapControlsProps) {
@@ -112,6 +121,53 @@ export function MapControls({
 
   const controlContent = isLocationMode ? (
     <div className="space-y-3">
+      {/* Pilihan Layer Toko (Mode Toko: Standar vs Tiket AHO) */}
+      {locationMode === "store" && (
+        <div>
+          <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+            Pilihan Layer Toko
+          </div>
+          <div
+            className={`p-1 rounded-xl flex items-center gap-1 border ${
+              isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-100 border-slate-200"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onLayerChange?.("stores")}
+              aria-pressed={activeLayer !== "aho"}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center min-h-[34px] flex items-center justify-center gap-1.5 ${
+                activeLayer !== "aho"
+                  ? isDark
+                    ? "bg-slate-800 text-cyan-400 shadow-xs font-bold"
+                    : "bg-white text-blue-600 shadow-xs font-bold"
+                  : isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Store className="w-3.5 h-3.5 shrink-0" />
+              <span>Standar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onLayerChange?.("aho")}
+              aria-pressed={activeLayer === "aho"}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center min-h-[34px] flex items-center justify-center gap-1.5 ${
+                activeLayer === "aho"
+                  ? "bg-amber-500 text-white shadow-xs font-bold"
+                  : isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <Wrench className="w-3.5 h-3.5 shrink-0" />
+              <span>Tiket AHO</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Basemap Selector */}
       <div>
         <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
@@ -150,18 +206,45 @@ export function MapControls({
         </div>
       </div>
 
-      {/* Reset Tampilan Peta */}
-      <button
-        onClick={onResetView}
-        className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all min-h-[40px] ${
-          isDark
-            ? "border-slate-700/80 hover:bg-slate-800 text-slate-300 hover:text-white"
-            : "border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900"
-        }`}
-      >
-        <Compass className="w-4 h-4 shrink-0 text-cyan-500" />
-        <span>Reset Tampilan Peta</span>
-      </button>
+      {/* Reset & Fullscreen Buttons */}
+      <div className="space-y-1.5">
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            aria-pressed={isFullscreen}
+            className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all min-h-[38px] ${
+              isFullscreen
+                ? isDark
+                  ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25"
+                  : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                : isDark
+                ? "border-slate-700/80 hover:bg-slate-800 text-slate-300 hover:text-white"
+                : "border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900"
+            }`}
+            title={isFullscreen ? "Keluar dari Layar Penuh" : "Tampilkan Layar Penuh"}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4 shrink-0 text-cyan-400" />
+            ) : (
+              <Maximize2 className="w-4 h-4 shrink-0 text-cyan-500" />
+            )}
+            <span>{isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}</span>
+          </button>
+        )}
+
+        <button
+          onClick={onResetView}
+          className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all min-h-[38px] ${
+            isDark
+              ? "border-slate-700/80 hover:bg-slate-800 text-slate-300 hover:text-white"
+              : "border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900"
+          }`}
+        >
+          <Compass className="w-4 h-4 shrink-0 text-cyan-500" />
+          <span>Reset Tampilan Peta</span>
+        </button>
+      </div>
 
       {/* Catatan Terakhir Pembaruan Data Toko */}
       <div className={`pt-2 border-t text-[10px] space-y-1 ${
@@ -215,51 +298,53 @@ export function MapControls({
         </div>
       )}
 
-      {/* Periode Gempa: Segmented Control [ 24 Jam | 3 Hari ] */}
-      <div>
-        <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-          Periode Gempa
-        </div>
-        <div
-          className={`p-1 rounded-xl flex items-center gap-1 border ${
-            isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-100 border-slate-200"
-          }`}
-        >
-          <button
-            onClick={() => onChangeMapTimeFilter?.("24h")}
-            aria-pressed={mapTimeFilter === "24h"}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all text-center min-h-[36px] ${
-              mapTimeFilter === "24h"
-                ? "bg-amber-500 text-white shadow-xs"
-                : isDark
-                ? "text-slate-400 hover:text-white"
-                : "text-slate-600 hover:text-slate-900"
+      {/* Periode Gempa: Segmented Control [ 24 Jam | 3 Hari ] (Hanya relevan saat layer gempa/semua aktif) */}
+      {(activeLayer === "all" || activeLayer === "earthquake") && (
+        <div>
+          <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+            Periode Gempa
+          </div>
+          <div
+            className={`p-1 rounded-xl flex items-center gap-1 border ${
+              isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-100 border-slate-200"
             }`}
           >
-            24 Jam
-          </button>
-          <button
-            onClick={() => onChangeMapTimeFilter?.("3d")}
-            aria-pressed={mapTimeFilter === "3d"}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all text-center min-h-[36px] ${
-              mapTimeFilter === "3d"
-                ? "bg-blue-600 text-white shadow-xs"
-                : isDark
-                ? "text-slate-400 hover:text-white"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            3 Hari
-          </button>
+            <button
+              onClick={() => onChangeMapTimeFilter?.("24h")}
+              aria-pressed={mapTimeFilter === "24h"}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all text-center min-h-[36px] ${
+                mapTimeFilter === "24h"
+                  ? "bg-amber-500 text-white shadow-xs"
+                  : isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              24 Jam
+            </button>
+            <button
+              onClick={() => onChangeMapTimeFilter?.("3d")}
+              aria-pressed={mapTimeFilter === "3d"}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all text-center min-h-[36px] ${
+                mapTimeFilter === "3d"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              3 Hari
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Layer Selector */}
+      {/* Layer Selector (Mode Kejadian: Semua, Gempa, Banjir, Toko - Tanpa AHO) */}
       <div>
         <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
           Layer Tampilan
         </div>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-4 gap-1">
           {[
             { id: "all", label: "Semua", icon: Globe2 },
             { id: "earthquake", label: "Gempa", icon: Activity },
@@ -288,7 +373,7 @@ export function MapControls({
                 }`}
               >
                 <LayerIcon className="h-4 w-4" />
-                <span className="leading-none text-[11px]">{layer.label}</span>
+                <span className="leading-none text-[10px]">{layer.label}</span>
               </button>
             );
           })}
@@ -376,18 +461,45 @@ export function MapControls({
         </div>
       </div>
 
-      {/* Reset Tampilan Peta */}
-      <button
-        onClick={onResetView}
-        className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all min-h-[40px] ${
-          isDark
-            ? "border-slate-700/80 hover:bg-slate-800 text-slate-300 hover:text-white"
-            : "border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900"
-        }`}
-      >
-        <Compass className="w-4 h-4 shrink-0 text-cyan-500" />
-        <span>Reset Tampilan Peta</span>
-      </button>
+      {/* Reset & Fullscreen Buttons */}
+      <div className="space-y-1.5">
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            aria-pressed={isFullscreen}
+            className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all min-h-[38px] ${
+              isFullscreen
+                ? isDark
+                  ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25"
+                  : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                : isDark
+                ? "border-slate-700/80 hover:bg-slate-800 text-slate-300 hover:text-white"
+                : "border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900"
+            }`}
+            title={isFullscreen ? "Keluar dari Layar Penuh" : "Tampilkan Layar Penuh"}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4 shrink-0 text-cyan-400" />
+            ) : (
+              <Maximize2 className="w-4 h-4 shrink-0 text-cyan-500" />
+            )}
+            <span>{isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}</span>
+          </button>
+        )}
+
+        <button
+          onClick={onResetView}
+          className={`w-full py-2 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-2 transition-all min-h-[38px] ${
+            isDark
+              ? "border-slate-700/80 hover:bg-slate-800 text-slate-300 hover:text-white"
+              : "border-slate-200 hover:bg-slate-100 text-slate-700 hover:text-slate-900"
+          }`}
+        >
+          <Compass className="w-4 h-4 shrink-0 text-cyan-500" />
+          <span>Reset Tampilan Peta</span>
+        </button>
+      </div>
 
       {/* Catatan Terakhir Pembaruan Data Toko */}
       <div className={`pt-2 border-t text-[10px] space-y-1 ${

@@ -44,7 +44,9 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
 
   // Core App Shell & Role State
   const [activeRole, setActiveRole] = useState<RoleType>("ho_admin");
-  const [activeLayer, setActiveLayer] = useState<"all" | "earthquake" | "stores" | "weather" | "flood">("all");
+  const [activeLayer, setActiveLayer] = useState<
+    "all" | "earthquake" | "stores" | "weather" | "flood" | "aho"
+  >("all");
 
   // Persistent Incidents State
   const [incidents, setIncidents] = useState<IncidentRecord[]>([]);

@@ -20,9 +20,20 @@ import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 import {
   Building,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ShieldAlert,
   ExternalLink,
+  Wrench,
+  Clock,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import {
+  getAhoColor,
+  calculateAhoPercentage,
+  formatAhoBadgeLabel,
+} from "@/lib/aho-utils";
 
 interface MapInnerProps {
   stores: Store[];
@@ -36,7 +47,7 @@ interface MapInnerProps {
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
   showRadar?: boolean;
   radarTileUrl?: string;
-  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood";
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
   floodReports?: any[];
   theme?: "dark" | "light";
   onViewportChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
@@ -82,7 +93,7 @@ function BasemapZoomSync({ maxZoom }: { maxZoom: number }) {
   return null;
 }
 
-// Leaflet does not always notice sidebar transitions or parent panel resizing.
+// Leaflet does not always notice sidebar transitions, parent panel resizing, or fullscreen transitions.
 // Sync its viewport with actual container size without resetting map position.
 function MapSizeSync() {
   const map = useMap();
@@ -100,10 +111,12 @@ function MapSizeSync() {
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(sync) : null;
     observer?.observe(node);
     window.addEventListener("resize", sync);
+    document.addEventListener("fullscreenchange", sync);
     sync();
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", sync);
+      document.removeEventListener("fullscreenchange", sync);
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [map]);
@@ -337,6 +350,124 @@ function ClusterMarkerItem({
   );
 }
 
+// ============================================================================
+// AHO Layer Specific Markers & Helpers (SPARTA Maintenance Integration)
+// ============================================================================
+
+interface AhoBranchAggregation {
+  cabang: string;
+  latitude: number;
+  longitude: number;
+  totalStores: number;
+  storesWithTickets: number;
+  totalTickets: number;
+  percentage: number;
+}
+
+function createAhoBranchIcon(branch: AhoBranchAggregation) {
+  const ahoColor = getAhoColor(branch.percentage);
+  const roundedPct = Math.round(branch.percentage);
+  const hasCriticalTickets = branch.percentage > 70;
+
+  const html = `
+    <div class="relative flex items-center justify-center cursor-pointer group select-none">
+      ${hasCriticalTickets ? `<div class="absolute -inset-1 ${ahoColor.bgClass}/25 rounded-full animate-ping"></div>` : ""}
+      <div class="px-2.5 py-1 rounded-full bg-slate-900/95 dark:bg-slate-950/95 border border-slate-700/80 hover:border-slate-400 text-slate-100 shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-all duration-200 group-hover:scale-105 z-20">
+        <span class="w-2 h-2 rounded-full ${ahoColor.bgClass} shrink-0"></span>
+        <span class="tracking-tight text-[11px] font-semibold text-slate-100 whitespace-nowrap">${branch.cabang}</span>
+        <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${ahoColor.badgeClass} whitespace-nowrap">${roundedPct}% (${branch.storesWithTickets}/${branch.totalStores})</span>
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: "custom-aho-branch-marker",
+    iconSize: [140, 28],
+    iconAnchor: [70, 14],
+    popupAnchor: [0, -16],
+  });
+}
+
+function createAhoClusterIcon(totalStores: number, storesWithTickets: number, percentage: number) {
+  const ahoColor = getAhoColor(percentage);
+  const roundedPct = Math.round(percentage);
+  const size = totalStores > 100 ? 38 : totalStores > 25 ? 34 : 30;
+
+  const html = `
+    <div class="relative flex items-center justify-center cursor-pointer group select-none">
+      <div class="w-[${size}px] h-[${size}px] rounded-full bg-slate-900/95 border border-slate-700/80 shadow-md backdrop-blur-md flex flex-col items-center justify-center font-bold transition-all duration-200 group-hover:scale-110">
+        <span class="font-mono text-[11px] font-bold leading-none ${ahoColor.textClass}">${roundedPct}%</span>
+        <span class="text-[9px] font-mono text-slate-400 leading-none mt-0.5">${storesWithTickets}/${totalStores}</span>
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: "custom-aho-cluster-marker",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  });
+}
+
+function createAhoStoreIcon(store: Store, hasTicket: boolean, ticketCount: number, isSelected: boolean = false) {
+  const ringColor = isSelected
+    ? "border-cyan-400 shadow-cyan-400/80 scale-125"
+    : hasTicket
+    ? "border-rose-600/90 shadow-rose-600/30"
+    : "border-emerald-600/80 shadow-emerald-600/20";
+
+  const badgeColor = isSelected ? "bg-cyan-500" : hasTicket ? "bg-rose-600" : "bg-emerald-600";
+  const innerColor = isSelected ? "bg-cyan-500" : hasTicket ? "bg-rose-600" : "bg-emerald-600";
+  const markerLabel = hasTicket ? (ticketCount > 9 ? "9+" : String(ticketCount)) : "A";
+
+  const html = `
+    <div class="relative group cursor-pointer flex items-center justify-center">
+      ${isSelected ? '<div class="absolute -inset-2 bg-cyan-400/40 rounded-full animate-ping"></div>' : hasTicket ? '<div class="absolute -inset-1.5 bg-rose-600/25 rounded-full animate-ping"></div>' : ""}
+      <div class="w-7 h-7 rounded-full bg-slate-900 border-2 ${ringColor} flex items-center justify-center shadow-md transition-transform hover:scale-125 z-20">
+        <div class="w-4.5 h-4.5 rounded-full ${innerColor} flex items-center justify-center text-[8px] font-black text-white tracking-tighter">
+          ${markerLabel}
+        </div>
+      </div>
+      <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ${badgeColor} border border-slate-900 z-30"></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: "custom-aho-store-pin",
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -16],
+  });
+}
+
+function AhoFlyToButton({
+  lat,
+  lng,
+  zoom,
+  label,
+}: {
+  lat: number;
+  lng: number;
+  zoom: number;
+  label: string;
+}) {
+  const map = useMap();
+  return (
+    <button
+      type="button"
+      onClick={() => map.flyTo([lat, lng], zoom, { duration: 1.0 })}
+      className="w-full mt-2 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors shadow-xs"
+    >
+      <span>{label}</span>
+      <ChevronRight className="w-3.5 h-3.5" />
+    </button>
+  );
+}
+
 function formatWIBTime(iso: string) {
   try {
     const d = new Date(iso);
@@ -564,12 +695,210 @@ export default function MapInner({
     });
   }, [onViewportChange]);
 
-  const showEarthquakes = activeLayer === "all" || activeLayer === "earthquake";
-  const showStoresLayer = activeLayer === "all" || activeLayer === "stores";
+  // AHO Layer state and data fetching (SPARTA Maintenance Integration)
+  // Strictly mode-aware: AHO is ONLY valid when locationMode === "store"
+  const isAhoLayer = locationMode === "store" && activeLayer === "aho";
+  const [isLegendCollapsed, setIsLegendCollapsed] = useState(false);
+  const [ahoCounts, setAhoCounts] = useState<Record<string, number> | null>(null);
+  const [ahoLastUpdated, setAhoLastUpdated] = useState<string | null>(null);
+  const [ahoTotalTickets, setAhoTotalTickets] = useState(0);
+  const [ahoTotalStores, setAhoTotalStores] = useState(0);
+  const [ahoLoading, setAhoLoading] = useState(false);
+  const [ahoError, setAhoError] = useState(false);
+  const [ahoRefreshKey, setAhoRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (!isAhoLayer) return;
+
+    // Use cached counts if already fetched in this session unless refresh requested
+    if (ahoCounts && ahoRefreshKey === 0) return;
+
+    const controller = new AbortController();
+    setAhoLoading(true);
+    setAhoError(false);
+
+    fetch("/api/aho" + (ahoRefreshKey > 0 ? "?refresh=true" : ""), {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Gagal memuat data AHO");
+        }
+        setAhoCounts(data.counts || {});
+        setAhoLastUpdated(data.lastUpdated || null);
+        setAhoTotalTickets(data.totalActiveTickets || 0);
+        setAhoTotalStores(data.totalStoresWithTickets || 0);
+        setAhoError(false);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("[MapInner] Gagal memuat data AHO:", err);
+          setAhoError(true);
+        }
+      })
+      .finally(() => {
+        setAhoLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [isAhoLayer, ahoRefreshKey]);
+
+  const showEarthquakes = !isAhoLayer && (activeLayer === "all" || activeLayer === "earthquake");
+  const showStoresLayer = !isAhoLayer && (activeLayer === "all" || activeLayer === "stores");
 
   // Requirement: Radar is only visible when specifically enabled and zoomed in to prevent global watermark clutter.
   const isRadarEnabled = showRadar || activeLayer === "weather";
-  const showWeatherLayer = isRadarEnabled;
+  const showWeatherLayer = !isAhoLayer && isRadarEnabled;
+
+  // Group all stores into branch aggregations for AHO Layer (Zoom <= 7)
+  const ahoBranchAggregations = useMemo(() => {
+    if (!isAhoLayer || !ahoCounts) return [];
+
+    const map = new Map<
+      string,
+      {
+        cabang: string;
+        sumLat: number;
+        sumLng: number;
+        totalStores: number;
+        storesWithTickets: number;
+        totalTickets: number;
+      }
+    >();
+
+    for (const store of stores) {
+      const branchName = store.cabang || "Lainnya";
+      const code = (store.kode_toko || "").toUpperCase().trim();
+      const ticketCount = ahoCounts[code] || 0;
+      const hasTicket = ticketCount > 0;
+
+      const existing = map.get(branchName);
+      if (!existing) {
+        map.set(branchName, {
+          cabang: branchName,
+          sumLat: store.latitude,
+          sumLng: store.longitude,
+          totalStores: 1,
+          storesWithTickets: hasTicket ? 1 : 0,
+          totalTickets: ticketCount,
+        });
+      } else {
+        existing.sumLat += store.latitude;
+        existing.sumLng += store.longitude;
+        existing.totalStores += 1;
+        if (hasTicket) existing.storesWithTickets += 1;
+        existing.totalTickets += ticketCount;
+      }
+    }
+
+    const result: AhoBranchAggregation[] = [];
+    map.forEach((item) => {
+      if (item.totalStores > 0) {
+        const percentage = calculateAhoPercentage(item.totalStores, item.storesWithTickets);
+        result.push({
+          cabang: item.cabang,
+          latitude: item.sumLat / item.totalStores,
+          longitude: item.sumLng / item.totalStores,
+          totalStores: item.totalStores,
+          storesWithTickets: item.storesWithTickets,
+          totalTickets: item.totalTickets,
+          percentage,
+        });
+      }
+    });
+
+    return result;
+  }, [stores, isAhoLayer, ahoCounts]);
+
+  // Spatial Grid Clustering for AHO Layer at Zoom 8–12
+  const ahoClusters = useMemo(() => {
+    if (!isAhoLayer || !ahoCounts || currentZoom < 8 || currentZoom >= 13) return [];
+
+    // Filter by viewport bounds for optimal rendering performance
+    const visibleStores = mapBounds
+      ? stores.filter((s) => mapBounds.contains([s.latitude, s.longitude]))
+      : stores;
+
+    const step =
+      currentZoom <= 8 ? 0.7 :
+      currentZoom === 9 ? 0.35 :
+      currentZoom === 10 ? 0.18 :
+      currentZoom === 11 ? 0.09 : 0.045;
+
+    const gridMap = new Map<
+      string,
+      {
+        sumLat: number;
+        sumLng: number;
+        stores: Store[];
+        storesWithTickets: number;
+        totalTickets: number;
+      }
+    >();
+
+    for (const s of visibleStores) {
+      const latIdx = Math.floor(s.latitude / step);
+      const lngIdx = Math.floor(s.longitude / step);
+      const key = `${latIdx}_${lngIdx}`;
+
+      const code = (s.kode_toko || "").toUpperCase().trim();
+      const ticketCount = ahoCounts[code] || 0;
+      const hasTicket = ticketCount > 0;
+
+      const cell = gridMap.get(key);
+      if (!cell) {
+        gridMap.set(key, {
+          sumLat: s.latitude,
+          sumLng: s.longitude,
+          stores: [s],
+          storesWithTickets: hasTicket ? 1 : 0,
+          totalTickets: ticketCount,
+        });
+      } else {
+        cell.sumLat += s.latitude;
+        cell.sumLng += s.longitude;
+        cell.stores.push(s);
+        if (hasTicket) cell.storesWithTickets += 1;
+        cell.totalTickets += ticketCount;
+      }
+    }
+
+    const result: Array<{
+      lat: number;
+      lng: number;
+      totalStores: number;
+      storesWithTickets: number;
+      totalTickets: number;
+      percentage: number;
+      stores: Store[];
+    }> = [];
+
+    gridMap.forEach((cell) => {
+      const totalStores = cell.stores.length;
+      const percentage = calculateAhoPercentage(totalStores, cell.storesWithTickets);
+      result.push({
+        lat: cell.sumLat / totalStores,
+        lng: cell.sumLng / totalStores,
+        totalStores,
+        storesWithTickets: cell.storesWithTickets,
+        totalTickets: cell.totalTickets,
+        percentage,
+        stores: cell.stores,
+      });
+    });
+
+    return result;
+  }, [stores, isAhoLayer, ahoCounts, currentZoom, mapBounds]);
+
+  // Viewport culled stores for individual AHO markers at Zoom >= 13
+  const ahoVisibleStores = useMemo(() => {
+    if (!isAhoLayer || !ahoCounts || currentZoom < 13) return [];
+
+    return mapBounds
+      ? stores.filter((s) => mapBounds.contains([s.latitude, s.longitude]))
+      : stores;
+  }, [stores, isAhoLayer, ahoCounts, currentZoom, mapBounds]);
 
   // Group stores into branch aggregations for Zoom <= 7 (Titik Percabang)
   const branchAggregations = useMemo(() => {
@@ -1225,7 +1554,8 @@ export default function MapInner({
 
         {/* 5. EXPLICIT SELECTED STORE PIN (Always visible even in Crisis Focus Mode!) */}
         {selectedStore &&
-          !operationalStores.some((s) => s.id === selectedStore.id) && (
+          !operationalStores.some((s) => s.id === selectedStore.id) &&
+          !isAhoLayer && (
             <Marker
               key={`selected-${selectedStore.id}`}
               position={[selectedStore.latitude, selectedStore.longitude]}
@@ -1298,7 +1628,347 @@ export default function MapInner({
               </Popup>
             </Marker>
           )}
+
+        {/* =========================================================================
+            6. AHO TICKETS LAYER (SPARTA Maintenance Integration)
+            LOD: Zoom <= 7 Cabang, Zoom 8–12 Cluster, Zoom >= 13 Individual
+           ========================================================================= */}
+        {isAhoLayer && ahoCounts && (
+          <>
+            {/* LEVEL CABANG (Zoom <= 7): Agregasi per Cabang */}
+            {currentZoom <= 7 &&
+              ahoBranchAggregations.map((branch) => {
+                const ahoColor = getAhoColor(branch.percentage);
+                return (
+                  <Marker
+                    key={`aho-branch-${branch.cabang}`}
+                    position={[branch.latitude, branch.longitude]}
+                    icon={createAhoBranchIcon(branch)}
+                  >
+                    <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
+                        <span className="font-bold">Cabang {branch.cabang}</span>: {formatAhoBadgeLabel(branch.totalStores, branch.storesWithTickets)}
+                      </div>
+                    </Tooltip>
+                    <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
+                      <div className={`p-3.5 rounded-xl border w-72 space-y-2.5 text-xs transition-colors ${
+                        isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
+                            Agregasi Cabang
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${ahoColor.bgClass}`}>
+                            {ahoColor.category}
+                          </span>
+                        </div>
+                        <h3 className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
+                          Cabang {branch.cabang}
+                        </h3>
+                        <div className={`p-2.5 rounded-lg border text-[11px] space-y-1.5 ${
+                          isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200"
+                        }`}>
+                          <div className="flex justify-between">
+                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Total Toko:</span>
+                            <strong className={isDark ? "text-white" : "text-slate-900"}>{branch.totalStores} Toko</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Toko Bertiket Aktif:</span>
+                            <strong className="text-red-500 font-bold">{branch.storesWithTickets} Toko</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Total Tiket AHO:</span>
+                            <strong className="text-amber-500 font-bold">{branch.totalTickets} Tiket</strong>
+                          </div>
+                          <div className="flex justify-between pt-1 border-t border-slate-700/60">
+                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Persentase Toko Bertiket:</span>
+                            <strong className={`font-bold ${ahoColor.textClass}`}>
+                              {branch.percentage.toFixed(1)}%
+                            </strong>
+                          </div>
+                        </div>
+                        <AhoFlyToButton lat={branch.latitude} lng={branch.longitude} zoom={10} label="Fokus ke Cabang Ini" />
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+
+            {/* LEVEL CLUSTER (Zoom 8–12): Spatial Grid Cluster */}
+            {currentZoom >= 8 &&
+              currentZoom <= 12 &&
+              ahoClusters.map((cluster, idx) => {
+                const ahoColor = getAhoColor(cluster.percentage);
+                return (
+                  <Marker
+                    key={`aho-cluster-${cluster.lat.toFixed(3)}_${cluster.lng.toFixed(3)}_${idx}`}
+                    position={[cluster.lat, cluster.lng]}
+                    icon={createAhoClusterIcon(cluster.totalStores, cluster.storesWithTickets, cluster.percentage)}
+                  >
+                    <Tooltip direction="top" offset={[0, -16]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1">
+                        Cluster: {formatAhoBadgeLabel(cluster.totalStores, cluster.storesWithTickets)}, klik untuk perbesar
+                      </div>
+                    </Tooltip>
+                    <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
+                      <div className={`p-3 rounded-xl border w-68 space-y-2 text-xs transition-colors ${
+                        isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
+                            Cluster Koordinat
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${ahoColor.bgClass}`}>
+                            {Math.round(cluster.percentage)}%
+                          </span>
+                        </div>
+                        <div className={`p-2 rounded-lg border text-[11px] space-y-1 ${
+                          isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200"
+                        }`}>
+                          <div className="flex justify-between">
+                            <span>Total Toko:</span>
+                            <strong>{cluster.totalStores}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Toko Bertiket:</span>
+                            <strong className="text-red-500">{cluster.storesWithTickets}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Total Tiket:</span>
+                            <strong className="text-amber-500">{cluster.totalTickets}</strong>
+                          </div>
+                          <div className="flex justify-between pt-1 border-t border-slate-700/60">
+                            <span>Persentase:</span>
+                            <strong className={`font-bold ${ahoColor.textClass}`}>{cluster.percentage.toFixed(1)}%</strong>
+                          </div>
+                        </div>
+                        <AhoFlyToButton lat={cluster.lat} lng={cluster.lng} zoom={Math.min(14, currentZoom + 2)} label="Perbesar Cluster Ini" />
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+
+            {/* LEVEL TOKO INDIVIDUAL (Zoom >= 13): Viewport Culled Store Pins */}
+            {currentZoom >= 13 &&
+              ahoVisibleStores.map((store) => {
+                const code = (store.kode_toko || "").toUpperCase().trim();
+                const ticketCount = ahoCounts[code] || 0;
+                const hasTicket = ticketCount > 0;
+                const isSelected = selectedStore?.id === store.id;
+
+                return (
+                  <Marker
+                    key={`aho-store-${store.id}`}
+                    position={[store.latitude, store.longitude]}
+                    icon={createAhoStoreIcon(store, hasTicket, ticketCount, isSelected)}
+                    eventHandlers={{
+                      click: (e) => {
+                        onSelectStore(store);
+                        e.target.openPopup();
+                      },
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
+                        <span className={hasTicket ? "font-bold text-red-600" : "font-bold text-emerald-600"}>
+                          [{store.kode_toko}]
+                        </span>{" "}
+                        {store.nama_toko} •{" "}
+                        <span className={hasTicket ? "text-red-600 font-bold" : "text-emerald-700 font-medium"}>
+                          {hasTicket ? `${ticketCount} Tiket AHO Aktif` : "Tanpa Tiket Aktif"}
+                        </span>
+                      </div>
+                    </Tooltip>
+
+                    <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
+                      <div className={`p-3.5 rounded-xl border w-72 space-y-2.5 text-xs transition-colors ${
+                        isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
+                      }`}>
+                        {/* Header: Identitas */}
+                        <div className="flex items-center justify-between">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200"
+                          }`}>
+                            {store.kode_toko}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${
+                            hasTicket ? "bg-red-600 animate-pulse" : "bg-emerald-600"
+                          }`}>
+                            {hasTicket ? `${ticketCount} Tiket AHO Aktif` : "Tidak Ada Tiket Aktif"}
+                          </span>
+                        </div>
+
+                        <h3 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
+                          {store.nama_toko}
+                        </h3>
+
+                        <div className={`text-[11px] flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                          <Building className="w-3 h-3 text-slate-400" />
+                          <span>Cabang {store.cabang}</span>
+                        </div>
+
+                        {/* Bagian B Preview: Penanggung Jawab Toko */}
+                        <div className={`p-2.5 rounded-lg border text-[11px] space-y-1 ${
+                          isDark ? "bg-slate-950/80 border-slate-800 text-slate-300" : "bg-slate-50 border-slate-200 text-slate-700"
+                        }`}>
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
+                            <span>Penanggung Jawab</span>
+                            <span className="text-[9px] font-normal text-amber-500">Kondisi A</span>
+                          </div>
+                          <div className="flex justify-between text-[10px]">
+                            <span className="text-slate-500">BMS:</span>
+                            <span className="italic text-slate-400">Data belum tersedia</span>
+                          </div>
+                          <div className="flex justify-between text-[10px]">
+                            <span className="text-slate-500">BMC:</span>
+                            <span className="italic text-slate-400">Data belum tersedia</span>
+                          </div>
+                          <div className="flex justify-between text-[10px]">
+                            <span className="text-slate-500">BnM Manager:</span>
+                            <span className="italic text-slate-400">Data belum tersedia</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => onSelectStore(store)}
+                          className="w-full mt-2 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors"
+                        >
+                          <span>Lihat Detail Lengkap</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+          </>
+        )}
       </MapContainer>
+
+      {/* AHO LAYER FLOATING LEGEND (Hanya tampil saat mode Toko & layer AHO aktif) */}
+      {isAhoLayer && (
+        isLegendCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setIsLegendCollapsed(false)}
+            className="absolute bottom-6 left-3 z-[400] pointer-events-auto rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md px-3 py-2 text-xs text-white shadow-xl flex items-center gap-2 hover:bg-slate-800 transition-all hover:scale-105"
+            title="Buka Legenda Tiket AHO"
+            aria-label="Buka Legenda Tiket AHO"
+          >
+            <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="font-semibold text-xs text-slate-200">Legenda AHO</span>
+            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+        ) : (
+          <div className="absolute bottom-6 left-3 z-[400] pointer-events-auto max-w-[280px] sm:max-w-[320px] rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md p-3 text-xs text-white shadow-2xl animate-in fade-in duration-150">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+              <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Legenda Tiket AHO</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600/25 text-blue-300 border border-blue-500/30 font-mono">
+                  SPARTA Maintenance
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsLegendCollapsed(true)}
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Ciutkan Legenda"
+                  aria-label="Ciutkan Legenda"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Persentase Kelompok */}
+            <div className="space-y-1.5 mb-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Persentase Toko Bertiket (Cabang / Cluster)
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 border border-white/20" />
+                  <span className="text-slate-200">&gt; 70% (Tinggi)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-600 shrink-0 border border-white/20" />
+                  <span className="text-slate-200">50% – 70% (Sedang)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0 border border-white/20" />
+                  <span className="text-slate-200">20% – &lt;50% (Rendah)</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 border border-white/20" />
+                  <span className="text-slate-200">&lt; 20% (Sangat Rendah)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Toko Individual */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80 mb-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Toko Individual (Zoom &ge; 13)
+              </div>
+              <div className="flex items-center gap-4 text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 border border-white/20" />
+                  <span className="text-slate-200">Ada Tiket Aktif</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 border border-white/20" />
+                  <span className="text-slate-200">Tanpa Tiket Aktif</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Important Disclaimers */}
+            <p className="text-[9px] text-slate-400 italic leading-snug pt-1 border-t border-slate-800/60">
+              * Warna hanya menunjukkan kepemilikan / persentase tiket AHO aktif dari SPARTA Maintenance, bukan tingkat kerusakan atau risiko bencana.
+            </p>
+
+            {ahoLastUpdated && (
+              <div className="mt-1.5 text-[9px] text-slate-400 flex items-center gap-1 pt-1 border-t border-slate-800/60">
+                <Clock className="w-2.5 h-2.5 text-cyan-400 shrink-0" />
+                <span className="truncate">Perubahan terakhir: {formatWIBTime(ahoLastUpdated)}</span>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* AHO Loading Indicator */}
+      {isAhoLayer && ahoLoading && !ahoCounts && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[460] px-3.5 py-2 rounded-full bg-slate-900/90 border border-amber-500/40 text-amber-300 text-xs font-semibold shadow-xl backdrop-blur-md flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+          <span>Memuat data tiket AHO SPARTA Maintenance...</span>
+        </div>
+      )}
+
+      {/* AHO Error Alert */}
+      {isAhoLayer && ahoError && (
+        <div
+          role="status"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-[460] max-w-md px-3.5 py-2.5 rounded-xl bg-amber-950/95 border border-amber-500 text-amber-200 text-xs font-medium shadow-xl backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="leading-tight">
+              Data tiket AHO sedang tidak tersedia dari SPARTA Maintenance.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAhoRefreshKey((k) => k + 1)}
+            className="shrink-0 rounded-lg border border-amber-400/80 px-2 py-1 text-[11px] font-bold hover:bg-amber-900/60 transition-colors"
+          >
+            Coba lagi
+          </button>
+        </div>
+      )}
     </div>
   );
 }

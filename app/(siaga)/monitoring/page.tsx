@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState, useCallback, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { Activity, AlertTriangle, Building2, Clock, Filter, Layers, List, Loader2, MapPin, Radio, Search, Store as StoreIcon, X } from "lucide-react";
+import { Activity, AlertTriangle, Building2, Clock, Filter, Layers, List, Loader2, MapPin, Maximize2, Minimize2, Radio, Search, Store as StoreIcon, Wrench, X } from "lucide-react";
 import { useSiaga } from "@/components/layout/siaga-context";
 type MapMode = "event" | "store" | "dc";
 import { MapControls } from "@/components/map/map-controls";
@@ -120,6 +120,33 @@ export default function MonitoringPage() {
   const [isMobileControlsOpen, setIsMobileControlsOpen] = useState(false);
   const [lastStoreUpdate, setLastStoreUpdate] = useState<string | null>(null);
   const [storeSyncSource, setStoreSyncSource] = useState<string | null>(null);
+  const mapContainerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!mapContainerRef.current) return;
+    try {
+      if (!document.fullscreenElement) {
+        await mapContainerRef.current.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.warn("[MonitoringPage] Gagal beralih fullscreen:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      setIsFullscreen(active);
+      setTimeout(() => {
+        window.dispatchEvent(new Event("resize"));
+      }, 60);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
 
   useEffect(() => {
     fetch("/api/stores/sync")
@@ -384,6 +411,18 @@ export default function MonitoringPage() {
     setFacilityBranch("");
     setFacilityStatus("");
     setFacilityMapping("");
+    // Mode-aware layer state synchronization: AHO is strictly restricted to Store mode
+    if (m === "event") {
+      if (activeLayer === "aho") {
+        setActiveLayer("all");
+      }
+    } else if (m === "store") {
+      if (activeLayer !== "aho" && activeLayer !== "stores") {
+        setActiveLayer("stores");
+      }
+    } else if (m === "dc") {
+      setActiveLayer("stores");
+    }
     handleCloseAllSheets();
   };
 
@@ -396,7 +435,7 @@ export default function MonitoringPage() {
   };
 
   return (
-    <div className="w-full h-full relative overflow-hidden flex flex-col bg-slate-900">
+    <div ref={mapContainerRef} className="w-full h-full relative overflow-hidden flex flex-col bg-slate-900">
       <Suspense fallback={null}>
         <MonitoringDeepLinkHandler />
       </Suspense>
@@ -516,6 +555,25 @@ export default function MonitoringPage() {
                   <span className="hidden sm:inline">Episentrum</span>
                 </button>
               )}
+              {/* Fullscreen Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+                title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
+                  isFullscreen
+                    ? "bg-cyan-500/20 text-cyan-300 font-bold"
+                    : isDark ? "hover:bg-slate-800 text-slate-200" : "hover:bg-slate-100 text-slate-700"
+                }`}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4 text-cyan-400" />
+                ) : (
+                  <Maximize2 className="w-4 h-4 text-slate-400 dark:text-slate-300" />
+                )}
+                <span className="hidden xl:inline">{isFullscreen ? "Normal" : "Fullscreen"}</span>
+              </button>
             </div>
           ) : (
             <div
@@ -541,6 +599,30 @@ export default function MonitoringPage() {
                   }`}
                 />
               </div>
+
+              {mapMode === "store" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = activeLayer === "aho" ? "stores" : "aho";
+                    setActiveLayer(next);
+                    if (next !== "aho") {
+                      handleCloseDetail();
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
+                    activeLayer === "aho"
+                      ? "bg-amber-600 text-white font-bold shadow-xs"
+                      : isDark
+                      ? "hover:bg-slate-800 text-slate-200"
+                      : "hover:bg-slate-100 text-slate-700"
+                  }`}
+                  title="Tampilkan persebaran tiket AHO dari SPARTA Maintenance"
+                >
+                  <Wrench className={`w-4 h-4 shrink-0 ${activeLayer === "aho" ? "text-white" : "text-amber-500"}`} />
+                  <span>Tiket AHO</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -578,6 +660,26 @@ export default function MonitoringPage() {
                   Reset
                 </button>
               )}
+
+              {/* Fullscreen Toggle Button in Location Mode */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+                title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors min-h-[38px] ${
+                  isFullscreen
+                    ? "bg-cyan-500/20 text-cyan-300 font-bold"
+                    : isDark ? "hover:bg-slate-800 text-slate-200" : "hover:bg-slate-100 text-slate-700"
+                }`}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4 text-cyan-400" />
+                ) : (
+                  <Maximize2 className="w-4 h-4 text-slate-400 dark:text-slate-300" />
+                )}
+                <span className="hidden xl:inline">{isFullscreen ? "Normal" : "Fullscreen"}</span>
+              </button>
 
               {/* Data toko terakhir diperbarui status pill */}
               <div className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] shadow-sm backdrop-blur-md min-h-[34px] ${
@@ -646,7 +748,7 @@ export default function MonitoringPage() {
             flyToTarget={flyToTarget}
             showRadar={mapMode === "event" && showRadar}
             radarTileUrl={radarData?.tileUrl}
-            activeLayer={mapMode === "event" ? activeLayer : "stores"}
+            activeLayer={mapMode === "dc" ? "stores" : (mapMode === "event" && activeLayer === "aho") ? "all" : activeLayer}
             theme={theme}
             onViewportChange={handleViewportChange}
           />
@@ -690,6 +792,8 @@ export default function MonitoringPage() {
             }}
             selectedEarthquake={selectedEarthquake}
             onClearEventFocus={clearEventFocus}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
             isMobileSheetOpen={isMobileControlsOpen}
             onCloseMobileSheet={() => setIsMobileControlsOpen(false)}
           />
@@ -703,6 +807,7 @@ export default function MonitoringPage() {
             onClose={handleCloseDetail}
             isMobile={false}
             currentEarthquake={latestEq}
+            activeLayer={activeLayer}
           />
         )}
       </div>
@@ -716,6 +821,7 @@ export default function MonitoringPage() {
             onClose={handleCloseDetail}
             isMobile={true}
             currentEarthquake={latestEq}
+            activeLayer={activeLayer}
           />
         </div>
       )}

@@ -31,7 +31,7 @@ interface MapViewProps {
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
   showRadar?: boolean;
   radarTileUrl?: string;
-  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood";
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
   theme?: "dark" | "light";
   onViewportChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
   selectedEarthquakeId?: string | null;
