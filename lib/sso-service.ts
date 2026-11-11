@@ -489,14 +489,16 @@ export async function querySpartaBatchModuleGrants(
 
   const spartaApiUrl = (
     options?.spartaApiUrl ||
+    process.env.SPARTA_SSO_INTERNAL_URL ||
     process.env.SPARTA_API_URL ||
     "http://localhost:10000"
   ).replace(/\/+$/, "");
 
   const apiKey =
     options?.internalApiKey ||
+    process.env.SPARTA_SSO_READ_KEY ||
     process.env.SPARTA_INTERNAL_API_KEY ||
-    "sparta-internal-sync-key-2026";
+    "";
 
   const customFetch = options?.fetchFn || fetch;
   const timeoutMs = options?.timeoutMs || 4000;
@@ -541,6 +543,7 @@ export async function querySpartaBatchModuleGrants(
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
+            "x-sparta-internal-read-key": apiKey,
             "x-sparta-internal-key": apiKey,
           },
           body: JSON.stringify({
