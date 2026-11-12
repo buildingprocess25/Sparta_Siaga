@@ -5,7 +5,7 @@ import { RETAINED_DEMO_REPORTS } from "./cleanup-demo-reports";
 
 async function verifyAll() {
   console.log("================================================================================");
-  console.log("  SPARTA SIAGA — VERIFIKASI POST-CLEANUP LENGKAP");
+  console.log("  SPARTA SIAGA - VERIFIKASI POST-CLEANUP LENGKAP");
   console.log("================================================================================");
 
   const pool = getDbPool();

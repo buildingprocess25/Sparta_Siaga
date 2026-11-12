@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Database Migration: Persistent Earthquake Events
+ * SPARTA SIAGA - Database Migration: Persistent Earthquake Events
  * 
  * Creates table `earthquake_events` for long-term audit and history.
  * Non-destructive and idempotent (IF NOT EXISTS).

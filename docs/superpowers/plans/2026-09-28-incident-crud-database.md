@@ -1,11 +1,11 @@
-# Incident CRUD Database Integration — Implementation Plan
+# Incident CRUD Database Integration  -  Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Migrate incident data from `localStorage` to a real PostgreSQL database (Aiven Cloud) using the existing `pg` pool in `lib/db.ts`, implementing full CRUD via Next.js API Route Handlers.
 
 **Architecture:**
-- Existing `pg` Pool in `lib/db.ts` connects to Aiven PostgreSQL — we reuse this, no new DB client.
+- Existing `pg` Pool in `lib/db.ts` connects to Aiven PostgreSQL  -  we reuse this, no new DB client.
 - New API routes under `app/api/incidents/` handle Create, Read, Update, Delete.
 - `app/page.tsx` fetches from these routes instead of `localStorage`.
 - `lib/incident-store.ts` keeps its helper functions (`calculateIncidentStats`, `mergeLiveDangerStoresIntoIncidents`) but drops the localStorage read/write functions.
@@ -14,9 +14,9 @@
 
 ## Global Constraints
 
-- Use `getDbPool()` from `lib/db.ts` — never create a new Pool directly.
-- All DB queries use parameterized queries (`$1`, `$2`, etc.) — never string interpolation.
-- Preserve all existing `IncidentRecord`, `DamageReport`, `MaintenanceTicket`, `TimelineEvent` TypeScript types from `types/incident.ts` — no breaking changes.
+- Use `getDbPool()` from `lib/db.ts`  -  never create a new Pool directly.
+- All DB queries use parameterized queries (`$1`, `$2`, etc.)  -  never string interpolation.
+- Preserve all existing `IncidentRecord`, `DamageReport`, `MaintenanceTicket`, `TimelineEvent` TypeScript types from `types/incident.ts`  -  no breaking changes.
 - JSON columns in DB store `verification`, `maintenanceTicket`, `timeline`, `disasterMetadata` as JSONB.
 - The `INITIAL_INCIDENTS` seed data from `lib/incident-store.ts` must be seeded into DB on first run.
 - API routes return `{ data: T }` on success, `{ error: string }` on failure.

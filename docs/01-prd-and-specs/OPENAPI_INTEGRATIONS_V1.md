@@ -1,4 +1,11 @@
 # SPARTA Ecosystem Machine-to-Machine Integration API Specification
+
+> [!NOTE] INTEGRATION STATUS & ACTIVE ARCHITECTURE
+> Dokumen ini mendefinisikan spesifikasi antarmuka API Machine-to-Machine (M2M) antara SPARTA SIAGA dan subsistem pemeliharaan fisik.
+> - **Status Implementasi:** MOCK / INTERNAL ROUTE (`lib/sparta-external-integration.ts`, `app/api/incidents/[id]/estimation/route.ts`).
+> - **Status Integrasi Eksternal:** PENDING (Menunggu integrasi live ERP korporat SPARTA Maintenance).
+> - **Keamanan Kredensial:** Contoh nilai API key dan secret pada dokumen ini adalah placeholder fiktif untuk dokumentasi arsitektur. Dilarang menggunakan kredensial produksi pada berkas ini.
+
 **Version:** 1.0.0  
 **Target Consumer:** SPARTA Maintenance (BMS Toko) & Engineering Support (BES DC/Warehouse)  
 **Security:** Header-based Machine Authentication (`X-Sparta-Api-Key` & `X-Sparta-Api-Secret`)  
@@ -33,8 +40,8 @@ Mengambil antrean insiden yang telah diverifikasi dan **disetujui oleh Branch Ma
 #### Sample Request:
 ```bash
 curl -X GET "http://localhost:3004/api/integrations/v1/approved-incidents?branch=BANDUNG&limit=10" \
-  -H "X-Sparta-Api-Key: key_sparta_maint_prod_2026" \
-  -H "X-Sparta-Api-Secret: sec_maint_9812470123"
+  -H "X-Sparta-Api-Key: <API_KEY_PLACEHOLDER>" \
+  -H "X-Sparta-Api-Secret: <API_SECRET_PLACEHOLDER>"
 ```
 
 #### Sample Response (200 OK):
@@ -89,8 +96,8 @@ Mengambil detail lengkap satu insiden, termasuk URL bukti foto pemeriksaan lapan
 #### Sample Request:
 ```bash
 curl -X GET "http://localhost:3004/api/integrations/v1/approved-incidents/INC-BDG-20261013-001" \
-  -H "X-Sparta-Api-Key: key_sparta_maint_prod_2026" \
-  -H "X-Sparta-Api-Secret: sec_maint_9812470123"
+  -H "X-Sparta-Api-Key: <API_KEY_PLACEHOLDER>" \
+  -H "X-Sparta-Api-Secret: <API_SECRET_PLACEHOLDER>"
 ```
 
 ---

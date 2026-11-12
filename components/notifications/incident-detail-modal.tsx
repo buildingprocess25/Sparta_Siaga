@@ -9,6 +9,8 @@ import {
   Building,
   Info,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   Layers,
 } from "lucide-react";
 import { NotificationLog } from "@/types/notification";
@@ -40,12 +42,22 @@ export function IncidentDetailModal({
   onFlyToLocation,
   theme = "dark",
 }: IncidentDetailModalProps) {
+  const [currentPage, setCurrentPage] = React.useState(1);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [incident?.id]);
+
   if (!isOpen || !incident) return null;
 
   const isDark = theme === "dark";
   const isEarthquake = incident.disaster_type === "earthquake";
   const stores = incident.affected_stores_sample || [];
   const totalStores = incident.affected_stores_count || stores.length;
+
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(stores.length / pageSize));
+  const paginatedStores = stores.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const displayTitle = cleanDisplayTitle(incident.title);
   const displayMessage = cleanDisplayText(incident.message);
@@ -242,23 +254,25 @@ export function IncidentDetailModal({
                     </tr>
                   </thead>
                   <tbody className={`divide-y ${isDark ? "divide-slate-800/80" : "divide-slate-100"}`}>
-                    {stores.length > 0 ? (
-                      stores.map((store, idx) => {
+                    {paginatedStores.length > 0 ? (
+                      paginatedStores.map((store, idx) => {
                         const isPriority = store.status === "PRIORITY_MONITOR";
                         const isDc =
                           store.fr_type === "dc" ||
                           store.nama_toko?.toUpperCase().includes("DC") ||
                           store.nama_toko?.toUpperCase().includes("WAREHOUSE");
 
+                        const rowNumber = (currentPage - 1) * pageSize + idx + 1;
+
                         return (
                           <tr
-                            key={store.kode_toko || idx}
+                            key={store.kode_toko || rowNumber}
                             className={`transition-colors ${
                               isDark ? "hover:bg-slate-800/40" : "hover:bg-slate-50"
                             }`}
                           >
                             <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                              {idx + 1}
+                              {rowNumber}
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
@@ -279,7 +293,7 @@ export function IncidentDetailModal({
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-center font-mono font-medium text-slate-600 dark:text-slate-400">
-                              {store.distance_km != null ? `${store.distance_km} km` : "—"}
+                              {store.distance_km != null ? `${store.distance_km} km` : "-"}
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               {isPriority ? (
@@ -327,6 +341,60 @@ export function IncidentDetailModal({
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination Bar (10 stores per page) */}
+              {stores.length > 0 && (
+                <div
+                  className={`px-4 py-2.5 flex items-center justify-between border-t text-xs ${
+                    isDark
+                      ? "bg-slate-950/50 border-slate-800 text-slate-400"
+                      : "bg-slate-50/80 border-slate-200 text-slate-600"
+                  }`}
+                >
+                  <span className="text-[11px]">
+                    Menampilkan {Math.min((currentPage - 1) * pageSize + 1, stores.length)} -{" "}
+                    {Math.min(currentPage * pageSize, stores.length)} dari {stores.length} gerai (10 per halaman)
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className={`p-1.5 rounded border flex items-center gap-1 text-[11px] font-medium transition-colors ${
+                        currentPage <= 1
+                          ? "opacity-40 cursor-not-allowed border-transparent"
+                          : isDark
+                          ? "border-slate-700 hover:bg-slate-800 text-slate-200"
+                          : "border-slate-300 hover:bg-white text-slate-700"
+                      }`}
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Sebelumnya</span>
+                    </button>
+
+                    <span className="font-mono text-[11px] px-2 font-semibold">
+                      {currentPage} / {totalPages}
+                    </span>
+
+                    <button
+                      type="button"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      className={`p-1.5 rounded border flex items-center gap-1 text-[11px] font-medium transition-colors ${
+                        currentPage >= totalPages
+                          ? "opacity-40 cursor-not-allowed border-transparent"
+                          : isDark
+                          ? "border-slate-700 hover:bg-slate-800 text-slate-200"
+                          : "border-slate-300 hover:bg-white text-slate-700"
+                      }`}
+                    >
+                      <span>Berikutnya</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

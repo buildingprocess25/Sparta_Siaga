@@ -10,7 +10,7 @@ import { POST as refreshRoute } from "../app/api/auth/refresh/route";
 
 async function runRaceConditionSuite() {
   console.log("===============================================================");
-  console.log("SPARTA SIAGA — AUTH-02: Refresh Token Race Condition Test Suite");
+  console.log("SPARTA SIAGA - AUTH-02: Refresh Token Race Condition Test Suite");
   console.log("===============================================================\n");
 
   let passed = 0;

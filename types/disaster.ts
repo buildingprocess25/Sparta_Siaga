@@ -1,3 +1,5 @@
+import type { V1CoverageResult } from "@/lib/earthquake-v1-parameters";
+
 export type DataFreshness = "live" | "fresh" | "stale" | "unavailable";
 
 export type InformationType =
@@ -49,8 +51,10 @@ export interface Earthquake {
   felt?: string;
   shakemapUrl?: string;
   isSignificant?: boolean;
-  priorityRadiusKm: number; // SPARTA's priority monitoring zone
-  monitoringRadiusKm: number; // SPARTA's general monitoring zone
+  priorityRadiusKm?: number | null; // Operational V1 parameter search radius (legacy-compatible)
+  monitoringRadiusKm?: number | null; // Legacy monitoring zone field (omitted/null under V1)
+  v1DistanceKm?: number | null; // Agreed supervisor V1 search distance (null when not covered or M < 4.0)
+  v1Coverage?: V1CoverageResult;
 }
 
 export interface DisasterFeedResponse {

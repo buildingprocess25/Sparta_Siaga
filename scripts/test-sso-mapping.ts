@@ -35,9 +35,9 @@ async function runSsoMappingTest() {
     // -------------------------------------------------------------------------
     console.log("\n--- SECTION 1: SSO UAT Schema & Tables in Isolated Database ---");
     const ssoTables = await pool.query(`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'sso_uat'
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'sso_uat' 
       ORDER BY table_name;
     `);
     const tableNames = ssoTables.rows.map((r) => r.table_name);
@@ -54,7 +54,7 @@ async function runSsoMappingTest() {
     const ssoUsers = await pool.query(`
       SELECT u.id, u.email, u."fullName" as name, u.role, b.code as branch_code, b.name as branch_name,
              EXISTS(
-               SELECT 1 FROM sso_uat."UserModuleAccess" uma
+               SELECT 1 FROM sso_uat."UserModuleAccess" uma 
                WHERE uma."userId" = u.id AND uma."moduleId" = 'SIAGA' AND uma."isActive" = true
              ) as has_siaga_grant
       FROM sso_uat."User" u

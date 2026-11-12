@@ -1,4 +1,4 @@
-# SPARTA SIAGA — Backup & Restore Operations Runbook
+# SPARTA SIAGA - Backup & Restore Operations Runbook
 
 This document describes the backup architecture, retention schedule, operational scripts, and recovery procedures for SPARTA SIAGA in production.
 
@@ -55,7 +55,7 @@ docker compose -f compose.yaml pause app
 # docker compose -f compose.yaml stop app
 
 # 2. Execute backup
-export DATABASE_URL="postgresql://sparta_user:password@db.internal:5432/sparta_siaga"
+export DATABASE_URL="postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:5432/<DB_NAME>"
 export PRIVATE_STORAGE_ROOT="/app/storage"
 export BACKUP_DIR="/backups"
 
@@ -110,7 +110,7 @@ docker compose -f compose.yaml stop app
 
 # 2. Execute guarded restore
 CONFIRM_RESTORE=YES \
-DATABASE_URL="postgresql://sparta_user:password@db.internal:5432/sparta_siaga" \
+DATABASE_URL="postgresql://<DB_USER>:<DB_PASSWORD>@<DB_HOST>:5432/<DB_NAME>" \
 PRIVATE_STORAGE_ROOT="/app/storage" \
 bash ops/restore-production.sh /backups/sparta_backup_20261007T020000Z
 

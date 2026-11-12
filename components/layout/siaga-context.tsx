@@ -13,8 +13,8 @@ export interface SiagaContextType {
   isRefreshing: boolean;
   activeRole: RoleType;
   setActiveRole: (role: RoleType) => void;
-  activeLayer: "all" | "earthquake" | "stores" | "weather" | "flood";
-  setActiveLayer: (layer: "all" | "earthquake" | "stores" | "weather" | "flood") => void;
+  activeLayer: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
+  setActiveLayer: (layer: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho") => void;
   incidents: IncidentRecord[];
   activeIncidents: IncidentRecord[];
   archivedIncidents: IncidentRecord[];

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Test Suite: Automatic Email Delivery & Tracking
+ * SPARTA SIAGA - Test Suite: Automatic Email Delivery & Tracking
  *
  * Verifies:
  * 1. Verified branch/DC recipient mapping (dc.<branch>@alfamart.co.id), never fabricated.
@@ -37,7 +37,7 @@ function assert(condition: boolean, desc: string) {
 
 async function runTests() {
   console.log("\n=======================================================");
-  console.log(" SPARTA SIAGA — EMAIL DELIVERY & TRACKING VERIFICATION");
+  console.log(" SPARTA SIAGA - EMAIL DELIVERY & TRACKING VERIFICATION");
   console.log("=======================================================\n");
 
   // Ensure testing mode is off so we test actual email service logic
@@ -157,7 +157,7 @@ async function runTests() {
       "Safe dispatch handling executes cleanly without unhandled exception"
     );
 
-    // 5. Admin Test Email Security — Whitelist Enforcement
+    // 5. Admin Test Email Security - Whitelist Enforcement
     console.log("\n[5] Admin Test Email Whitelist Security");
     const adminActor = { id: "ADM0001", name: "System Administrator" };
 

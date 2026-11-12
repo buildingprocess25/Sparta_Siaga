@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import {
-  ShieldAlert,
-  Loader2,
-  LogIn,
-  Terminal,
-  Building2,
+import { 
+  ShieldAlert, 
+  Loader2, 
+  LogIn, 
+  Terminal, 
+  Building2, 
   ChevronRight,
   ShieldCheck,
   CheckCircle2,

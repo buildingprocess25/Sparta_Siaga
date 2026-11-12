@@ -13,7 +13,7 @@ import { UserContext } from "../lib/report-permissions";
 
 async function runRoleCatalogTests() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — ROLE PERMISSION CATALOG TESTS (A–J)");
+  console.log("SPARTA SIAGA - ROLE PERMISSION CATALOG TESTS (A–J)");
   console.log("==================================================\n");
 
   const pool = getDbPool();

@@ -1,4 +1,4 @@
-# SPARTA SIAGA — DEVICE PERMISSIONS & NOTIFICATION UX CORRECTIVE REPORT
+# SPARTA SIAGA  -  DEVICE PERMISSIONS & NOTIFICATION UX CORRECTIVE REPORT
 
 ## Executive Summary
 This report summarizes the corrective UX hardening applied to device permissions (Camera & Location) and the global toast notification system in the SPARTA SIAGA application. The implementation ensures enterprise-grade visual presentation and resilient, understandable permission-handling for sensitive hardware access.

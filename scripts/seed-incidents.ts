@@ -48,7 +48,7 @@ async function seed() {
         inc.closedAt ?? null,
       ]
     );
-    console.log(`  ✅ Inserted: ${inc.id} — ${inc.storeName}`);
+    console.log(`  ✅ Inserted: ${inc.id} - ${inc.storeName}`);
   }
 
   console.log(`\nSUCCESS: Seeded ${INITIAL_INCIDENTS.length} incidents.`);

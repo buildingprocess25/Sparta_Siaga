@@ -55,3 +55,4 @@ CREATE TABLE IF NOT EXISTS earthquake_facility_intensities (
 CREATE INDEX IF NOT EXISTS idx_facility_intensities_event_branch ON earthquake_facility_intensities(canonical_event_id, branch);
 CREATE INDEX IF NOT EXISTS idx_facility_intensities_decision ON earthquake_facility_intensities(decision_policy);
 CREATE INDEX IF NOT EXISTS idx_facility_intensities_incident ON earthquake_facility_intensities(incident_id) WHERE incident_id IS NOT NULL;
+

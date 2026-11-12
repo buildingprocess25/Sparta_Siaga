@@ -1,4 +1,4 @@
-# SPARTA SIAGA — Infrastructure & Production Risk Register
+# SPARTA SIAGA - Infrastructure & Production Risk Register
 
 This document records the identified infrastructure, environment, and operational risks for SPARTA SIAGA, categorizing them by blocker level and assigning explicit owners and mitigation plans.
 

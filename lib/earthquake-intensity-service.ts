@@ -1,11 +1,11 @@
 /**
  * SPARTA SIAGA - Earthquake Intensity Service
- *
+ * 
  * Production service implementing the two-stage earthquake pipeline:
  * - Stage 1: Nationwide informational notification (no reports created, no user workflow)
  * - Stage 2: ShakeMap MMI numerical evaluation per facility (MMI >= 6.0 candidate auto-reports)
  * - Safe Fallback: 30-minute timeout with informational advisory escalation and controlled retry
- *
+ * 
  * Safety: Uses feature flag `isEarthquakeIntensityEnabled()`.
  * Rule: Zero em dashes.
  */
@@ -251,7 +251,12 @@ export function parseShakeMapCovJson(
   }
 
   const validValues = values.filter(isValidGridValue);
-  const maxMmi = validValues.length > 0 ? Math.max(...validValues) : 0;
+  const maxMmi = validValues.reduce((max, value) => Math.max(max, value), 0);
+  const rowMajorValues = firstAxisIsY ? values : Array.from({ length: expectedLength }, (_, index) => {
+    const row = Math.floor(index / x.num);
+    const column = index % x.num;
+    return values[column * y.num + row];
+  });
   const rawString = JSON.stringify(covJson);
   const checksumSha256 = crypto.createHash("sha256").update(rawString).digest("hex");
 
@@ -266,10 +271,10 @@ export function parseShakeMapCovJson(
     yMin: y.start,
     yMax: y.stop,
     numY: y.num,
-    values,
+    values: rowMajorValues,
     maxMmi,
-    axisNames: mmiRange.axisNames,
-    shape: mmiRange.shape,
+    axisNames: ["y", "x"],
+    shape: [y.num, x.num],
     checksumSha256,
     rawPayload: covJson,
   };
@@ -988,3 +993,8 @@ export async function checkAndEscalateShakeMapFallback(params: {
     message: advisoryMessage,
   };
 }
+
+// Re-export V1 + MMI workflow service (6 November 2026 decision)
+export * from "./earthquake-v1-mmi-service";
+
+

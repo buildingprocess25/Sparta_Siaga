@@ -8,7 +8,7 @@ import { IncidentRecord } from "../types/incident";
 
 async function runEstimationPhase1Tests() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — PHASE 1 ESTIMATION ROUTING (A TO L)");
+  console.log("SPARTA SIAGA - PHASE 1 ESTIMATION ROUTING (A TO L)");
   console.log("==================================================\n");
 
   const pool = getDbPool();

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import {
-  getSpartaEnvironment,
-  isDevelopmentEnvironment,
-  isQuickLoginPermitted,
-  getSsoPortalUrl,
-  getSsoModuleLauncherUrl
+import { 
+  getSpartaEnvironment, 
+  isDevelopmentEnvironment, 
+  isQuickLoginPermitted, 
+  getSsoPortalUrl, 
+  getSsoModuleLauncherUrl 
 } from "@/lib/environment-policy";
 
 export async function GET(req: Request) {
@@ -21,3 +21,4 @@ export async function GET(req: Request) {
     ssoModuleLauncherUrl: getSsoModuleLauncherUrl(),
   });
 }
+

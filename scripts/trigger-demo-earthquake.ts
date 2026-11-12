@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Satu laporan gempa SIMULASI Bandung + notifikasi pemeriksaan BMS.
+ * SPARTA SIAGA - Satu laporan gempa SIMULASI Bandung + notifikasi pemeriksaan BMS.
  * Command: pnpm tsx scripts/trigger-demo-earthquake.ts
  *
  * HANYA menulis ke sparta_siaga_isolated (staging). Tidak mengubah master

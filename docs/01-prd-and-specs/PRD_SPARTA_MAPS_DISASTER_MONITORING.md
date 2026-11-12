@@ -1,6 +1,14 @@
 # PRD & BLUEPRINT: SPARTA SIAGA (DISASTER & BRANCH MAPS MONITORING SYSTEM)
 
-**Status:** Draft / Blueprint untuk Diskusi  
+> [!WARNING] HISTORICAL BLUEPRINT & FOUNDING SPECIFICATION
+> Dokumen ini merupakan cetak biru arsitektur pendirian (founding blueprint) modul SPARTA Maps / Disaster Monitoring.
+> - **Status Dokumen:** HISTORICAL MILESTONE (Dipertahankan untuk dokumentasi silsilah arsitektur).
+> - **Nama Proyek & ID Modul:** Nama tentatif `sparta-maps` / `sparta-disaster` telah digantikan secara kanonikal oleh **SPARTA SIAGA** (`sparta-siaga`).
+> - **Port Pengembangan:** Port lokal kanonikal adalah `3004` (bukan 3005).
+> - **Alur Proses Bisnis & Tata Kelola Operasional:** Alur penanganan insiden bencana dan otorisasi multi-peran kini diatur secara mutlak oleh [`docs/02-business-process/BUSINESS_PROCESS_SPARTA_SIAGA.md`](../02-business-process/BUSINESS_PROCESS_SPARTA_SIAGA.md) dan [`docs/02-business-process/COMPLETE_BUSINESS_PROCESS_GUIDE_SPARTA_SIAGA.md`](../02-business-process/COMPLETE_BUSINESS_PROCESS_GUIDE_SPARTA_SIAGA.md).
+> - **Integrasi SPARTA Maintenance:** Integrasi estimasi dan pemeliharaan saat ini berjalan sebagai rute internal mock terverifikasi (`lib/sparta-external-integration.ts`), dengan status menunggu go-live integrasi ERP eksternal.
+
+**Status:** Historical Blueprint (Superseded by Active Business Process Documentation)  
 **Modul:** SPARTA Disaster & Branch Monitoring (Tentative ID: `sparta-maps` / `sparta-disaster`)  
 **Ecosystem:** SPARTA Portal & Monorepo Framework  
 **Target Folder:** Folder terpisah dalam `c:\buildingprocess25` (misal: `sparta-maps` atau `sparta-disaster`)

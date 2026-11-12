@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — TASK T05: Audit & Validasi Hak Akses Update Progress
+ * SPARTA SIAGA - TASK T05: Audit & Validasi Hak Akses Update Progress
  * Matriks Pengujian Minimum (Section 11 Prompt T05)
  */
 

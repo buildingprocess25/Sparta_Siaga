@@ -2,9 +2,10 @@
 
 import React from "react";
 import dynamic from "next/dynamic";
-import { Store } from "@/types/store";
+import { Store, SpatialRisk } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
 import { Loader2 } from "lucide-react";
+import type { BranchAggregationData, ClusterAggregationData } from "./map-marker-icons";
 
 const MapInner = dynamic(() => import("./map-inner"), {
   ssr: false,
@@ -25,13 +26,17 @@ interface MapViewProps {
   floodReports?: any[];
   basemap: "esri-dark" | "esri-light" | "osm";
   incidentOnly: boolean;
-  statusFilter: "all" | "PRIORITY_MONITOR" | "MONITOR" | "SAFE";
+  statusFilter: "all" | SpatialRisk;
   selectedStore: Store | null;
   onSelectStore: (store: Store) => void;
+  onSelectBranch?: (branch: BranchAggregationData) => void;
+  onSelectCluster?: (cluster: ClusterAggregationData) => void;
+  selectedBranch?: BranchAggregationData | null;
+  selectedCluster?: ClusterAggregationData | null;
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
   showRadar?: boolean;
   radarTileUrl?: string;
-  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood";
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
   theme?: "dark" | "light";
   onViewportChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
   selectedEarthquakeId?: string | null;

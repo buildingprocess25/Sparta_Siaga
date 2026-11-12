@@ -16,7 +16,7 @@ import sharp from "sharp";
 
 async function runTask5TestSuite() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — TASK 5: COMPLETION, APPROVAL & CLOSING");
+  console.log("SPARTA SIAGA - TASK 5: COMPLETION, APPROVAL & CLOSING");
   console.log("Dedicated Test Suite: T1 – T25");
   console.log("==================================================\n");
 

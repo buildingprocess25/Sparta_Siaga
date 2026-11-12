@@ -16,7 +16,7 @@ import {
 
 async function main() {
   console.log("======================================================================");
-  console.log("   SPARTA SIAGA — COMPREHENSIVE REFINEMENTS VALIDATION SUITE          ");
+  console.log("   SPARTA SIAGA - COMPREHENSIVE REFINEMENTS VALIDATION SUITE          ");
   console.log("======================================================================");
 
   // Configure DB connection

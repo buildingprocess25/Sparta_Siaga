@@ -5,7 +5,7 @@ export async function runStagingCleanup(): Promise<void> {
   const isApply = process.argv.includes("--apply");
 
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — AUDIT & SAFE CLEANUP OF AIVEN STAGING DATABASE");
+  console.log(" SPARTA SIAGA - AUDIT & SAFE CLEANUP OF AIVEN STAGING DATABASE");
   console.log(` Mode: ${isApply ? "🔴 LIVE EXECUTION (--apply)" : "🔍 DRY RUN ONLY (Safe Inspection)"}`);
   console.log("================================================================================\n");
 

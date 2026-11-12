@@ -44,7 +44,9 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
 
   // Core App Shell & Role State
   const [activeRole, setActiveRole] = useState<RoleType>("ho_admin");
-  const [activeLayer, setActiveLayer] = useState<"all" | "earthquake" | "stores" | "weather" | "flood">("all");
+  const [activeLayer, setActiveLayer] = useState<
+    "all" | "earthquake" | "stores" | "weather" | "flood" | "aho"
+  >("all");
 
   // Persistent Incidents State
   const [incidents, setIncidents] = useState<IncidentRecord[]>([]);
@@ -116,7 +118,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
             return;
           }
 
-          const refreshRes = await fetch("/api/auth/refresh", {
+          const refreshRes = await fetch("/api/auth/refresh", { 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             cache: "no-store",
@@ -329,7 +331,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
         const radarJson = await radarRes.json();
         setRadarData(radarJson);
       }
-
+      
       let floodReports = [];
       if (floodsRes.ok) {
         const floodsJson = await floodsRes.json();
@@ -405,7 +407,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
       }
     } else if (incident.disaster_type === "heavy_rain" || incident.disaster_type === "flood") {
       setActiveLayer("weather");
-
+      
       // Check if spatial data exists in floodReports
       const flood = disasterData?.floodReports?.find((f: any) => f.id === incident.disaster_id);
       if (flood) {
@@ -424,7 +426,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
             </button>
           </div>
         ), { duration: 5000 });
-
+        
         // We can still try to fly to the branch's center if we have stores
         if (incident.branch) {
           const branchStores = rawStores.filter(s => s.cabang?.toLowerCase() === incident.branch?.toLowerCase());
@@ -487,6 +489,10 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
         ...store,
         status: risk.spatialRisk,
         spatialRisk: risk.spatialRisk,
+        isInsideV1: risk.isInsideV1,
+        officialMmi: risk.officialMmi,
+        intensityStatus: risk.intensityStatus,
+        assessmentNote: risk.assessmentNote,
         operationalStatus,
         visualStatus,
         activeReportId: matchingIncident?.id,

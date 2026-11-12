@@ -1,6 +1,13 @@
-# SPARTA SIAGA — Task 7 Production Readiness Checklist
+# SPARTA SIAGA - Task 7 Production Readiness Checklist
 
 This checklist tracks the operational readiness status across all 16 infrastructure, architecture, and security hardening categories established in Task 7.
+
+---
+
+> [!IMPORTANT] PHASE 5 DOKPLOY PRODUCTION DEPLOYMENT LOCKED
+> Dokumen checklist ini adalah instrumen verifikasi kesiapan teknis produksi yang disusun pada Task 7.
+> **Phase 5 Production Deployment saat ini tetap BERSTATUS TERKUNCI (LOCKED)**.
+> Database produksi Dokploy (`siaga`) tidak boleh dimodifikasi, dimigrasi, atau diakses selama fase development/UAT aktif. Seluruh pengujian dan simulasi operasional saat ini diarahkan secara eksklusif ke database terisolasi Aiven (`sparta_siaga_isolated`).
 
 ---
 

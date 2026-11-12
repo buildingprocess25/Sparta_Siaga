@@ -15,7 +15,7 @@ import {
 
 async function runTaskT06TestSuite() {
   console.log("====================================================================");
-  console.log("SPARTA SIAGA — TASK T06: PEMISAHAN FINAL APPROVAL & CASE CLOSE");
+  console.log("SPARTA SIAGA - TASK T06: PEMISAHAN FINAL APPROVAL & CASE CLOSE");
   console.log("Dedicated Verification Suite");
   console.log("====================================================================\n");
 
@@ -373,7 +373,7 @@ async function runTaskT06TestSuite() {
       "Audit trail mencatat REPORT_CLOSED secara atomik dengan aktor BnM Manajer yang sah."
     );
 
-    // SCENARIO 9: Idempotency check — second call to Case Close does not create duplicate history/audit
+    // SCENARIO 9: Idempotency check - second call to Case Close does not create duplicate history/audit
     const historyCountBefore = (await pool.query(
       "SELECT COUNT(*) as cnt FROM report_completion_approval_history WHERE report_id = $1",
       [testReportId]

@@ -50,7 +50,7 @@ async function runTestSuite() {
     );
 
     const ssoStatusBreakdown = await pool.query(
-      `SELECT COALESCE(sso_status, 'NULL') as status, COUNT(*) as count
+      `SELECT COALESCE(sso_status, 'NULL') as status, COUNT(*) as count 
        FROM users GROUP BY sso_status ORDER BY count DESC`
     );
     console.log("   SSO status breakdown in staging:");
@@ -345,8 +345,8 @@ async function runTestSuite() {
     // -------------------------------------------------------------------------
     console.log("\n--- SECTION 6: 9 UAT Roles & Multi-Branch Availability ---");
     const uatUsers = await pool.query(
-      `SELECT business_role, system_role, branch, email, sso_status
-       FROM users
+      `SELECT business_role, system_role, branch, email, sso_status 
+       FROM users 
        WHERE email LIKE '%@sparta-siaga.local' OR sso_status = 'UAT_PERSONA'
        ORDER BY business_role, branch`
     );

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — CANONICAL BRANCH IDENTITY, LEGACY OVERRIDE COMPATIBILITY & EFFECTIVE ACCESS ENFORCEMENT TEST
+ * SPARTA SIAGA - CANONICAL BRANCH IDENTITY, LEGACY OVERRIDE COMPATIBILITY & EFFECTIVE ACCESS ENFORCEMENT TEST
  * 
  * Verifies:
  * A. Canonical Branch Master & Store-to-Branch Association
@@ -77,10 +77,10 @@ const searchCikokol = CANONICAL_BRANCHES.filter(
 assert(searchCikokol.length >= 1, "Searching 'CIKOKOL' returns canonical branch record");
 
 // Verification of store name vs branch identity
-console.log("  [INFO] Verifying 'CIKOKOL — ABDUL HADI':");
+console.log("  [INFO] Verifying 'CIKOKOL - ABDUL HADI':");
 console.log("  [INFO] In dataset, store code T770 is named 'ABDUL HADI' under branch 'CIKOKOL'.");
 console.log("  [INFO] Root cause confirmed: Previous UI searched store records and concatenated store name.");
-console.log("  [INFO] Fix verified: Edit User now searches canonical branches exclusively, resolving to 'CIKOKOL — Cabang Cikokol'.");
+console.log("  [INFO] Fix verified: Edit User now searches canonical branches exclusively, resolving to 'CIKOKOL - Cabang Cikokol'.");
 
 // -------------------------------------------------------------
 // B. LEGACY OVERRIDE COMPATIBILITY & EVALUATION

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — TASK 6: FINAL INTEGRATION & AUDIT TEST SUITE
+ * SPARTA SIAGA - TASK 6: FINAL INTEGRATION & AUDIT TEST SUITE
  * 
  * Verifies all 20 minimal requirements (F1 – F20) for Task 6:
  * F1. Nama user sesuai authenticated account
@@ -77,7 +77,7 @@ function createPersona(params: {
 
 async function runTask6FinalIntegrationTests() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — TASK 6: FINAL INTEGRATION & AUDIT");
+  console.log("SPARTA SIAGA - TASK 6: FINAL INTEGRATION & AUDIT");
   console.log("Dedicated Test Suite: F1 – F20");
   console.log("==================================================\n");
 

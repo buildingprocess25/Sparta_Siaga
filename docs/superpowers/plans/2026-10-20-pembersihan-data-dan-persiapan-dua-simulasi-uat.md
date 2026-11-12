@@ -4,7 +4,7 @@
 
 **Goal:** Membersihkan data pengujian lama di database terisolasi tanpa menyentuh akun System Administrator, menyiapkan akun demo UAT berhak akses lengkap, membuat dokumen contoh simulasi, dan mempersiapkan dua sesi demonstrasi UAT mandiri untuk dua atasan (Simulasi 1: Alur Laporan Toko & Penolakan Serah Terima; Simulasi 2: Alur Laporan DC & Pemantauan Gempa Otomatis) lengkap dengan panduan praktis berbahasa Indonesia.
 
-**Architecture:** Database terisolasi PostgreSQL (`sparta_siaga_isolated`) diproteksi menggunakan guard `assertIsolatedDatabase`. Seluruh tabel dan berkas dicadangkan (backup dump) ke direktori `backups/uat_cleanup_<timestamp>`. Pembersihan dijalankan secara selektif (dry run lalu eksekusi) hanya menghapus record berawalan `TEST-`, `INC-REFINE-`, `INC-TEST-` dan akun demo perancah visual (`usr_*_verify`, `usr_*_test`). Akun System Administrator (`system_role = 'ADMIN'`, khususnya NIK `ADM0001`) diproteksi mutlak tanpa perubahan NIK/password. Penyiapan akun UAT menggunakan skrip idempotent terpisah (`scripts/prepare-uat-personas.ts`) dengan cabang valid (`BANDUNG` dan `CIKOKOL`). Dokumen simulasi PDF dan gambar disiapkan di `public/simulasi-uat/` berlabel jelas "SIMULASI UAT — BUKAN DOKUMEN RESMI".
+**Architecture:** Database terisolasi PostgreSQL (`sparta_siaga_isolated`) diproteksi menggunakan guard `assertIsolatedDatabase`. Seluruh tabel dan berkas dicadangkan (backup dump) ke direktori `backups/uat_cleanup_<timestamp>`. Pembersihan dijalankan secara selektif (dry run lalu eksekusi) hanya menghapus record berawalan `TEST-`, `INC-REFINE-`, `INC-TEST-` dan akun demo perancah visual (`usr_*_verify`, `usr_*_test`). Akun System Administrator (`system_role = 'ADMIN'`, khususnya NIK `ADM0001`) diproteksi mutlak tanpa perubahan NIK/password. Penyiapan akun UAT menggunakan skrip idempotent terpisah (`scripts/prepare-uat-personas.ts`) dengan cabang valid (`BANDUNG` dan `CIKOKOL`). Dokumen simulasi PDF dan gambar disiapkan di `public/simulasi-uat/` berlabel jelas "SIMULASI UAT  -  BUKAN DOKUMEN RESMI".
 
 **Tech Stack:** Next.js 16 (App Router), TypeScript, PostgreSQL (`pg` pool, NO PRISMA), bcryptjs, Leaflet, Node.js `fs`/`crypto`.
 
@@ -79,15 +79,15 @@
 
 - [ ] **Step 3.1: Buat seeder akun UAT bersih tanpa menyentuh Admin**
   Akun yang disiapkan:
-  - `BMS0001`: Demo BMS Bandung (Role: `bms`, Branch: `BANDUNG`) — Simulasi 1
-  - `BES0001`: Demo BES Bandung (Role: `bes`, Branch: `BANDUNG`) — Simulasi 2
-  - `BBS0001`: Demo BBS Bandung (Role: `bbs`, Branch: `BANDUNG`) — Jalur Building/Cabang
-  - `BMC0001`: Demo BMC Koordinator Bandung (Role: `bmc`, Branch: `BANDUNG`) — Koordinator Toko
-  - `BEC0001`: Demo BEC Koordinator Bandung (Role: `bec`, Branch: `BANDUNG`) — Koordinator DC
-  - `BBC0001`: Demo BBC Koordinator Bandung (Role: `bbc`, Branch: `BANDUNG`) — Koordinator Building
-  - `BM0001`: Demo BnM Manajer Bandung (Role: `bm`, Branch: `BANDUNG`) — Simulasi 1 & 2
-  - `HO0001`: Demo HO Admin Monitoring (Role: `ho_admin`, Branch: `ALL`) — Simulasi 1 & 2
-  - `GM0001`: Demo GM HO Monitoring (Role: `gm_ho`, Branch: `ALL`) — Simulasi 2
+  - `BMS0001`: Demo BMS Bandung (Role: `bms`, Branch: `BANDUNG`)  -  Simulasi 1
+  - `BES0001`: Demo BES Bandung (Role: `bes`, Branch: `BANDUNG`)  -  Simulasi 2
+  - `BBS0001`: Demo BBS Bandung (Role: `bbs`, Branch: `BANDUNG`)  -  Jalur Building/Cabang
+  - `BMC0001`: Demo BMC Koordinator Bandung (Role: `bmc`, Branch: `BANDUNG`)  -  Koordinator Toko
+  - `BEC0001`: Demo BEC Koordinator Bandung (Role: `bec`, Branch: `BANDUNG`)  -  Koordinator DC
+  - `BBC0001`: Demo BBC Koordinator Bandung (Role: `bbc`, Branch: `BANDUNG`)  -  Koordinator Building
+  - `BM0001`: Demo BnM Manajer Bandung (Role: `bm`, Branch: `BANDUNG`)  -  Simulasi 1 & 2
+  - `HO0001`: Demo HO Admin Monitoring (Role: `ho_admin`, Branch: `ALL`)  -  Simulasi 1 & 2
+  - `GM0001`: Demo GM HO Monitoring (Role: `gm_ho`, Branch: `ALL`)  -  Simulasi 2
   - Akun Administrator (`ADM0001` / `usr_seed_admin`) dilewati sepenuhnya (`SKIPPED`) agar tidak tertimpa.
 - [ ] **Step 3.2: Uji login dan otentikasi seluruh akun via API/bcrypt**
   Tulis `scripts/test-uat-personas-login.ts` untuk memverifikasi bahwa `ADM0001` dan seluruh akun demo dapat login dengan sukses dan memiliki permission yang tepat.
@@ -107,7 +107,7 @@
   - `serah_terima_100_toko.pdf`, `foto_pekerjaan_selesai_toko.jpg`, `foto_before_after_toko.jpg`
   - `foto_revisi_tes_siram_atap.jpg` (untuk penolakan & perbaikan Simulasi 1)
   - `foto_kejadian_dc.jpg`, `dokumen_serah_terima_dc.pdf`, `foto_selesai_dc.jpg` (Simulasi 2)
-  Seluruh dokumen diberi watermark dan teks tajam: "DOKUMEN SIMULASI UAT — BUKAN DOKUMEN RESMI".
+  Seluruh dokumen diberi watermark dan teks tajam: "DOKUMEN SIMULASI UAT  -  BUKAN DOKUMEN RESMI".
 
 ---
 

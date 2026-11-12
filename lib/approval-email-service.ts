@@ -133,7 +133,7 @@ export function generateHoApprovalEmailHtml(
 </head>
 <body style="margin: 0; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc;">
   <div style="max-width: 620px; margin: 0 auto; background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);">
-
+    
     <!-- Top Brand Header -->
     <div style="background-color: #1D5AA6; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between;">
       <div style="color: #ffffff; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">
@@ -146,7 +146,7 @@ export function generateHoApprovalEmailHtml(
 
     <!-- Main Content -->
     <div style="padding: 24px;">
-
+      
       <!-- Greeting & Summary -->
       ${recipientName ? `<p style="font-size: 14px; color: #94a3b8; margin: 0 0 12px 0;">Yth. Bapak/Ibu <strong>${recipientName}</strong>,</p>` : ""}
       <p style="font-size: 14px; color: #cbd5e1; line-height: 1.6; margin: 0 0 20px 0;">
@@ -513,7 +513,7 @@ export async function getApprovalOutboxStatus(reportId?: string): Promise<{
   try {
     const pool = getDbPool();
     let query = `
-      SELECT
+      SELECT 
         COUNT(*)::int as total,
         COUNT(CASE WHEN processed_at IS NULL THEN 1 END)::int as unprocessed,
         COUNT(CASE WHEN processed_at IS NOT NULL THEN 1 END)::int as processed
@@ -550,3 +550,4 @@ export async function getApprovalOutboxStatus(reportId?: string): Promise<{
     return { total: 0, unprocessed: 0, processed: 0, recentItems: [] };
   }
 }
+

@@ -21,7 +21,7 @@ interface BenchmarkResult {
 
 async function runBenchmark() {
   console.log("==============================================================");
-  console.log("📊 SPARTA SIAGA — MAP PERFORMANCE & ARCHITECTURAL BENCHMARK");
+  console.log("📊 SPARTA SIAGA - MAP PERFORMANCE & ARCHITECTURAL BENCHMARK");
   console.log("   Measuring 21,550 Stores Dataset vs Viewport Bounding Box");
   console.log("==============================================================");
 

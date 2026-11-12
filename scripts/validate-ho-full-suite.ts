@@ -16,7 +16,7 @@ import type { IncidentRecord } from "../types/incident";
 
 async function runSuite() {
   console.log("==================================================================");
-  console.log("  SPARTA SIAGA — HO FINAL VALIDATION SUITE                        ");
+  console.log("  SPARTA SIAGA - HO FINAL VALIDATION SUITE                        ");
   console.log("==================================================================\n");
 
   // ---------------------------------------------------------------
@@ -28,8 +28,8 @@ async function runSuite() {
 
   assert.ok(report1, "Laporan LAP-EQ-DEMO-BDG-001 harus ada di DB");
   assert.ok(report2, "Laporan INC-MAN-1792116839286 harus ada di DB");
-  console.log(`      ✓ Report 1: ${report1.id} (${report1.storeName}) — Status: ${report1.status}`);
-  console.log(`      ✓ Report 2: ${report2.id} (${report2.storeName}) — Status: ${report2.status}`);
+  console.log(`      ✓ Report 1: ${report1.id} (${report1.storeName}) - Status: ${report1.status}`);
+  console.log(`      ✓ Report 2: ${report2.id} (${report2.storeName}) - Status: ${report2.status}`);
 
   // ---------------------------------------------------------------
   // 2. Business Rules: Attention Indicators & Statuses

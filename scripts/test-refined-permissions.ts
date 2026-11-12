@@ -12,7 +12,7 @@ import * as path from "path";
 
 async function runTestSuiteAtoJ() {
   console.log("==================================================");
-  console.log("SPARTA SIAGA — VERIFICATION SUITE A TO J");
+  console.log("SPARTA SIAGA - VERIFICATION SUITE A TO J");
   console.log("==================================================\n");
 
   const pool = getDbPool();

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — EQ-01: Earthquake Detection & Multi-Provider Ingestion Test Suite
+ * SPARTA SIAGA - EQ-01: Earthquake Detection & Multi-Provider Ingestion Test Suite
  * 
  * Comprehensive validation:
  * 1. Strict validation of magnitude, depth, coordinates, timestamps, and event IDs.
@@ -476,7 +476,7 @@ test("LIVE-01", "fetchDisasterFeed fetches real feeds, correlates events, and re
 
 async function run() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — EQ-01: EARTHQUAKE DETECTION & INGESTION TEST SUITE");
+  console.log(" SPARTA SIAGA - EQ-01: EARTHQUAKE DETECTION & INGESTION TEST SUITE");
   console.log("================================================================================\n");
 
   let passed = 0;

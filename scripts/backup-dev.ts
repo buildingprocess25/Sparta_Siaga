@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Development Database & Storage Backup Script
+ * SPARTA SIAGA - Development Database & Storage Backup Script
  * 
  * Safely creates a complete, verified snapshot of the development database
  * and private evidence storage before any data cleanup/mutation.

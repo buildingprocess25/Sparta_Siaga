@@ -1,5 +1,6 @@
 import { Earthquake, DisasterFeedResponse, SourceHealth, DataFreshness } from "@/types/disaster";
-import { calculateHaversineDistance, calculateSpartaMonitoringZone } from "./haversine";
+import { calculateHaversineDistance } from "./haversine";
+import { getV1Coverage } from "./earthquake-v1-parameters";
 import { dbUpsertEarthquakeEvent, dbGetRecentEarthquakeEvents } from "./earthquake-db";
 import { getExternalApiConfig } from "./runtime-config";
 
@@ -208,7 +209,8 @@ export function validateAndParseBmkgRecord(g: any): Earthquake | null {
   const depthKm = parseDepthToKm(g.Kedalaman);
   if (depthKm === null) return null;
 
-  const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(mag, depthKm);
+  const v1Coverage = getV1Coverage(mag, depthKm);
+  const v1DistanceKm = v1Coverage.v1DistanceKm;
   const hasTsunami = (g.Potensi || "").toLowerCase().includes("tsunami") && 
                      !(g.Potensi || "").toLowerCase().includes("tidak berpotensi");
 
@@ -241,8 +243,10 @@ export function validateAndParseBmkgRecord(g: any): Earthquake | null {
       ? `${getExternalApiConfig().bmkg.shakemapBaseUrl.replace(/\/$/, "")}/${g.Shakemap}`
       : undefined,
     isSignificant: mag >= 5.5,
-    priorityRadiusKm,
-    monitoringRadiusKm,
+    v1DistanceKm,
+    v1Coverage,
+    priorityRadiusKm: v1DistanceKm ?? null,
+    monitoringRadiusKm: null,
   };
 }
 
@@ -277,7 +281,8 @@ export function validateAndParseUsgsFeature(feat: any): Earthquake | null {
   const featId = feat.id || feat.properties?.code;
   if (!featId) return null;
 
-  const { priorityRadiusKm, monitoringRadiusKm } = calculateSpartaMonitoringZone(mag, depthKm);
+  const v1Coverage = getV1Coverage(mag, depthKm);
+  const v1DistanceKm = v1Coverage.v1DistanceKm;
   const isTsunami = feat.properties?.tsunami === 1;
   const canonicalId = `usgs-${featId}`;
 
@@ -300,8 +305,10 @@ export function validateAndParseUsgsFeature(feat: any): Earthquake | null {
     potensiTsunami: isTsunami,
     potensiText: isTsunami ? "Peringatan Tsunami Global Aktif" : undefined,
     isSignificant: mag >= 6.0,
-    priorityRadiusKm,
-    monitoringRadiusKm,
+    v1DistanceKm,
+    v1Coverage,
+    priorityRadiusKm: v1DistanceKm ?? null,
+    monitoringRadiusKm: null,
   };
 }
 

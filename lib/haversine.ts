@@ -1,5 +1,6 @@
 import { Store, StoreStatus } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
+import { getV1Coverage } from "./earthquake-v1-parameters";
 
 /**
  * Calculates the great-circle distance between two points on the Earth's surface
@@ -58,58 +59,52 @@ function toRad(degrees: number): number {
 }
 
 /**
- * Calculates SPARTA's operational monitoring zones based on BMKG earthquake parameters.
- * Note: These are SPARTA's internal operational vigilance zones, NOT official BMKG MMI/Shakemap radii,
- * and NOT confirmed structural damage. Operational monitoring triggers field inspection workflows.
+ * Calculates SPARTA's operational monitoring zones based on the agreed V1 parameter table.
+ * Preserves the supervisor-provided parameter table revised on 6 November 2026.
+ * Note: These are SPARTA's internal operational vigilance zones, NOT confirmed structural damage.
  */
 export function calculateSpartaMonitoringZone(
   magnitude: number,
   depthKm: number = 10
 ): { priorityRadiusKm: number; monitoringRadiusKm: number } {
-  const safeMag = Number.isFinite(magnitude) ? magnitude : 0;
-  const safeDepth = Number.isFinite(depthKm) && depthKm >= 0 ? depthKm : 10;
-
-  // If magnitude < 4.5, minimal structural risk to modern retail buildings
-  if (safeMag < 4.5) {
-    return { priorityRadiusKm: 15, monitoringRadiusKm: 35 };
-  }
-
-  // Base priority radius based on magnitude
-  const basePriority = Math.pow(10, 0.48 * safeMag - 1.15);
-
-  // Depth attenuation factor: deeper quakes cause less surface PGA
-  const depthFactor =
-    safeDepth <= 20
-      ? 1.0
-      : safeDepth <= 50
-      ? 0.85
-      : safeDepth <= 100
-      ? 0.65
-      : safeDepth <= 200
-      ? 0.45
-      : 0.3;
-
-  const priorityRadiusKm = Math.max(15, Math.round(basePriority * depthFactor));
-  // Monitoring radius (operational vigilance) is approx 2.2x priority radius
-  const monitoringRadiusKm = Math.round(priorityRadiusKm * 2.2);
-
-  return { priorityRadiusKm, monitoringRadiusKm };
+  const coverage = getV1Coverage(magnitude, depthKm);
+  const v1Radius = coverage.v1DistanceKm ?? 0;
+  return {
+    priorityRadiusKm: v1Radius,
+    monitoringRadiusKm: v1Radius,
+  };
 }
 
-export type SpatialRisk = "SAFE" | "MONITOR" | "PRIORITY_MONITOR";
+export type SpatialRisk = "SAFE" | "MONITOR" | "PRIORITY_MONITOR" | "UNASSESSED";
 
 export interface StoreRiskAssessment {
   spatialRisk: SpatialRisk;
   distanceFromEventKm?: number;
   riskSourceEvent?: Earthquake;
+  isInsideV1?: boolean;
+  v1DistanceKm?: number | null;
+  officialMmi?: number | null;
+  intensityStatus?: "INTENSITY_TRIGGERED" | "BELOW_INSPECTION_THRESHOLD" | "UNASSESSED";
+  assessmentNote?: string;
 }
 
 /**
- * Evaluates the spatial risk of a store against all active earthquakes
- * using SPARTA's monitoring zones.
+ * Evaluates the spatial risk and V1 coverage status of a store against active earthquakes.
+ *
+ * Rules:
+ * 1. Distance alone describes whether a store is inside or outside V1.
+ * 2. Outside V1 with unavailable MMI is explicitly UNASSESSED, never automatically SAFE.
+ * 3. Official MMI >= 6.0 outside V1 remains visible as meeting the intensity threshold (PRIORITY_MONITOR).
+ * 4. MMI below 6.0 means below the automatic-inspection threshold, NOT proof of physical safety.
+ * 5. SAFE is only used when no active earthquakes exist or confirmed safe by inspection.
  */
 export function assessStoreRisk(
-  store: { latitude?: number | null; longitude?: number | null },
+  store: {
+    latitude?: number | null;
+    longitude?: number | null;
+    mmi?: number | null;
+    officialMmi?: number | null;
+  },
   activeEarthquakes: Earthquake[]
 ): StoreRiskAssessment {
   if (
@@ -127,13 +122,20 @@ export function assessStoreRisk(
     return { spatialRisk: "SAFE" };
   }
 
-  let highestSpatialRisk: SpatialRisk = "SAFE";
+  let highestSpatialRisk: SpatialRisk = "UNASSESSED";
   let minDistance = Infinity;
   let riskSourceEvent: Earthquake | undefined;
+  let chosenInsideV1 = false;
+  let chosenV1Radius: number | null = null;
+  let chosenIntensityStatus: "INTENSITY_TRIGGERED" | "BELOW_INSPECTION_THRESHOLD" | "UNASSESSED" = "UNASSESSED";
+  let chosenAssessmentNote = "";
 
-  // We want to find the event that causes the HIGHEST spatial risk.
-  // If multiple events cause the same risk, we pick the closest one.
-  const riskPriority = { SAFE: 0, MONITOR: 1, PRIORITY_MONITOR: 2 };
+  const riskPriority: Record<SpatialRisk, number> = {
+    SAFE: 0,
+    UNASSESSED: 1,
+    MONITOR: 2,
+    PRIORITY_MONITOR: 3,
+  };
 
   for (const event of activeEarthquakes) {
     if (
@@ -158,40 +160,75 @@ export function assessStoreRisk(
 
     if (isNaN(dist)) continue;
 
-    let currentEventRisk: SpatialRisk = "SAFE";
+    const coverage = (event as any).v1Coverage ?? getV1Coverage(event.magnitude, event.depthKm ?? 10);
+    const v1Radius = (event as any).v1DistanceKm ?? (event as any).priorityRadiusKm ?? coverage.v1DistanceKm;
+    const storeMmi = store.officialMmi ?? store.mmi ?? null;
+    const isInsideV1 = v1Radius !== null && v1Radius > 0 && dist <= v1Radius;
 
-    let priorityR = (event as any).priorityRadiusKm ?? (event as any).dangerRadiusKm;
-    let monitorR = (event as any).monitoringRadiusKm ?? (event as any).warningRadiusKm;
-    if (priorityR == null || monitorR == null) {
-      const zones = calculateSpartaMonitoringZone(event.magnitude, event.depthKm);
-      priorityR = priorityR ?? zones.priorityRadiusKm;
-      monitorR = monitorR ?? zones.monitoringRadiusKm;
-    }
+    let currentEventRisk: SpatialRisk = "UNASSESSED";
+    let intensityStatus: "INTENSITY_TRIGGERED" | "BELOW_INSPECTION_THRESHOLD" | "UNASSESSED" = "UNASSESSED";
+    let assessmentNote = "";
 
-    if (dist <= priorityR) {
+    if (storeMmi !== null && storeMmi >= 6.0) {
+      // Official MMI >= 6.0 meets intensity threshold regardless of V1 boundary
       currentEventRisk = "PRIORITY_MONITOR";
-    } else if (dist <= monitorR) {
-      currentEventRisk = "MONITOR";
+      intensityStatus = "INTENSITY_TRIGGERED";
+      assessmentNote = isInsideV1
+        ? `Tercakup dalam V1 (${dist.toFixed(1)} km <= ${v1Radius} km) dan memenuhi ambang MMI (${storeMmi})`
+        : `Di luar V1 (${dist.toFixed(1)} km > ${v1Radius ?? 0} km), namun memenuhi ambang intensitas MMI (${storeMmi})`;
+    } else if (storeMmi !== null && storeMmi < 6.0) {
+      // MMI below 6.0 means below automatic-inspection threshold, not proof of physical safety
+      intensityStatus = "BELOW_INSPECTION_THRESHOLD";
+      if (isInsideV1) {
+        currentEventRisk = "MONITOR";
+        assessmentNote = `Dalam V1 (${dist.toFixed(1)} km <= ${v1Radius} km), MMI ${storeMmi} di bawah ambang inspeksi otomatis (bukan bukti aman fisik)`;
+      } else {
+        currentEventRisk = "UNASSESSED";
+        assessmentNote = `Di luar V1 (${dist.toFixed(1)} km), MMI ${storeMmi} di bawah ambang inspeksi otomatis (bukan bukti aman fisik)`;
+      }
+    } else {
+      // MMI unavailable / unassessed
+      intensityStatus = "UNASSESSED";
+      if (isInsideV1) {
+        currentEventRisk = "PRIORITY_MONITOR";
+        assessmentNote = `Dalam radius pencarian V1 (${dist.toFixed(1)} km <= ${v1Radius} km). MMI belum tersedia (fallback operasional)`;
+      } else {
+        currentEventRisk = "UNASSESSED";
+        assessmentNote = v1Radius !== null
+          ? `Di luar radius V1 (${dist.toFixed(1)} km > ${v1Radius} km); intensitas belum terkaji (tidak membuktikan aman)`
+          : `Parameter gempa tidak tercakup tabel V1; intensitas belum terkaji`;
+      }
     }
 
     if (riskPriority[currentEventRisk] > riskPriority[highestSpatialRisk]) {
       highestSpatialRisk = currentEventRisk;
       minDistance = dist;
-      riskSourceEvent = currentEventRisk !== "SAFE" ? event : undefined;
-    } else if (riskPriority[currentEventRisk] === riskPriority[highestSpatialRisk] && currentEventRisk !== "SAFE") {
+      riskSourceEvent = event;
+      chosenInsideV1 = isInsideV1;
+      chosenV1Radius = v1Radius;
+      chosenIntensityStatus = intensityStatus;
+      chosenAssessmentNote = assessmentNote;
+    } else if (riskPriority[currentEventRisk] === riskPriority[highestSpatialRisk]) {
       if (dist < minDistance) {
         minDistance = dist;
         riskSourceEvent = event;
+        chosenInsideV1 = isInsideV1;
+        chosenV1Radius = v1Radius;
+        chosenIntensityStatus = intensityStatus;
+        chosenAssessmentNote = assessmentNote;
       }
-    } else if (highestSpatialRisk === "SAFE" && dist < minDistance) {
-      minDistance = dist;
     }
   }
 
   return {
     spatialRisk: highestSpatialRisk,
     distanceFromEventKm: minDistance === Infinity ? undefined : minDistance,
-    riskSourceEvent: highestSpatialRisk === "SAFE" ? undefined : riskSourceEvent,
+    riskSourceEvent,
+    isInsideV1: chosenInsideV1,
+    v1DistanceKm: chosenV1Radius,
+    officialMmi: store.officialMmi ?? store.mmi ?? null,
+    intensityStatus: chosenIntensityStatus,
+    assessmentNote: chosenAssessmentNote,
   };
 }
 
@@ -249,8 +286,8 @@ export function evaluateAffectedLocations<T extends LocationItem>(
     longitude: number;
     magnitude: number;
     depthKm?: number;
-    priorityRadiusKm?: number;
-    monitoringRadiusKm?: number;
+    priorityRadiusKm?: number | null;
+    monitoringRadiusKm?: number | null;
   },
   locations: T[]
 ): AffectedLocationSummary<T> {

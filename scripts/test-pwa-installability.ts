@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — PWA Installability & Production Readiness Test Suite
+ * SPARTA SIAGA - PWA Installability & Production Readiness Test Suite
  * 
  * Verifies all browser installability requirements:
  * 1. Manifest accessibility (HTTP 200, no login redirect, application/manifest+json)
@@ -60,7 +60,7 @@ async function fetchHttp(urlPath: string, headers: Record<string, string> = {}):
 
 async function runAudit() {
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — PWA INSTALLABILITY & PRODUCTION AUDIT");
+  console.log(" SPARTA SIAGA - PWA INSTALLABILITY & PRODUCTION AUDIT");
   console.log(` Target Origin : ${BASE_URL}`);
   console.log("================================================================================\n");
 

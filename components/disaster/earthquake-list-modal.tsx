@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { Earthquake } from "@/types/disaster";
+import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 import { AppDialog } from "@/components/shared/app-dialog";
 import {
   X,
@@ -58,7 +59,7 @@ export function EarthquakeListModal({
       open={isOpen}
       onClose={onClose}
       title="Daftar Gempa Bumi Terkini"
-      description="Data real-time BMKG & USGS dengan kalkulasi dampak Zona Pantau SPARTA"
+      description="Data real-time BMKG & USGS dengan parameter evaluasi V1 SPARTA"
       className="sm:!max-w-2xl"
     >
       <div className={`rounded-2xl w-full max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] flex flex-col shadow-2xl overflow-hidden transition-colors border overscroll-contain touch-auto select-text ${
@@ -82,7 +83,7 @@ export function EarthquakeListModal({
                 </span>
               </div>
               <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                Data real-time BMKG & USGS dengan kalkulasi dampak Zona Pantau SPARTA
+                Data real-time BMKG & USGS dengan parameter evaluasi V1 SPARTA
               </p>
             </div>
           </div>
@@ -232,9 +233,13 @@ export function EarthquakeListModal({
                           </span>
                         </div>
                         <div className="col-span-2 sm:col-span-1">
-                          <span>Zona Prioritas:</span>{" "}
+                          <span>Radius V1:</span>{" "}
                           <span className="font-mono font-bold text-red-500">
-                            {eq.priorityRadiusKm || 50} km
+                            {(() => {
+                              const cov = eq.v1Coverage ?? getV1Coverage(eq.magnitude, eq.depthKm ?? 10);
+                              const r = eq.v1DistanceKm ?? cov.v1DistanceKm;
+                              return r !== null ? `${r} km` : (eq.magnitude < 4.0 ? "Pemantauan" : "Tidak Berlaku");
+                            })()}
                           </span>
                         </div>
                       </div>

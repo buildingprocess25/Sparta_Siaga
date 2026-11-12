@@ -13,15 +13,23 @@ import {
   Clock,
   Wrench,
   UserCheck,
-  UserPlus,
+  User,
   ExternalLink,
   ChevronRight,
   FileText,
   Activity,
   Layers,
-  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { Store as StoreType } from "@/types/store";
+import type { AhoStoreDetailResponse } from "@/lib/maintenance-aho-db";
+import { getAhoColor } from "@/lib/aho-utils";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 export type FacilityDetail = {
   id: string;
@@ -36,9 +44,52 @@ export type FacilityDetail = {
   mapping_verified_at: string | null;
 };
 
+export interface BranchSummaryDetail {
+  cabang: string;
+  totalStores: number;
+  latitude: number;
+  longitude: number;
+  dangerCount?: number;
+  warningCount?: number;
+  storesWithTickets?: number;
+  totalTickets?: number;
+  percentage?: number;
+}
+
+export interface ClusterSummaryDetail {
+  lat: number;
+  lng: number;
+  totalStores: number;
+  storesWithTickets?: number;
+  totalTickets?: number;
+  percentage?: number;
+}
+
+function formatWibDateTime(isoStr?: string | null): string {
+  if (!isoStr) return "-";
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return (
+      d.toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Jakarta",
+      }) + " WIB"
+    );
+  } catch {
+    return isoStr;
+  }
+}
+
 interface LocationDetailPanelProps {
-  location: StoreType | null;
+  location?: StoreType | null;
   facility?: FacilityDetail | null;
+  branch?: BranchSummaryDetail | null;
+  cluster?: ClusterSummaryDetail | null;
   onClose: () => void;
   isMobile?: boolean;
   currentEarthquake?: {
@@ -48,23 +99,63 @@ interface LocationDetailPanelProps {
     title?: string;
   } | null;
   activeRole?: string;
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
+  onFlyTo?: (lat: number, lng: number, zoom: number) => void;
 }
 
 export function LocationDetailPanel({
   location,
   facility,
+  branch,
+  cluster,
   onClose,
   isMobile = false,
   currentEarthquake,
   activeRole,
+  activeLayer,
+  onFlyTo,
 }: LocationDetailPanelProps) {
-  const [incidentInfo, setIncidentInfo] = useState<{
-    id: string;
-    status: string;
-    progress: number;
-    pic?: { name: string; nik?: string; role?: string } | null;
-  } | null>(null);
-  const [loadingIncident, setLoadingIncident] = useState(false);
+  // SPARTA Maintenance AHO tickets and personnel state
+  const [ahoData, setAhoData] = useState<AhoStoreDetailResponse | null>(null);
+  const [loadingAho, setLoadingAho] = useState(false);
+  const [ahoError, setAhoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Only fetch AHO details for real store locations, not DC facilities
+    const isFac = Boolean(facility || location?.id?.startsWith("FACILITY:"));
+    if (!location || isFac) {
+      setAhoData(null);
+      return;
+    }
+
+    const code = (location.kode_toko || "").trim().toUpperCase();
+    if (!code) return;
+
+    const controller = new AbortController();
+    setLoadingAho(true);
+    setAhoError(null);
+
+    fetch(`/api/aho/stores/${encodeURIComponent(code)}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const payload = await res.json();
+        if (!res.ok || !payload.success) {
+          throw new Error(payload.error || "Gagal memuat data AHO toko");
+        }
+        setAhoData(payload.data || null);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setAhoError(err.message || "Gagal memuat tiket AHO");
+        }
+      })
+      .finally(() => {
+        setLoadingAho(false);
+      });
+
+    return () => controller.abort();
+  }, [location?.kode_toko, facility, location?.id]);
 
   // Compute distance from current earthquake epicenter if available
   const distanceKm = React.useMemo(() => {
@@ -103,7 +194,7 @@ export function LocationDetailPanel({
       return {
         label: "Selesai",
         sub: "Laporan penanganan telah ditutup (CLOSED)",
-        bg: "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+        variant: "secondary" as const,
         icon: CheckCircle2,
       };
     }
@@ -111,42 +202,327 @@ export function LocationDetailPanel({
       return {
         label: "Dalam Penanganan",
         sub: "Proses perbaikan atau SPK sedang berjalan",
-        bg: "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
+        variant: "default" as const,
         icon: Wrench,
       };
     }
     if (location.visualStatus === "TERDAMPAK") {
       return {
         label: "Kerusakan Terkonfirmasi",
-        sub: "Kerusakan fisik telah diverifikasi oleh petugas lapangan",
-        bg: "bg-red-50 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800",
+        sub: "Kerusakan fisik telah diverifikasi oleh tim lapangan",
+        variant: "destructive" as const,
         icon: ShieldAlert,
       };
     }
-    if (location.status === "PRIORITY_MONITOR" || (distanceKm !== null && distanceKm <= 50)) {
+    if (location.status === "PRIORITY_MONITOR") {
       return {
-        label: "Dalam Radius Evaluasi",
-        sub: "Dalam zona prioritas pantau gempa (< 50 km). Menunggu pemeriksaan fisik.",
-        bg: "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+        label: "Radius Evaluasi (V1)",
+        sub: "Dalam radius evaluasi gempa BMKG (V1)",
+        variant: "outline" as const,
         icon: AlertTriangle,
       };
     }
-    if (location.status === "MONITOR" || (distanceKm !== null && distanceKm <= 110)) {
+    if (location.status === "MONITOR") {
       return {
-        label: "Dalam Radius Evaluasi (Pantau)",
-        sub: "Dalam zona pemantauan (50–110 km). Waspada potensi dampak gempa.",
-        bg: "bg-yellow-50 text-yellow-800 border-yellow-300 dark:bg-yellow-950/40 dark:text-yellow-300 dark:border-yellow-800",
+        label: "Radius Pemantauan",
+        sub: "Dalam radius pemantauan operasional wilayah",
+        variant: "outline" as const,
         icon: Clock,
       };
     }
-
     return {
-      label: "Normal / Aman",
-      sub: "Kondisi operasional normal dan aman di luar radius gempa",
-      bg: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700",
+      label: "Operasional Normal",
+      sub: "Kondisi operasional normal",
+      variant: "secondary" as const,
       icon: CheckCircle2,
     };
   };
+
+  // ---------------------------------------------------------------------------
+  // Branch Summary View (When Branch Aggregation Marker is Clicked)
+  // ---------------------------------------------------------------------------
+  if (branch) {
+    const isAho = activeLayer === "aho";
+    const ahoColor = isAho ? getAhoColor(branch.percentage ?? 0) : null;
+
+    return (
+      <>
+        {isMobile && (
+          <div
+            className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[1190] transition-opacity"
+            onClick={onClose}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`bg-card text-card-foreground border-border z-[1200] flex flex-col transition-all duration-200 ${
+            isMobile
+              ? "fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t shadow-2xl overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom"
+              : "w-96 md:w-[400px] h-full border-l shadow-lg shrink-0 overflow-hidden"
+          }`}
+          aria-label="Panel Detail Agregasi Cabang"
+        >
+          {isMobile && (
+            <div className="w-full flex justify-center pt-2.5 pb-1">
+              <div className="w-12 h-1 bg-muted-foreground/30 rounded-full" />
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="p-3.5 border-b border-border flex items-start justify-between gap-2.5 shrink-0 bg-muted/20">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <Badge variant="outline" className="text-[10px] uppercase font-semibold gap-1">
+                  <Building className="w-3 h-3 text-primary" />
+                  <span>Agregasi Cabang</span>
+                </Badge>
+                {ahoColor && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${ahoColor.bgClass}`}>
+                    {ahoColor.category}
+                  </span>
+                )}
+              </div>
+              <h2 className="text-sm font-semibold text-foreground truncate" title={branch.cabang}>
+                Cabang {branch.cabang}
+              </h2>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                Cakupan Agregasi Wilayah Operasional
+              </p>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={onClose}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+              aria-label="Tutup panel detail"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1 p-3.5 space-y-3.5 text-xs">
+            <div className="space-y-3.5">
+              {/* Stats Card */}
+              <Card>
+                <CardHeader className="p-3 pb-2 flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-1.5">
+                    {isAho ? <Wrench className="w-3.5 h-3.5 text-amber-500" /> : <Store className="w-3.5 h-3.5 text-primary" />}
+                    <CardTitle className="text-xs">{isAho ? "Metrik Tiket AHO Cabang" : "Statistik Jaringan Toko"}</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-3 pt-0 space-y-2 text-xs">
+                  <div className="p-2.5 rounded-lg border border-border bg-muted/30 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Total Toko di Cabang:</span>
+                      <strong className="text-foreground font-semibold">{branch.totalStores} Toko</strong>
+                    </div>
+
+                    {isAho && (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Toko Bertiket Aktif:</span>
+                          <strong className="text-red-500 font-bold">{branch.storesWithTickets ?? 0} Toko</strong>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Total Tiket AHO Aktif:</span>
+                          <strong className="text-amber-500 font-bold">{branch.totalTickets ?? 0} Tiket</strong>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between items-center pt-0.5">
+                          <span className="text-muted-foreground font-medium">Persentase Toko Bertiket:</span>
+                          <strong className={`font-mono text-sm font-bold ${ahoColor?.textClass}`}>
+                            {(branch.percentage ?? 0).toFixed(1)}%
+                          </strong>
+                        </div>
+                      </>
+                    )}
+
+                    {!isAho && (
+                      <>
+                        {(branch.dangerCount ?? 0) > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-red-500 font-medium">Prioritas Pantau:</span>
+                            <strong className="text-red-600 font-bold">{branch.dangerCount} Toko</strong>
+                          </div>
+                        )}
+                        {(branch.warningCount ?? 0) > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-amber-500 font-medium">Perlu Perhatian:</span>
+                            <strong className="text-amber-600 font-bold">{branch.warningCount} Toko</strong>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {isAho && (
+                    <p className="text-[10px] text-muted-foreground leading-snug italic pt-1">
+                      * Dihitung dari toko yang memiliki minimal satu tiket AHO aktif (berstatus New atau Progress) di SPARTA Maintenance.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Coordinates */}
+              <div className="p-2.5 rounded-lg border border-border bg-muted/30 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Titik Koordinat Agregasi:</span>
+                <span className="font-mono text-foreground font-medium">
+                  {branch.latitude.toFixed(4)}, {branch.longitude.toFixed(4)}
+                </span>
+              </div>
+
+              {/* Action */}
+              <div className="pt-1">
+                <Button
+                  onClick={() => onFlyTo?.(branch.latitude, branch.longitude, 10)}
+                  className="w-full text-xs h-9 justify-center gap-2"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Fokus ke Cabang Ini (Perbesar Peta)</span>
+                </Button>
+              </div>
+            </div>
+          </ScrollArea>
+        </aside>
+      </>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cluster Summary View (When Geographic Cluster Marker is Clicked)
+  // ---------------------------------------------------------------------------
+  if (cluster) {
+    const isAho = activeLayer === "aho";
+    const ahoColor = isAho ? getAhoColor(cluster.percentage ?? 0) : null;
+
+    return (
+      <>
+        {isMobile && (
+          <div
+            className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[1190] transition-opacity"
+            onClick={onClose}
+            aria-hidden="true"
+          />
+        )}
+        <aside
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`bg-card text-card-foreground border-border z-[1200] flex flex-col transition-all duration-200 ${
+            isMobile
+              ? "fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t shadow-2xl overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom"
+              : "w-96 md:w-[400px] h-full border-l shadow-lg shrink-0 overflow-hidden"
+          }`}
+          aria-label="Panel Detail Cluster Geografis"
+        >
+          {isMobile && (
+            <div className="w-full flex justify-center pt-2.5 pb-1">
+              <div className="w-12 h-1 bg-muted-foreground/30 rounded-full" />
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="p-3.5 border-b border-border flex items-start justify-between gap-2.5 shrink-0 bg-muted/20">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <Badge variant="outline" className="text-[10px] uppercase font-semibold gap-1">
+                  <Layers className="w-3.5 h-3.5 text-primary" />
+                  <span>Cluster Geografis</span>
+                </Badge>
+                {ahoColor && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${ahoColor.bgClass}`}>
+                    {Math.round(cluster.percentage ?? 0)}%
+                  </span>
+                )}
+              </div>
+              <h2 className="text-sm font-semibold text-foreground truncate">
+                Cluster ({cluster.totalStores} Toko)
+              </h2>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">
+                Pengelompokan Spasial Titik Terdekat
+              </p>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={onClose}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+              aria-label="Tutup panel detail"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1 p-3.5 space-y-3.5 text-xs">
+            <div className="space-y-3.5">
+              <Card>
+                <CardHeader className="p-3 pb-2 flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-1.5">
+                    {isAho ? <Wrench className="w-3.5 h-3.5 text-amber-500" /> : <Store className="w-3.5 h-3.5 text-primary" />}
+                    <CardTitle className="text-xs">Informasi Agregasi Cluster</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-3 pt-0 space-y-2 text-xs">
+                  <div className="p-2.5 rounded-lg border border-border bg-muted/30 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Total Toko dalam Cluster:</span>
+                      <strong className="text-foreground font-semibold">{cluster.totalStores} Toko</strong>
+                    </div>
+
+                    {isAho && (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Toko Bertiket Aktif:</span>
+                          <strong className="text-red-500 font-bold">{cluster.storesWithTickets ?? 0} Toko</strong>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Total Tiket AHO:</span>
+                          <strong className="text-amber-500 font-bold">{cluster.totalTickets ?? 0} Tiket</strong>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between items-center pt-0.5">
+                          <span className="text-muted-foreground font-medium">Persentase:</span>
+                          <strong className={`font-mono text-sm font-bold ${ahoColor?.textClass}`}>
+                            {(cluster.percentage ?? 0).toFixed(1)}%
+                          </strong>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Coordinates */}
+              <div className="p-2.5 rounded-lg border border-border bg-muted/30 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Koordinat Pusat Cluster:</span>
+                <span className="font-mono text-foreground font-medium">
+                  {cluster.lat.toFixed(4)}, {cluster.lng.toFixed(4)}
+                </span>
+              </div>
+
+              {/* Action Button */}
+              <div className="pt-1">
+                <Button
+                  onClick={() => onFlyTo?.(cluster.lat, cluster.lng, 13)}
+                  className="w-full text-xs h-9 justify-center gap-2"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Perbesar Cluster Ini ke Toko Individual</span>
+                </Button>
+              </div>
+            </div>
+          </ScrollArea>
+        </aside>
+      </>
+    );
+  }
 
   const termBadge = getTerminologyBadge();
 
@@ -156,7 +532,7 @@ export function LocationDetailPanel({
     <>
       {isMobile && (
         <div
-          className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-[1190] transition-opacity"
+          className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-[1190] transition-opacity"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -166,148 +542,315 @@ export function LocationDetailPanel({
         onTouchMove={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
-        className={`bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl z-[1200] flex flex-col transition-all duration-300 ${
+        className={`bg-card text-card-foreground border-border z-[1200] flex flex-col transition-all duration-200 ${
           isMobile
-            ? "fixed inset-x-0 bottom-0 max-h-[82vh] rounded-t-2xl border-t pb-28 overflow-y-auto overscroll-y-contain animate-in slide-in-from-bottom duration-200"
-            : "w-96 md:w-[400px] h-full border-l overflow-y-auto shrink-0"
+            ? "fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t shadow-2xl overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom"
+            : "w-96 md:w-[400px] h-full border-l shadow-lg shrink-0 overflow-hidden"
         }`}
-        aria-label="Panel Kontekstual Lokasi"
+        aria-label="Panel Detail Objek Monitoring"
       >
-        {/* Mobile drag handle */}
+        {/* Mobile Drag Indicator */}
         {isMobile && (
           <div className="w-full flex justify-center pt-2.5 pb-1">
-            <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700" />
+            <div className="w-12 h-1 bg-muted-foreground/30 rounded-full" />
           </div>
         )}
 
-        {/* Header */}
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-3">
+        {/* Panel Header */}
+        <div className="p-3.5 border-b border-border flex items-start justify-between gap-2.5 shrink-0 bg-muted/20">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800">
+              <Badge variant="outline" className="text-[10px] uppercase font-semibold gap-1">
                 {isFacility ? <Building className="w-3 h-3" /> : <Store className="w-3 h-3" />}
-                {locType}
-              </span>
-              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                <span>{locType}</span>
+              </Badge>
+              <span className="text-xs font-mono text-muted-foreground font-semibold">
                 {locCode}
               </span>
             </div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white truncate" title={locName}>
+            <h2 className="text-sm font-semibold text-foreground truncate" title={locName}>
               {locName}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {location.alamat || (isFacility ? "Master Fasilitas Operasional" : "Jaringan Toko Alfamart")}
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
+              {location.alamat || (isFacility ? "Master Fasilitas Logistik" : "Jaringan Toko Alfamart")}
             </p>
           </div>
 
-          <button
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
             aria-label="Tutup panel detail"
           >
-            <X className="w-5 h-5" />
-          </button>
+            <X className="w-4 h-4" />
+          </Button>
         </div>
 
-      <div className="p-4 space-y-4 flex-1">
-        {/* Status Terminology Card */}
-        {termBadge && (
-          <div className={`p-3 rounded-xl border flex items-start gap-3 ${termBadge.bg}`}>
-            <termBadge.icon className="w-5 h-5 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <strong className="block text-xs font-bold uppercase tracking-wider">
-                {termBadge.label}
-              </strong>
-              <p className="text-xs mt-0.5 opacity-90 leading-relaxed">
-                {termBadge.sub}
-              </p>
+        {/* Scrollable Content Body */}
+        <ScrollArea className="flex-1 p-3.5 space-y-3.5 text-xs">
+          <div className="space-y-3.5">
+            {/* Status Terminology Card */}
+            {termBadge && (
+              <div className="p-2.5 rounded-lg border border-border bg-muted/40 flex items-start gap-2.5">
+                <termBadge.icon className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="font-semibold text-xs text-foreground block">
+                    {termBadge.label}
+                  </span>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                    {termBadge.sub}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Earthquake Exposure Info */}
+            {distanceKm !== null && currentEarthquake && (
+              <Card>
+                <CardContent className="p-3 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5 text-red-500" />
+                      Jarak dari Episentrum
+                    </span>
+                    <strong className="text-foreground font-mono">{distanceKm} km</strong>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between text-muted-foreground text-[11px]">
+                    <span>Status Evaluasi:</span>
+                    <span className="font-medium text-foreground">
+                      {location.status === "PRIORITY_MONITOR"
+                        ? "Dalam Radius V1"
+                        : location.status === "MONITOR"
+                        ? "Radius Pantauan"
+                        : "Di Luar Radius Gempa"}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Location Metadata Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-lg border border-border bg-muted/30">
+                <span className="text-[10px] text-muted-foreground uppercase font-semibold block mb-0.5">
+                  Cabang
+                </span>
+                <strong className={`block truncate ${isMapped ? "text-foreground" : "text-amber-600"}`}>
+                  {branchName}
+                </strong>
+              </div>
+              <div className="p-2.5 rounded-lg border border-border bg-muted/30">
+                <span className="text-[10px] text-muted-foreground uppercase font-semibold block mb-0.5">
+                  Koordinat
+                </span>
+                <span className="font-mono text-muted-foreground block truncate">
+                  {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                </span>
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* BAGIAN B: Penanggung Jawab Toko (BMS, BMC, BnM Manager)                    */}
+            {/* ========================================================================= */}
+            {!isFacility && (
+              <Card>
+                <CardHeader className="p-3 pb-2 flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-primary" />
+                    <CardTitle className="text-xs">Penanggung Jawab Toko</CardTitle>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] font-mono">
+                    Maintenance
+                  </Badge>
+                </CardHeader>
+                <CardContent className="p-3 pt-0 space-y-1.5 text-xs">
+                  {/* BMS */}
+                  <div className="p-2 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground uppercase font-semibold truncate">
+                        BMS (Building Maintenance Supervisor)
+                      </div>
+                      <div className="font-medium text-xs text-foreground mt-0.5 truncate">
+                        {ahoData?.personnel?.bms || "Data belum tersedia"}
+                      </div>
+                    </div>
+                    <Badge variant={ahoData?.personnel?.bms ? "default" : "outline"} className="text-[9px] shrink-0">
+                      {ahoData?.personnel?.bms ? "Aktif" : "Menunggu Akses"}
+                    </Badge>
+                  </div>
+
+                  {/* BMC */}
+                  <div className="p-2 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground uppercase font-semibold truncate">
+                        BMC (Building Maintenance Coordinator)
+                      </div>
+                      <div className="font-medium text-xs text-foreground mt-0.5 truncate">
+                        {ahoData?.personnel?.bmc || "Data belum tersedia"}
+                      </div>
+                    </div>
+                    <Badge variant={ahoData?.personnel?.bmc ? "default" : "outline"} className="text-[9px] shrink-0">
+                      {ahoData?.personnel?.bmc ? "Aktif" : "Menunggu Akses"}
+                    </Badge>
+                  </div>
+
+                  {/* BnM Manager */}
+                  <div className="p-2 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted-foreground uppercase font-semibold truncate">
+                        BnM Manager (Branch Maintenance Manager)
+                      </div>
+                      <div className="font-medium text-xs text-foreground mt-0.5 truncate">
+                        {ahoData?.personnel?.bnmManager || "Data belum tersedia"}
+                      </div>
+                    </div>
+                    <Badge variant={ahoData?.personnel?.bnmManager ? "default" : "outline"} className="text-[9px] shrink-0">
+                      {ahoData?.personnel?.bnmManager ? "Aktif" : "Menunggu Akses"}
+                    </Badge>
+                  </div>
+
+                  <p className="text-[10px] text-muted-foreground italic pt-1 leading-snug">
+                    * Bersumber dari database SPARTA Maintenance (Kondisi A: menunggu perluasan izin SELECT).
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ========================================================================= */}
+            {/* BAGIAN C: Informasi Tiket AHO (SPARTA Maintenance)                        */}
+            {/* ========================================================================= */}
+            {!isFacility && (
+              <Card>
+                <CardHeader className="p-3 pb-2 flex-row items-center justify-between space-y-0">
+                  <div className="flex items-center gap-1.5">
+                    <Wrench className="w-3.5 h-3.5 text-amber-500" />
+                    <CardTitle className="text-xs">Tiket AHO Aktif</CardTitle>
+                  </div>
+                  {loadingAho ? (
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                      <span>Memuat...</span>
+                    </span>
+                  ) : ahoData ? (
+                    <Badge
+                      variant={ahoData.totalActive > 0 ? "destructive" : "secondary"}
+                      className="text-[10px] font-mono"
+                    >
+                      {ahoData.totalActive} Tiket Aktif
+                    </Badge>
+                  ) : null}
+                </CardHeader>
+
+                <CardContent className="p-3 pt-0 space-y-2 text-xs">
+                  {loadingAho ? (
+                    <div className="py-4 flex flex-col items-center justify-center gap-2 text-muted-foreground text-xs">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      <span>Mengambil data tiket AHO...</span>
+                    </div>
+                  ) : ahoError ? (
+                    <div className="p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                      <span>{ahoError}</span>
+                    </div>
+                  ) : ahoData && ahoData.totalActive > 0 ? (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span className="uppercase font-semibold">Daftar Tiket:</span>
+                        {ahoData.lastUpdated && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>{formatWibDateTime(ahoData.lastUpdated)}</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
+                        {ahoData.tickets.map((ticket, idx) => (
+                          <div
+                            key={ticket.id || idx}
+                            className="p-2 rounded-md bg-muted/30 border border-border space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono font-semibold text-xs text-foreground">
+                                {ticket.problemNo}
+                              </span>
+                              <Badge
+                                variant={ticket.status === "New" ? "default" : "outline"}
+                                className="text-[9px]"
+                              >
+                                {ticket.status}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                              <span>Cabang: {ticket.branchName || ticket.branchCode || branchName}</span>
+                              <span>{formatWibDateTime(ticket.updatedAt)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2 text-xs text-emerald-800 dark:text-emerald-300">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="block font-medium">Tidak Ada Tiket Aktif</strong>
+                        <p className="text-[10px] opacity-90 mt-0.5">
+                          Toko ini tidak memiliki tiket berstatus New atau Progress.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[9px] text-muted-foreground italic pt-0.5">
+                    * Sumber data: PostgreSQL SPARTA Maintenance (read-only).
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Facility Verification Card */}
+            {isFacility && (
+              <Card>
+                <CardContent className="p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Verifikasi Cabang:</span>
+                    <Badge variant={facility?.mapping_verified_at ? "default" : "outline"} className="text-[10px]">
+                      {facility?.mapping_verified_at ? "Terverifikasi" : "Belum Dipetakan"}
+                    </Badge>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Auto-Report Bencana:</span>
+                    <span className="font-medium text-foreground">
+                      {facility?.auto_report_enabled ? "Aktif" : "Nonaktif"}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Action Buttons */}
+            <div className="pt-1 flex flex-col gap-2">
+              <Link
+                href={`/reports?store=${encodeURIComponent(locCode)}`}
+                className={cn(buttonVariants({ variant: "default" }), "w-full text-xs h-9 justify-center gap-2")}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Lihat Riwayat & Laporan Lokasi Ini</span>
+              </Link>
+
+              <Link
+                href="/reports/shared-queue"
+                className={cn(buttonVariants({ variant: "outline" }), "w-full text-xs h-9 justify-center gap-2")}
+              >
+                <UserCheck className="w-3.5 h-3.5 text-primary" />
+                <span>Periksa Penugasan Cabang</span>
+              </Link>
             </div>
           </div>
-        )}
-
-        {/* Earthquake Exposure (If inside radius) */}
-        {distanceKm !== null && currentEarthquake && (
-          <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 space-y-1.5 text-xs">
-            <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Activity className="w-3.5 h-3.5 text-red-500" />
-                Jarak dari Episentrum Gempa
-              </span>
-              <strong className="text-slate-900 dark:text-white font-mono">
-                {distanceKm} km
-              </strong>
-            </div>
-            <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-              <span>Status Zona Pantau:</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                {distanceKm <= 50 ? "Zona Prioritas Pantau (≤ 50 km)" : "Zona Pantau (50–110 km)"}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Location Metadata Grid */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-0.5">
-              Cabang Pengelola
-            </span>
-            <strong className={`block truncate ${isMapped ? "text-slate-900 dark:text-white" : "text-amber-600 dark:text-amber-400"}`}>
-              {branchName}
-            </strong>
-          </div>
-          <div className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 block mb-0.5">
-              Status Koordinat
-            </span>
-            <span className="font-mono text-slate-700 dark:text-slate-300 block truncate">
-              {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-            </span>
-          </div>
-        </div>
-
-        {/* Facility Specific Verification State */}
-        {isFacility && (
-          <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Verifikasi Cabang:</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                facility?.mapping_verified_at
-                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                  : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-              }`}>
-                {facility?.mapping_verified_at ? "Terverifikasi" : "Belum Dipetakan"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Auto-Report Bencana:</span>
-              <span className={`font-semibold ${facility?.auto_report_enabled ? "text-emerald-600" : "text-slate-500"}`}>
-                {facility?.auto_report_enabled ? "Aktif" : "Nonaktif"}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Action Button: Create Report or View Reports */}
-        <div className="pt-2 flex flex-col gap-2">
-          <Link
-            href={`/reports?store=${encodeURIComponent(locCode)}`}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold text-xs transition-colors shadow-sm min-h-[44px]"
-          >
-            <FileText className="w-4 h-4" />
-            <span>Lihat Riwayat & Laporan Lokasi Ini</span>
-          </Link>
-
-          <Link
-            href={`/reports/shared-queue`}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold text-xs transition-colors min-h-[44px]"
-          >
-            <UserCheck className="w-4 h-4 text-blue-600" />
-            <span>Periksa Penugasan Cabang</span>
-          </Link>
-        </div>
-      </div>
-    </aside>
-  </>
-);
+        </ScrollArea>
+      </aside>
+    </>
+  );
 }

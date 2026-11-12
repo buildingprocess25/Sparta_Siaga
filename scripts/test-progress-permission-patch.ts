@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — TASK 4 PROGRESS PERMISSION CORRECTIVE PATCH TEST SUITE
+ * SPARTA SIAGA - TASK 4 PROGRESS PERMISSION CORRECTIVE PATCH TEST SUITE
  * 
  * Verifies scenarios C1 - C10:
  * C1: BMS memiliki REPORT_UPDATE_PROGRESS default.
@@ -32,7 +32,7 @@ import { UserContext } from "../lib/report-permissions";
 
 async function runPatchTests() {
   console.log("\n╔═══════════════════════════════════════════════════════════════════╗");
-  console.log("║  SPARTA SIAGA — TASK 4 PROGRESS PERMISSION PATCH TEST SUITE       ║");
+  console.log("║  SPARTA SIAGA - TASK 4 PROGRESS PERMISSION PATCH TEST SUITE       ║");
   console.log("║  Scenarios C1 - C10 (Separation of Duties: Updater vs Approver)   ║");
   console.log("╚═══════════════════════════════════════════════════════════════════╝\n");
 

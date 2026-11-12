@@ -3,8 +3,8 @@
 
 - **Modul:** SPARTA Siaga (`sparta-siaga`)
 - **Port / URL Dev:** `http://localhost:3004`
-- **Versi Terkini:** `v1.2.11` (Stabil & Terverifikasi - Comprehensive Mobile & Desktop Responsive Overhaul, Collapsible Map Controls, Touch-Friendly Mobile Store Verification Cards)
-- **Terakhir Diperbarui:** 2026-09-25 (Shift Siang/Sore: 06:00 – 18:00 WIB)
+- **Versi Terkini:** `v1.4.0` (Stabil & Terverifikasi - Phase 4 Multi-Role Browser UAT & Security Hardening Complete)
+- **Terakhir Diperbarui:** 2026-10-30 (Phase 4 Verified - 163/163 Tests Passed; Phase 5 Dokploy Deployment Locked)
 - **Aturan Pelaporan:** Dibagi per shift operasional 12 jam (06:00–18:00 WIB & 18:00–06:00 WIB). Entri baru hanya dibuat jika ada perubahan kode/konfigurasi (*zero noise* saat tenang).
 
 ---

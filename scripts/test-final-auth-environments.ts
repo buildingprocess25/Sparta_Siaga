@@ -1,10 +1,10 @@
 import assert from "node:assert";
 import { getDbPool } from "../lib/db";
-import {
-  getSpartaEnvironment,
-  isProductionEnvironment,
-  isUatEnvironment,
-  isDevelopmentEnvironment,
+import { 
+  getSpartaEnvironment, 
+  isProductionEnvironment, 
+  isUatEnvironment, 
+  isDevelopmentEnvironment, 
   isQuickLoginPermitted,
   getLogoutRedirectUrl,
   getSsoModuleLauncherUrl,

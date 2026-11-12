@@ -1,3 +1,4 @@
+import type { Pool, PoolClient } from "pg";
 import { getDbPool } from "./db";
 
 export type EarthquakeLocationKind = "STORE" | "FACILITY";
@@ -20,6 +21,8 @@ export interface EnsureEarthquakeReportInput {
   source: string;
   location: EarthquakeReportLocation;
   reconciliationWindowMinutes?: number;
+  clientOrPool?: Pool | PoolClient;
+  manageTransaction?: boolean;
 }
 
 export type EnsureEarthquakeReportResult =
@@ -29,10 +32,20 @@ export type EnsureEarthquakeReportResult =
 export async function ensureEarthquakeReport(
   input: EnsureEarthquakeReportInput
 ): Promise<EnsureEarthquakeReportResult> {
-  const client = await getDbPool().connect();
+  const isAcquiredClient = !input.clientOrPool || typeof (input.clientOrPool as PoolClient).release !== "function";
+  const client: PoolClient = input.clientOrPool
+    ? (isAcquiredClient
+      ? await (input.clientOrPool as Pool).connect()
+      : (input.clientOrPool as PoolClient))
+    : await getDbPool().connect();
   const windowMinutes = input.reconciliationWindowMinutes ?? 120;
+  const manageTransaction = input.manageTransaction !== false;
+  if (!manageTransaction && isAcquiredClient) {
+    client.release();
+    throw new Error("A caller-managed transaction requires a checked-out database client");
+  }
   try {
-    await client.query("BEGIN");
+    if (manageTransaction) await client.query("BEGIN");
     await client.query("SELECT lock_earthquake_location($1, $2, $3)", [
       input.canonicalEventId,
       input.location.kind,
@@ -46,7 +59,7 @@ export async function ensureEarthquakeReport(
       [input.canonicalEventId, input.location.kind, input.location.id]
     );
     if (existing.rows[0]) {
-      await client.query("COMMIT");
+      if (manageTransaction) await client.query("COMMIT");
       return { outcome: "existing", incidentId: existing.rows[0].id };
     }
 
@@ -85,7 +98,7 @@ export async function ensureEarthquakeReport(
           ]
         );
       }
-      await client.query("COMMIT");
+      if (manageTransaction) await client.query("COMMIT");
       return { outcome: "ambiguous", candidateIncidentIds: manual.rows.map((row) => row.id) };
     }
 
@@ -119,7 +132,7 @@ export async function ensureEarthquakeReport(
           incidentId,
         ]
       );
-      await client.query("COMMIT");
+      if (manageTransaction) await client.query("COMMIT");
       return { outcome: "linked_manual", incidentId };
     }
 
@@ -172,7 +185,7 @@ export async function ensureEarthquakeReport(
     );
 
     if (created.rows[0]) {
-      await client.query("COMMIT");
+      if (manageTransaction) await client.query("COMMIT");
       return { outcome: "created", incidentId: created.rows[0].id };
     }
 
@@ -185,12 +198,14 @@ export async function ensureEarthquakeReport(
     if (!raced.rows[0]) {
       throw new Error("Earthquake report conflict resolved without an existing row.");
     }
-    await client.query("COMMIT");
+    if (manageTransaction) await client.query("COMMIT");
     return { outcome: "existing", incidentId: raced.rows[0].id };
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (manageTransaction) await client.query("ROLLBACK");
     throw error;
   } finally {
-    client.release();
+    if (isAcquiredClient && typeof client.release === "function") {
+      client.release();
+    }
   }
 }

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import {
-  ACCESS_TOKEN_COOKIE,
-  REFRESH_TOKEN_COOKIE,
-  getSessionCookieOptions
+import { 
+  ACCESS_TOKEN_COOKIE, 
+  REFRESH_TOKEN_COOKIE, 
+  getSessionCookieOptions 
 } from "@/lib/session-config";
 import { getSessionUser } from "@/lib/auth";
-import {
-  revokeSessionByRefreshToken,
-  revokeAllUserSessions
+import { 
+  revokeSessionByRefreshToken, 
+  revokeAllUserSessions 
 } from "@/lib/session-service";
 import { dbRevokeAllUserSessions } from "@/lib/user-db";
 import { getLogoutRedirectUrl } from "@/lib/environment-policy";
@@ -61,10 +61,10 @@ export async function POST(req: Request) {
     await revokeSessionByRefreshToken(refreshToken);
   }
 
-  const response = NextResponse.json({
-    success: true,
-    allDevices,
-    redirectTo: getLogoutRedirectUrl()
+  const response = NextResponse.json({ 
+    success: true, 
+    allDevices, 
+    redirectTo: getLogoutRedirectUrl() 
   });
   const cookieOpts = {
     ...getSessionCookieOptions(),
@@ -84,3 +84,4 @@ export async function POST(req: Request) {
 
   return response;
 }
+

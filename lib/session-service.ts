@@ -227,8 +227,8 @@ export async function rotateDeviceSession(
 
     // Lock the session row FOR UPDATE to serialize concurrent rotation attempts
     const queryText = allowGrace
-      ? `SELECT * FROM user_sessions
-         WHERE refresh_token_hash = $1
+      ? `SELECT * FROM user_sessions 
+         WHERE refresh_token_hash = $1 
             OR (previous_refresh_token_hash = $1 AND previous_token_expires_at > NOW())
          ORDER BY CASE WHEN refresh_token_hash = $1 THEN 0 ELSE 1 END
          LIMIT 1
@@ -240,7 +240,7 @@ export async function rotateDeviceSession(
     if (rows.length === 0) {
       // Check if this was a reuse of an old rotated token whose grace period expired
       const reuseCheck = await client.query(
-        `SELECT id, user_id FROM user_sessions
+        `SELECT id, user_id FROM user_sessions 
          WHERE previous_refresh_token_hash = $1 AND previous_token_expires_at <= NOW()
          LIMIT 1`,
         [tokenHash]
@@ -321,12 +321,12 @@ export async function rotateDeviceSession(
     const newExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // extend sliding window (30 days)
 
     await client.query(
-      `UPDATE user_sessions
+      `UPDATE user_sessions 
        SET previous_refresh_token_hash = refresh_token_hash,
            previous_token_expires_at = NOW() + INTERVAL '60 seconds',
            refresh_token_hash = $1,
            current_token_encrypted = $2,
-           last_used_at = NOW(),
+           last_used_at = NOW(), 
            expires_at = $3,
            user_agent = COALESCE($4, user_agent),
            ip_address = COALESCE($5, ip_address)
@@ -375,8 +375,8 @@ export async function revokeSessionByRefreshToken(rawRefreshToken: string): Prom
   const tokenHash = hashToken(rawRefreshToken);
 
   const res = await pool.query(
-    `UPDATE user_sessions
-     SET is_revoked = TRUE, expires_at = NOW()
+    `UPDATE user_sessions 
+     SET is_revoked = TRUE, expires_at = NOW() 
      WHERE refresh_token_hash = $1 OR previous_refresh_token_hash = $1`,
     [tokenHash]
   );
@@ -396,9 +396,9 @@ export async function revokeAllUserSessions(userId: string): Promise<number> {
   );
 
   const { rows } = await pool.query(
-    `UPDATE users
-     SET token_version = COALESCE(token_version, 1) + 1, updated_at = NOW()
-     WHERE id = $1
+    `UPDATE users 
+     SET token_version = COALESCE(token_version, 1) + 1, updated_at = NOW() 
+     WHERE id = $1 
      RETURNING token_version`,
     [userId]
   );
@@ -422,7 +422,7 @@ export async function getUserActiveSessions(userId: string): Promise<Array<{
 
   const { rows } = await pool.query<DeviceSessionRecord>(
     `SELECT id, device_type, user_agent, ip_address, created_at, last_used_at, expires_at
-     FROM user_sessions
+     FROM user_sessions 
      WHERE user_id = $1 AND is_revoked = FALSE AND expires_at > NOW()
      ORDER BY last_used_at DESC`,
     [userId]

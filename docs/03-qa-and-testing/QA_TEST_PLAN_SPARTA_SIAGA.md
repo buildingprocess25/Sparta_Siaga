@@ -180,8 +180,51 @@ Berikut penjelasan detail langkah demi langkah untuk setiap poin kasus uji di at
 ## 4. Kriteria Kelulusan Rilis (Definition of Done / DoD)
 
 Modul **SPARTA Siaga** dinyatakan lulus QA dan siap dirilis jika:
-1. [ ] Seluruh kasus uji pada **Tabel Ceklis** berstatus **Pass**.
-2. [ ] Tidak ada error console `Uncaught TypeError` atau layar putih saat membuka peta.
-3. [ ] Alur SSO dari portal utama `login-sparta` berfungsi dengan mulus.
-4. [ ] Perhitungan jarak radius gempa terbukti akurat dan teruji.
-5. [ ] Fitur pencarian `Ctrl + K` dan toggle fokus krisis bekerja sesuai spesifikasi.
+1. [x] Seluruh kasus uji pada **Tabel Ceklis** berstatus **Pass**.
+2. [x] Tidak ada error console `Uncaught TypeError` atau layar putih saat membuka peta.
+3. [x] Alur SSO dari portal utama `login-sparta` berfungsi dengan mulus.
+4. [x] Perhitungan jarak radius gempa terbukti akurat dan teruji.
+5. [x] Fitur pencarian `Ctrl + K` dan toggle fokus krisis bekerja sesuai spesifikasi.
+6. [x] Seluruh rangkaian automated regression test suite (Phase 1 s.d. 4) lulus 100% (146/146 pass).
+7. [x] Seluruh rangkaian real interactive browser UAT (18/18 pass) diverifikasi dengan bukti screenshot pada folder `docs/screenshots/uat-phase4/`.
+
+---
+
+## 5. Enterprise Multi-Phase Regression Suites & Dual-Track Governance (Phases 1-4)
+
+Pengujian kualitas pada SPARTA SIAGA dikelola di bawah **Dual-Track Quality Governance**:
+- **Automated Testing Track:** Menjamin integritas API, status lifecycle, dan guardrail keamanan di level backend dan database secara deterministik (146/146 checks pass).
+- **Interactive Browser UAT Track:** Menjamin pengalaman antarmuka riil (desktop dan mobile) menggunakan browser automation Playwright Chromium pada `http://localhost:3004/` dan database `sparta_siaga_isolated` (18/18 scenarios pass).
+
+### Matriks Pengujian Multi-Fase:
+
+| Fase / Rangkaian | Skrip Pengujian | Target Cakupan | Jumlah Tes | Status |
+| :--- | :--- | :--- | :---: | :---: |
+| **Phase 1: Business Rules & Lifecycle** | [`scripts/test-phase1-business-rules.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/test-phase1-business-rules.ts) | Idempotensi outbox, transaksi atomik BnM, larangan HO approval, otorisasi Case Close BnM. | 23/23 | **PASS** |
+| **Phase 2: Reporting & Reconciliation** | [`scripts/test-phase2-reporting-reconciliation.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/test-phase2-reporting-reconciliation.ts) | Rekonsiliasi gempa manual-first & auto-first, pencegahan duplikasi, isolasi aftershock. | 9/9 | **PASS** |
+| **Phase 3: HO Access & Auto Email** | [`scripts/test-phase3-ho-access-and-email.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/test-phase3-ho-access-and-email.ts) | Monitoring lintas cabang HO read-only, pemrosesan outbox `SKIP LOCKED`, deduplikasi email HO. | 22/22 | **PASS** |
+| **Auth & Unique NIK Remediation** | [`scripts/test-remediated-logins.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/test-remediated-logins.ts) | Validasi 13 akun (System Admin, UAT personas, penolakan akun inaktif `LEGACY_ADM0001`). | 13/13 | **PASS** |
+| **Multi-Device Auth Resilience** | [`scripts/test-persistent-auth-resilience.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/test-persistent-auth-resilience.ts) | Multi-device concurrent sessions, token version revocation, perlindungan session fixation. | 26/26 | **PASS** |
+| **Phase 4: E2E Business Flow & Security** | [`scripts/test-phase4-e2e-business-flow-and-uat.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/test-phase4-e2e-business-flow-and-uat.ts) | E2E store damaged lifecycle, safe path, DC/office facilities, negative security suite (SEC-01 - SEC-09). | 53/53 | **PASS** |
+| **Phase 4: Real Browser Interactive UAT** | [`scripts/run-browser-uat.ts`](file:///c:/buildingprocess25/sparta-siaga/scripts/run-browser-uat.ts) | Interactive browser UAT (18 skenario: login alert, responsive desktop/mobile, modal lifecycle, 3 keputusan BnM, 100% non-auto-close, Case Close, specialized DC/Office). | 18/18 | **PASS** |
+| **TOTAL VERIFIED TEST COVERAGE** | - | **Rangkaian Uji Terverifikasi Menyeluruh (Automated + Browser UAT)** | **164/164** | **100% PASS** |
+
+### Bukti Screenshot UAT Browser (`docs/screenshots/uat-phase4/`):
+1. `01_login_invalid_credentials.png`: Alert kredensial tidak valid saat password keliru.
+2. `02_bms_authenticated_dashboard.png`: Dashboard BMS dengan identitas role cabang Bandung.
+3. `03_ho_authenticated_dashboard.png`: Dashboard Head Office dengan ruang lingkup nasional.
+4. `04_desktop_monitoring_map.png`: Layout NASA FIRMS desktop (topbar tersembunyi, sidebar & map aktif).
+5. `05_mobile_dashboard_bottom_nav.png`: Tampilan mobile (390x844) dengan navigasi bawah tanpa menu hamburger.
+6. `06_mobile_monitoring_map.png`: Peta monitoring mobile dengan kontrol peta yang tidak tertutupi.
+7. `07_ui_modal_dismissal.png`: Interaksi modal manual dibuka via UI dan ditutup bersih (dismissed) pada tombol Batal.
+8. `08_bms_store_incident_created.png`: Pembuatan insiden toko manual dengan progres awal 0%.
+9. `09_bms_inspection_submitted.png`: Pengiriman bukti inspeksi lapangan BMS via UI dengan upload foto bukti aktual.
+10. `10_ho_unconfirmed_hidden.png`: Laporan unconfirmed tersembunyi dari pantauan Head Office (403).
+11. `11_bmm_confirmed_affected.png`: Keputusan 1 BnM Manajer via UI: Ada Kerusakan (`confirmed_affected`).
+12. `12_ho_visible_read_only.png`: Laporan terkonfirmasi kini tampil pada HO dalam mode read-only.
+13. `13_milestone_100_non_auto_close.png`: Milestone 100% tidak auto-close tiket (status: `awaiting_st`).
+14. `14_case_closed.png`: Penutupan resmi tiket (Case Close) oleh BnM Manajer (`closed`).
+15. `15_bmm_confirmed_safe.png`: Keputusan 2 BnM Manajer via UI: Tidak Ada Kerusakan (`confirmed_safe`, 100%).
+16. `16_clarification_loopback.png`: Keputusan 3 BnM Manajer via UI: Perlu Klarifikasi loopback ke pemeriksa & revisi diajukan ulang.
+17. `17_specialized_facilities.png`: Fasilitas khusus DC (spesialis BES, koordinator BEC; BMC ditolak 403).
+18. `18_sparta_mock_integration_badge.png`: Identifikasi transparan integrasi ERP SPARTA Maintenance sebagai rute mock internal.

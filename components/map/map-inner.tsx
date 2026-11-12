@@ -14,14 +14,29 @@ import {
   ZoomControl,
 } from "react-leaflet";
 import L from "leaflet";
-import { Store } from "@/types/store";
+import { Store, SpatialRisk } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
+import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 import {
-  Building,
   ChevronRight,
   ShieldAlert,
   ExternalLink,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import {
+  calculateAhoPercentage,
+  formatAhoBadgeLabel,
+} from "@/lib/aho-utils";
+import {
+  createBranchFlagIcon,
+  createClusterCircleIcon,
+  createStoreTeardropIcon,
+  createDcFacilityIcon,
+  type BranchAggregationData,
+  type ClusterAggregationData,
+} from "./map-marker-icons";
+import { AhoLegend } from "./aho-legend";
 
 interface MapInnerProps {
   stores: Store[];
@@ -29,13 +44,17 @@ interface MapInnerProps {
   earthquakes: Earthquake[];
   basemap: "esri-dark" | "esri-light" | "osm";
   incidentOnly: boolean;
-  statusFilter: "all" | "PRIORITY_MONITOR" | "MONITOR" | "SAFE";
+  statusFilter: "all" | SpatialRisk;
   selectedStore: Store | null;
   onSelectStore: (store: Store) => void;
+  onSelectBranch?: (branch: BranchAggregationData) => void;
+  onSelectCluster?: (cluster: ClusterAggregationData) => void;
+  selectedBranch?: BranchAggregationData | null;
+  selectedCluster?: ClusterAggregationData | null;
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
   showRadar?: boolean;
   radarTileUrl?: string;
-  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood";
+  activeLayer?: "all" | "earthquake" | "stores" | "weather" | "flood" | "aho";
   floodReports?: any[];
   theme?: "dark" | "light";
   onViewportChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
@@ -81,7 +100,7 @@ function BasemapZoomSync({ maxZoom }: { maxZoom: number }) {
   return null;
 }
 
-// Leaflet does not always notice sidebar transitions or parent panel resizing.
+// Leaflet does not always notice sidebar transitions, parent panel resizing, or fullscreen transitions.
 // Sync its viewport with actual container size without resetting map position.
 function MapSizeSync() {
   const map = useMap();
@@ -99,10 +118,12 @@ function MapSizeSync() {
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(sync) : null;
     observer?.observe(node);
     window.addEventListener("resize", sync);
+    document.addEventListener("fullscreenchange", sync);
     sync();
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", sync);
+      document.removeEventListener("fullscreenchange", sync);
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [map]);
@@ -142,82 +163,6 @@ function ViewportTracker({
   return null;
 }
 
-// Function to generate dynamic Alfamart store and DC markers using L.divIcon
-function createStoreIcon(store: Store, isSelected: boolean = false) {
-  const isFacility = store.id.startsWith("FACILITY:");
-  const isDC = isFacility && (store.fr_type === "FACILITY_DC" || (store.nama_toko && store.nama_toko.toUpperCase().includes("DC")));
-  const markerLabel = isDC ? "DC" : isFacility ? "F" : "A";
-  const visualStatus = store.visualStatus || (
-    store.status === "PRIORITY_MONITOR" ? "TERDAMPAK" :
-    store.status === "MONITOR" ? "PERLU_PERHATIAN" : "NORMAL"
-  );
-
-  let ringColor = isDC ? "border-indigo-500 shadow-indigo-500/20" : "border-emerald-500 shadow-emerald-500/20";
-  let pulseClass = "";
-  let badgeColor = isDC ? "bg-indigo-600" : "bg-emerald-600";
-  let innerColor = isDC ? "bg-indigo-600" : "bg-emerald-600";
-
-  if (isSelected) {
-    ringColor = "border-cyan-400 shadow-cyan-400/80 scale-125";
-    pulseClass = "pulse-beacon";
-    badgeColor = "bg-cyan-500";
-    innerColor = "bg-cyan-500";
-  } else if (visualStatus === "TERDAMPAK") {
-    ringColor = "border-red-600 shadow-red-600/50";
-    pulseClass = "pulse-beacon";
-    badgeColor = "bg-red-600";
-    innerColor = "bg-red-600";
-  } else if (visualStatus === "DALAM_PENANGANAN") {
-    ringColor = "border-blue-500 shadow-blue-500/40";
-    pulseClass = "pulse-beacon";
-    badgeColor = "bg-blue-600";
-    innerColor = "bg-blue-600";
-  } else if (visualStatus === "PERLU_PERHATIAN") {
-    ringColor = "border-amber-500 shadow-amber-500/30";
-    badgeColor = "bg-amber-500";
-    innerColor = "bg-amber-500";
-  } else if (visualStatus === "SELESAI") {
-    ringColor = "border-teal-500 shadow-teal-500/30";
-    badgeColor = "bg-teal-600";
-    innerColor = "bg-teal-600";
-  }
-
-  const isFlood = !!store.floodWarning;
-
-  const html = `
-    <div class="relative group cursor-pointer flex items-center justify-center">
-      ${isSelected
-        ? `<div class="absolute -inset-3 bg-cyan-400/50 rounded-full animate-ping"></div>`
-        : visualStatus === "TERDAMPAK"
-        ? `<div class="absolute -inset-2 bg-red-600/40 rounded-full animate-ping"></div>`
-        : visualStatus === "DALAM_PENANGANAN"
-        ? `<div class="absolute -inset-2 bg-blue-500/30 rounded-full animate-pulse"></div>`
-        : isFlood
-        ? `<div class="absolute -inset-2 bg-blue-500/40 rounded-full animate-ping"></div>`
-        : ""
-      }
-      <div class="w-8 h-8 rounded-full bg-slate-900 border-2 ${ringColor} ${pulseClass} flex items-center justify-center shadow-lg transition-transform hover:scale-125 z-20">
-        <div class="w-5 h-5 rounded-full ${innerColor} flex items-center justify-center ${isDC ? "text-[8px]" : "text-[9px]"} font-black text-white tracking-tighter">
-          ${markerLabel}
-        </div>
-      </div>
-      <div class="absolute -bottom-1 -right-1 w-3 h-3 rounded-full ${badgeColor} border border-slate-900 z-30"></div>
-      ${isFlood
-        ? `<div class="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-blue-600 border border-slate-900 text-[8px] flex items-center justify-center shadow-md z-30" title="Peringatan Banjir / Hujan Lebat">💧</div>`
-        : ""
-      }
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-store-pin",
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -18],
-  });
-}
-
 // Function to generate dynamic epicenter earthquake marker
 function createEpicenterIcon(earthquake: Earthquake, isFocused: boolean = false) {
   const isTsunami = earthquake.potensiTsunami;
@@ -242,98 +187,6 @@ function createEpicenterIcon(earthquake: Earthquake, isFocused: boolean = false)
     iconAnchor: [18, 18],
     popupAnchor: [0, -20],
   });
-}
-
-interface BranchAggregation {
-  cabang: string;
-  latitude: number;
-  longitude: number;
-  totalStores: number;
-  dangerCount: number;
-  warningCount: number;
-}
-
-function createBranchIcon(branch: BranchAggregation) {
-  const hasDanger = branch.dangerCount > 0;
-  const hasWarning = branch.warningCount > 0;
-
-  const badgeBg = hasDanger
-    ? "bg-red-600 border-red-300 ring-4 ring-red-500/30"
-    : hasWarning
-      ? "bg-amber-600 border-amber-300 ring-4 ring-amber-500/20"
-      : "bg-slate-900 border-cyan-400/80 shadow-cyan-500/20";
-
-  const dotColor = hasDanger ? "bg-white animate-ping" : hasWarning ? "bg-white" : "bg-cyan-400";
-
-  const html = `
-    <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      ${hasDanger ? '<div class="absolute -inset-3 bg-red-600/40 rounded-full animate-ping"></div>' : ''}
-      <div class="px-3 py-1 rounded-full ${badgeBg} border-2 text-white shadow-2xl flex items-center gap-2 font-bold text-xs whitespace-nowrap transition-transform duration-200 group-hover:scale-110">
-        <span class="w-2.5 h-2.5 rounded-full ${dotColor} shrink-0"></span>
-        <span class="tracking-tight text-[11px] font-semibold">${branch.cabang}</span>
-        <span class="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px] font-mono font-bold">${branch.totalStores} Toko</span>
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-branch-marker",
-    iconSize: [140, 32],
-    iconAnchor: [70, 16],
-    popupAnchor: [0, -18],
-  });
-}
-
-// Function to generate grid cluster icon for Zoom 8–12 (Requirement 12)
-function createClusterIcon(count: number) {
-  const size = count > 100 ? 38 : count > 20 ? 34 : 30;
-  const html = `
-    <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      <div class="w-${size} h-${size} rounded-full bg-slate-900/90 border-2 border-emerald-400 text-emerald-300 shadow-xl flex items-center justify-center font-bold text-xs transition-transform duration-200 group-hover:scale-110">
-        <span class="font-mono text-[11px]">${count}</span>
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-grid-cluster",
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2],
-  });
-}
-
-// Subcomponent to render a clickable cluster marker with smooth flyTo zoom
-function ClusterMarkerItem({
-  cluster,
-  zoom,
-}: {
-  cluster: { lat: number; lng: number; count: number; stores: Store[] };
-  zoom: number;
-}) {
-  const map = useMap();
-
-  return (
-    <Marker
-      position={[cluster.lat, cluster.lng]}
-      icon={createClusterIcon(cluster.count)}
-      eventHandlers={{
-        click: () => {
-          map.flyTo([cluster.lat, cluster.lng], Math.min(14, zoom + 2), {
-            duration: 0.8,
-          });
-        },
-      }}
-    >
-      <Tooltip direction="top" offset={[0, -16]} opacity={0.95}>
-        <div className="text-xs font-semibold text-slate-900 px-1">
-          {cluster.count} Toko, klik untuk memperbesar
-        </div>
-      </Tooltip>
-    </Marker>
-  );
 }
 
 function formatWIBTime(iso: string) {
@@ -540,6 +393,10 @@ export default function MapInner({
   statusFilter,
   selectedStore,
   onSelectStore,
+  onSelectBranch,
+  onSelectCluster,
+  selectedBranch,
+  selectedCluster,
   flyToTarget,
   showRadar = false,
   radarTileUrl,
@@ -563,12 +420,201 @@ export default function MapInner({
     });
   }, [onViewportChange]);
 
-  const showEarthquakes = activeLayer === "all" || activeLayer === "earthquake";
-  const showStoresLayer = activeLayer === "all" || activeLayer === "stores";
+  // AHO Layer state and data fetching (SPARTA Maintenance Integration)
+  // Strictly mode-aware: AHO is ONLY valid when locationMode === "store"
+  const isAhoLayer = locationMode === "store" && activeLayer === "aho";
+  const [ahoCounts, setAhoCounts] = useState<Record<string, number> | null>(null);
+  const [ahoLastUpdated, setAhoLastUpdated] = useState<string | null>(null);
+  const [ahoTotalTickets, setAhoTotalTickets] = useState(0);
+  const [ahoTotalStores, setAhoTotalStores] = useState(0);
+  const [ahoLoading, setAhoLoading] = useState(false);
+  const [ahoError, setAhoError] = useState(false);
+  const [ahoRefreshKey, setAhoRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (!isAhoLayer) return;
+
+    // Use cached counts if already fetched in this session unless refresh requested
+    if (ahoCounts && ahoRefreshKey === 0) return;
+
+    const controller = new AbortController();
+    setAhoLoading(true);
+    setAhoError(false);
+
+    fetch("/api/aho" + (ahoRefreshKey > 0 ? "?refresh=true" : ""), {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Gagal memuat data AHO");
+        }
+        setAhoCounts(data.counts || {});
+        setAhoLastUpdated(data.lastUpdated || null);
+        setAhoTotalTickets(data.totalActiveTickets || 0);
+        setAhoTotalStores(data.totalStoresWithTickets || 0);
+        setAhoError(false);
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("[MapInner] Gagal memuat data AHO:", err);
+          setAhoError(true);
+        }
+      })
+      .finally(() => {
+        setAhoLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [isAhoLayer, ahoRefreshKey]);
+
+  const showEarthquakes = !isAhoLayer && (activeLayer === "all" || activeLayer === "earthquake");
+  const showStoresLayer = !isAhoLayer && (activeLayer === "all" || activeLayer === "stores");
 
   // Requirement: Radar is only visible when specifically enabled and zoomed in to prevent global watermark clutter.
   const isRadarEnabled = showRadar || activeLayer === "weather";
-  const showWeatherLayer = isRadarEnabled;
+  const showWeatherLayer = !isAhoLayer && isRadarEnabled;
+
+  // Group all stores into branch aggregations for AHO Layer (Zoom <= 7)
+  const ahoBranchAggregations = useMemo(() => {
+    if (!isAhoLayer || !ahoCounts) return [];
+
+    const map = new Map<
+      string,
+      {
+        cabang: string;
+        sumLat: number;
+        sumLng: number;
+        totalStores: number;
+        storesWithTickets: number;
+        totalTickets: number;
+      }
+    >();
+
+    for (const store of stores) {
+      const branchName = store.cabang || "Lainnya";
+      const code = (store.kode_toko || "").toUpperCase().trim();
+      const ticketCount = ahoCounts[code] || 0;
+      const hasTicket = ticketCount > 0;
+
+      const existing = map.get(branchName);
+      if (!existing) {
+        map.set(branchName, {
+          cabang: branchName,
+          sumLat: store.latitude,
+          sumLng: store.longitude,
+          totalStores: 1,
+          storesWithTickets: hasTicket ? 1 : 0,
+          totalTickets: ticketCount,
+        });
+      } else {
+        existing.sumLat += store.latitude;
+        existing.sumLng += store.longitude;
+        existing.totalStores += 1;
+        if (hasTicket) existing.storesWithTickets += 1;
+        existing.totalTickets += ticketCount;
+      }
+    }
+
+    const result: BranchAggregationData[] = [];
+    map.forEach((item) => {
+      if (item.totalStores > 0) {
+        const percentage = calculateAhoPercentage(item.totalStores, item.storesWithTickets);
+        result.push({
+          cabang: item.cabang,
+          latitude: item.sumLat / item.totalStores,
+          longitude: item.sumLng / item.totalStores,
+          totalStores: item.totalStores,
+          storesWithTickets: item.storesWithTickets,
+          totalTickets: item.totalTickets,
+          percentage,
+        });
+      }
+    });
+
+    return result;
+  }, [stores, isAhoLayer, ahoCounts]);
+
+  // Spatial Grid Clustering for AHO Layer at Zoom 8–12
+  const ahoClusters = useMemo(() => {
+    if (!isAhoLayer || !ahoCounts || currentZoom < 8 || currentZoom >= 13) return [];
+
+    // Filter by viewport bounds for optimal rendering performance
+    const visibleStores = mapBounds
+      ? stores.filter((s) => mapBounds.contains([s.latitude, s.longitude]))
+      : stores;
+
+    const step =
+      currentZoom <= 8 ? 0.7 :
+      currentZoom === 9 ? 0.35 :
+      currentZoom === 10 ? 0.18 :
+      currentZoom === 11 ? 0.09 : 0.045;
+
+    const gridMap = new Map<
+      string,
+      {
+        sumLat: number;
+        sumLng: number;
+        stores: Store[];
+        storesWithTickets: number;
+        totalTickets: number;
+      }
+    >();
+
+    for (const s of visibleStores) {
+      const latIdx = Math.floor(s.latitude / step);
+      const lngIdx = Math.floor(s.longitude / step);
+      const key = `${latIdx}_${lngIdx}`;
+
+      const code = (s.kode_toko || "").toUpperCase().trim();
+      const ticketCount = ahoCounts[code] || 0;
+      const hasTicket = ticketCount > 0;
+
+      const cell = gridMap.get(key);
+      if (!cell) {
+        gridMap.set(key, {
+          sumLat: s.latitude,
+          sumLng: s.longitude,
+          stores: [s],
+          storesWithTickets: hasTicket ? 1 : 0,
+          totalTickets: ticketCount,
+        });
+      } else {
+        cell.sumLat += s.latitude;
+        cell.sumLng += s.longitude;
+        cell.stores.push(s);
+        if (hasTicket) cell.storesWithTickets += 1;
+        cell.totalTickets += ticketCount;
+      }
+    }
+
+    const result: ClusterAggregationData[] = [];
+
+    gridMap.forEach((cell) => {
+      const totalStores = cell.stores.length;
+      const percentage = calculateAhoPercentage(totalStores, cell.storesWithTickets);
+      result.push({
+        lat: cell.sumLat / totalStores,
+        lng: cell.sumLng / totalStores,
+        totalStores,
+        storesWithTickets: cell.storesWithTickets,
+        totalTickets: cell.totalTickets,
+        percentage,
+        stores: cell.stores,
+      });
+    });
+
+    return result;
+  }, [stores, isAhoLayer, ahoCounts, currentZoom, mapBounds]);
+
+  // Viewport culled stores for individual AHO markers at Zoom >= 13
+  const ahoVisibleStores = useMemo(() => {
+    if (!isAhoLayer || !ahoCounts || currentZoom < 13) return [];
+
+    return mapBounds
+      ? stores.filter((s) => mapBounds.contains([s.latitude, s.longitude]))
+      : stores;
+  }, [stores, isAhoLayer, ahoCounts, currentZoom, mapBounds]);
 
   // Group stores into branch aggregations for Zoom <= 7 (Titik Percabang)
   const branchAggregations = useMemo(() => {
@@ -613,7 +659,7 @@ export default function MapInner({
       }
     }
 
-    const result: BranchAggregation[] = [];
+    const result: BranchAggregationData[] = [];
     map.forEach((item) => {
       if (item.count > 0) {
         // If incidentOnly is ON, hide branches that have zero affected stores
@@ -798,39 +844,28 @@ export default function MapInner({
         <MapFlyController target={flyToTarget} />
         <ViewportTracker onZoomChange={setCurrentZoom} onBoundsChange={handleBoundsChange} />
 
-        {/* 1. DISASTER EPICENTERS & SPARTA MONITORING ZONES (Requirement 30) */}
+        {/* 1. DISASTER EPICENTERS & V1 EVALUATION RADIUS (6 November 2026 Operational Decision) */}
         {showEarthquakes &&
           earthquakes.map((eq) => {
-            const priorityRadius = eq.priorityRadiusKm || 50;
-            const monitoringRadius = eq.monitoringRadiusKm || 110;
+            const coverage = eq.v1Coverage ?? getV1Coverage(eq.magnitude, eq.depthKm ?? 10);
+            const v1Radius = eq.v1DistanceKm ?? coverage.v1DistanceKm;
 
             return (
               <React.Fragment key={eq.id}>
-                {/* Zona Prioritas Pantau SPARTA */}
-                <Circle
-                  center={[eq.latitude, eq.longitude]}
-                  radius={priorityRadius * 1000}
-                  pathOptions={{
-                    color: "#dc2626",
-                    fillColor: "#dc2626",
-                    fillOpacity: 0.16,
-                    weight: 2,
-                    dashArray: "6, 6",
-                  }}
-                />
-
-                {/* Zona Pantau SPARTA */}
-                <Circle
-                  center={[eq.latitude, eq.longitude]}
-                  radius={monitoringRadius * 1000}
-                  pathOptions={{
-                    color: "#f59e0b",
-                    fillColor: "#f59e0b",
-                    fillOpacity: 0.05,
-                    weight: 1.5,
-                    dashArray: "4, 8",
-                  }}
-                />
+                {/* Radius Pencarian / Fallback V1 Operasional SPARTA (Bukan Batas Kerusakan Mutlak) */}
+                {v1Radius !== null && v1Radius > 0 && (
+                  <Circle
+                    center={[eq.latitude, eq.longitude]}
+                    radius={v1Radius * 1000}
+                    pathOptions={{
+                      color: "#dc2626",
+                      fillColor: "#dc2626",
+                      fillOpacity: 0.14,
+                      weight: 2,
+                      dashArray: "6, 6",
+                    }}
+                  />
+                )}
 
                 {/* Epicenter Marker */}
                 <Marker
@@ -869,17 +904,19 @@ export default function MapInner({
                         isDark ? "bg-slate-950/70 border-slate-800" : "bg-slate-50 border-slate-200 text-slate-700"
                       }`}>
                         <div className="flex justify-between items-center">
-                          <span className={`font-bold ${isDark ? "text-red-400" : "text-red-600"}`}>Zona Prioritas Pantau SPARTA:</span>
-                          <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{priorityRadius} km</span>
+                          <span className={`font-bold ${isDark ? "text-red-400" : "text-red-600"}`}>Radius Pencarian/Fallback V1:</span>
+                          <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                            {v1Radius !== null ? `${v1Radius} km` : (eq.magnitude < 4.0 ? "Hanya Pemantauan" : "Tidak Berlaku")}
+                          </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className={`font-bold ${isDark ? "text-amber-400" : "text-amber-600"}`}>Zona Pantau SPARTA:</span>
-                          <span className={`font-mono font-bold ${isDark ? "text-white" : "text-slate-900"}`}>{monitoringRadius} km</span>
+                          <span className={isDark ? "text-slate-400" : "text-slate-600"}>Kelompok Kedalaman:</span>
+                          <span className={`font-mono ${isDark ? "text-slate-300" : "text-slate-700"}`}>{coverage.depthGroup}</span>
                         </div>
                       </div>
 
                       <p className={`text-[9px] italic leading-tight ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                        Zona pantau merupakan estimasi operasional SPARTA berdasarkan parameter gempa dari BMKG.
+                        Radius V1 adalah batas pencarian awal / fallback operasional SPARTA, bukan batas mutlak kerusakan. Toko di luar V1 tetap dapat terkualifikasi jika intensitas MMI resmi &ge; 6.0; berada di luar V1 tidak membuktikan keamanan fisik.
                       </p>
 
                       <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
@@ -926,16 +963,15 @@ export default function MapInner({
             );
           })}
 
-        {/* DC mode: few master locations, always render INDIVIDUAL markers,
-            independently of zoom. Click resolves the same LocationDetailPanel as stores. */}
+        {/* DC mode: facility marker with warehouse icon, always renders INDIVIDUAL markers independently of zoom */}
         {showStoresLayer && locationMode === "dc" && stores.map((dc) => (
           <Marker
             key={dc.id}
             position={[dc.latitude, dc.longitude]}
-            icon={createStoreIcon(dc, selectedStore?.id === dc.id)}
+            icon={createDcFacilityIcon(dc, selectedStore?.id === dc.id)}
             eventHandlers={{ click: () => onSelectStore(dc) }}
           >
-            <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+            <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
               <div className="px-1 text-xs text-slate-900">
                 <span className="font-bold text-blue-700">DC {dc.kode_toko}</span>
                 <div className="font-medium">{dc.nama_toko}</div>
@@ -951,30 +987,28 @@ export default function MapInner({
         {/* 2. STORES LAYER (LOD: Zoom <= 7 Branch Aggregation, Zoom 8–12 Clustering, Zoom >= 13 Individual) */}
         {showStoresLayer && locationMode !== "dc" && (
           <>
-            {/* LEVEL NASIONAL / PROVINSI (Zoom <= 7): Titik Percabang (Kantor Cabang / DC) */}
+            {/* LEVEL NASIONAL / PROVINSI (Zoom <= 7): Titik Percabang (Anchored Flag) */}
             {currentZoom <= 7 &&
               branchAggregations.map((branch) => (
                 <Marker
                   key={branch.cabang}
                   position={[branch.latitude, branch.longitude]}
-                  icon={createBranchIcon(branch)}
+                  icon={createBranchFlagIcon(branch, false, selectedBranch?.cabang === branch.cabang)}
                   eventHandlers={{
-                    click: (e) => {
-                      e.target._map?.flyTo([branch.latitude, branch.longitude], 10, {
-                        duration: 1.2,
-                      });
+                    click: () => {
+                      onSelectBranch?.(branch);
                     },
                   }}
                 >
-                  <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                  <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
                     <div className="text-xs font-semibold text-slate-900 px-1">
-                      Klik untuk fokus ke {branch.cabang} ({branch.totalStores} Toko)
+                      Cabang {branch.cabang}: {branch.totalStores} Toko (Klik untuk ringkasan)
                     </div>
                   </Tooltip>
                 </Marker>
               ))}
 
-            {/* LEVEL REGIONAL / KABUPATEN (Zoom 8–12): Grid Clustering untuk Normal/Safe Stores (Req 12) */}
+            {/* LEVEL REGIONAL / KABUPATEN (Zoom 8–12): Circular Aggregate Cluster */}
             {currentZoom >= 8 &&
               currentZoom <= 12 &&
               !incidentOnly &&
@@ -982,92 +1016,98 @@ export default function MapInner({
                 if (cluster.count === 1) {
                   const s = cluster.stores[0];
                   return (
-                    <CircleMarker
+                    <Marker
                       key={`single-${s.id}`}
-                      center={[s.latitude, s.longitude]}
-                      radius={4}
-                      pathOptions={{
-                        color: "#059669",
-                        fillColor: "#10b981",
-                        fillOpacity: 0.8,
-                        weight: 1,
-                      }}
+                      position={[s.latitude, s.longitude]}
+                      icon={createStoreTeardropIcon(s, false, false, 0, selectedStore?.id === s.id)}
                       eventHandlers={{
                         click: () => onSelectStore(s),
                       }}
                     >
-                      <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+                      <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                         <div className="text-[11px] font-medium text-slate-900 px-1">
                           <span className="font-bold text-emerald-700">[{s.kode_toko}]</span>{" "}
                           {s.nama_toko}
                         </div>
                       </Tooltip>
-                    </CircleMarker>
+                    </Marker>
                   );
                 }
 
+                const isClusterSelected =
+                  selectedCluster?.lat === cluster.lat && selectedCluster?.lng === cluster.lng;
+
                 return (
-                  <ClusterMarkerItem
+                  <Marker
                     key={`cluster-${cluster.lat.toFixed(3)}_${cluster.lng.toFixed(3)}_${idx}`}
-                    cluster={cluster}
-                    zoom={currentZoom}
-                  />
+                    position={[cluster.lat, cluster.lng]}
+                    icon={createClusterCircleIcon(cluster.count, false, 0, 0, isClusterSelected)}
+                    eventHandlers={{
+                      click: () => {
+                        onSelectCluster?.({
+                          lat: cluster.lat,
+                          lng: cluster.lng,
+                          totalStores: cluster.count,
+                          storesWithTickets: 0,
+                          totalTickets: 0,
+                          percentage: 0,
+                          stores: cluster.stores,
+                        });
+                      },
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -22]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1">
+                        Cluster: {cluster.count} Toko (Klik untuk ringkasan)
+                      </div>
+                    </Tooltip>
+                  </Marker>
                 );
               })}
 
-            {/* LEVEL KOTA / JALAN (Zoom >= 13): Individual Safe Store Markers dengan Viewport Culling */}
+            {/* LEVEL KOTA / JALAN (Zoom >= 13): Individual Teardrop Location Pins dengan Viewport Culling */}
             {currentZoom >= 13 &&
               !incidentOnly &&
               safeStores
                 .filter((store) => !mapBounds || mapBounds.contains([store.latitude, store.longitude]))
                 .map((store) => (
-                  <CircleMarker
+                  <Marker
                     key={store.id}
-                    center={[store.latitude, store.longitude]}
-                    radius={6}
-                    pathOptions={{
-                      color: "#059669",
-                      fillColor: "#10b981",
-                      fillOpacity: 0.75,
-                      weight: 1.5,
-                    }}
+                    position={[store.latitude, store.longitude]}
+                    icon={createStoreTeardropIcon(store, false, false, 0, selectedStore?.id === store.id)}
                     eventHandlers={{
                       click: () => onSelectStore(store),
                     }}
                   >
-                    <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+                    <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                       <div className="text-[11px] font-medium text-slate-900 px-1">
                         <span className="font-bold text-emerald-700">[{store.kode_toko}]</span>{" "}
                         {store.nama_toko} ({store.cabang})
                       </div>
                     </Tooltip>
-                  </CircleMarker>
+                  </Marker>
                 ))}
           </>
         )}
 
-        {/* 3. OPERATIONAL & AFFECTED STORES (Requirements 10, 11, 31)
-            Always distinctly visible on Zoom >= 8 even if quake >72h old */}
+        {/* 3. OPERATIONAL & AFFECTED STORES (Distinct teardrop pins, click opens Right Detail Panel) */}
         {showStoresLayer && locationMode !== "dc" &&
           currentZoom >= 8 &&
           operationalStores.map((store) => {
-            const isDanger =
-              store.visualStatus === "TERDAMPAK" || store.status === "PRIORITY_MONITOR";
             const isSelected = store.id === selectedStore?.id;
 
             return (
               <Marker
                 key={store.id}
                 position={[store.latitude, store.longitude]}
-                icon={createStoreIcon(store, isSelected)}
+                icon={createStoreTeardropIcon(store, false, false, 0, isSelected)}
                 eventHandlers={{
-                  click: (e) => {
+                  click: () => {
                     onSelectStore(store);
-                    e.target.openPopup();
                   },
                 }}
               >
-                <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                   <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
                     <span className="font-bold text-red-600">[{store.kode_toko}]</span>{" "}
                     {store.nama_toko}
@@ -1078,145 +1118,6 @@ export default function MapInner({
                     )}
                   </div>
                 </Tooltip>
-
-                {/* Final Store Popup (Requirement 31) */}
-                <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                  <div className={`p-3 rounded-xl border w-72 space-y-2 text-xs transition-colors ${
-                    isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                        isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200"
-                      }`}>
-                        {store.kode_toko}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          store.visualStatus === "TERDAMPAK"
-                            ? "bg-red-600 text-white animate-pulse"
-                            : store.visualStatus === "DALAM_PENANGANAN"
-                            ? "bg-blue-600 text-white"
-                            : store.visualStatus === "PERLU_PERHATIAN"
-                            ? "bg-amber-600 text-white"
-                            : store.visualStatus === "SELESAI"
-                            ? "bg-emerald-600 text-white"
-                            : isDark ? "bg-slate-700 text-slate-300" : "bg-slate-200 text-slate-700"
-                        }`}
-                      >
-                        {store.visualStatus === "TERDAMPAK"
-                          ? "Terdampak"
-                          : store.visualStatus === "DALAM_PENANGANAN"
-                          ? "Dalam Penanganan"
-                          : store.visualStatus === "PERLU_PERHATIAN"
-                          ? "Perlu Perhatian"
-                          : store.visualStatus === "SELESAI"
-                          ? "Selesai"
-                          : isDanger
-                          ? "Prioritas Pantau"
-                          : "Perlu Pantau"}
-                      </span>
-                    </div>
-
-                    <h3 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
-                      {store.nama_toko}
-                    </h3>
-
-                    <div className={`text-[11px] flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                      <Building className="w-3 h-3 text-slate-400" />
-                      <span>Cabang {store.cabang}</span>
-                      <span className="text-slate-400">•</span>
-                      <span className={`font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                        {store.fr_type === "F" ? "Franchise" : "Reguler"}
-                      </span>
-                    </div>
-
-                    {/* 2D Status Details (Requirement 9 & 31) */}
-                    <div className={`p-2 rounded border text-[11px] space-y-1 ${
-                      isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200 text-slate-700"
-                    }`}>
-                      <div className="flex justify-between">
-                        <span className={isDark ? "text-slate-400" : "text-slate-500"}>Status Spasial:</span>
-                        <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
-                          {store.spatialRisk === "PRIORITY_MONITOR"
-                            ? "Prioritas Pantau"
-                            : store.spatialRisk === "MONITOR"
-                            ? "Perlu Dipantau"
-                            : "Aman"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className={isDark ? "text-slate-400" : "text-slate-500"}>Status Operasional:</span>
-                        <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
-                          {store.operationalStatus === "CONFIRMED_AFFECTED"
-                            ? "Terdampak Lapangan"
-                            : store.operationalStatus === "NEED_CONFIRMATION"
-                            ? "Perlu Konfirmasi"
-                            : store.operationalStatus === "IN_PROGRESS" ||
-                              store.operationalStatus === "ESTIMATION" ||
-                              store.operationalStatus === "READY_FOR_WORK"
-                            ? "Dalam Penanganan"
-                            : store.operationalStatus === "RESOLVED" ||
-                              store.operationalStatus === "WORK_COMPLETED"
-                            ? "Selesai"
-                            : "Tidak Ada Laporan"}
-                        </span>
-                      </div>
-                      {store.riskSourceEvent && (
-                        <div className={`flex justify-between text-[10px] pt-1 border-t ${
-                          isDark ? "border-slate-800/80" : "border-slate-200"
-                        }`}>
-                          <span className={isDark ? "text-slate-400" : "text-slate-500"}>Sumber Risiko:</span>
-                          <span
-                            className="font-medium text-amber-600 dark:text-amber-300 text-right truncate max-w-[140px]"
-                            title={store.riskSourceEvent.title}
-                          >
-                            M{store.riskSourceEvent.magnitude} {store.riskSourceEvent.title}
-                          </span>
-                        </div>
-                      )}
-                      {store.distanceFromDisasterKm !== undefined && (
-                        <div className="flex justify-between text-[10px]">
-                          <span className={isDark ? "text-slate-400" : "text-slate-500"}>Jarak Episentrum:</span>
-                          <span className={`font-mono font-bold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
-                            {store.distanceFromDisasterKm} km
-                          </span>
-                        </div>
-                      )}
-                      {store.activeReportProgress !== undefined && (
-                        <div className={`flex justify-between text-[10px] text-blue-500 dark:text-blue-300 pt-1 border-t ${
-                          isDark ? "border-slate-800/80" : "border-slate-200"
-                        }`}>
-                          <span>Progress Penanganan:</span>
-                          <span className="font-mono font-bold">
-                            {store.activeReportProgress}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {store.floodWarning && (
-                      <div className="p-1.5 rounded bg-blue-950/80 border border-blue-600/60 text-[10px] text-blue-200 flex items-center gap-1.5">
-                        <span className="text-xs shrink-0">🌧️</span>
-                        <div className="leading-tight">
-                          <span className="font-bold text-blue-300">Waspada Potensi Banjir</span>
-                          {store.rainIntensityMm && (
-                            <span className="block text-slate-300 text-[9px]">
-                              Curah Hujan: {store.rainIntensityMm} mm/jam
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => onSelectStore(store)}
-                      className="w-full mt-2 py-1.5 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <span>Lihat Detail</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </Popup>
               </Marker>
             );
           })}
@@ -1229,80 +1130,159 @@ export default function MapInner({
 
         {/* 5. EXPLICIT SELECTED STORE PIN (Always visible even in Crisis Focus Mode!) */}
         {selectedStore &&
-          !operationalStores.some((s) => s.id === selectedStore.id) && (
+          !operationalStores.some((s) => s.id === selectedStore.id) &&
+          !isAhoLayer && (
             <Marker
               key={`selected-${selectedStore.id}`}
               position={[selectedStore.latitude, selectedStore.longitude]}
-              icon={createStoreIcon(selectedStore, true)}
+              icon={createStoreTeardropIcon(selectedStore, false, false, 0, true)}
               eventHandlers={{
-                click: (e) => {
+                click: () => {
                   onSelectStore(selectedStore);
-                  e.target.openPopup();
                 },
               }}
             >
-              <Tooltip direction="top" offset={[0, -18]} opacity={0.98} permanent>
+              <Tooltip direction="top" offset={[0, -24]} opacity={0.98} permanent>
                 <div className="text-xs font-bold text-slate-900 px-1.5 py-0.5 flex items-center gap-1.5">
                   <span className="text-cyan-600 font-extrabold">🎯 [{selectedStore.kode_toko}]</span>
                   <span>{selectedStore.nama_toko}</span>
                   <span className="text-slate-500 font-normal">({selectedStore.cabang})</span>
                 </div>
               </Tooltip>
-
-              <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                <div className={`p-3 rounded-xl border w-68 space-y-2 text-xs transition-colors ${
-                  isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-600/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
-                      {selectedStore.kode_toko}
-                    </span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                      Operasional Aman
-                    </span>
-                  </div>
-
-                  <h3 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
-                    {selectedStore.nama_toko}
-                  </h3>
-
-                  <div className={`text-[11px] flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    <Building className="w-3 h-3 text-slate-400" />
-                    <span>Cabang {selectedStore.cabang}</span>
-                    <span className="text-slate-400">•</span>
-                    <span className={`font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                      {selectedStore.fr_type === "F" ? "Franchise" : "Reguler"}
-                    </span>
-                  </div>
-
-                  {selectedStore.floodWarning && (
-                    <div className={`p-1.5 rounded border text-[10px] flex items-center gap-1.5 ${
-                      isDark ? "bg-blue-950/80 border-blue-600/60 text-blue-200" : "bg-blue-50 border-blue-200 text-blue-900"
-                    }`}>
-                      <span className="text-xs shrink-0">🌧️</span>
-                      <div className="leading-tight">
-                        <span className="font-bold text-blue-500">Waspada Potensi Banjir</span>
-                        {selectedStore.rainIntensityMm && (
-                          <span className={`block text-[9px] ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                            Curah Hujan: {selectedStore.rainIntensityMm} mm/jam
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => onSelectStore(selectedStore)}
-                    className="w-full mt-2 py-1.5 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors shadow-sm"
-                  >
-                    <span>Lihat Detail</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </Popup>
             </Marker>
           )}
+
+        {/* =========================================================================
+            6. AHO TICKETS LAYER (SPARTA Maintenance Integration)
+            LOD: Zoom <= 7 Cabang, Zoom 8–12 Cluster, Zoom >= 13 Individual
+           ========================================================================= */}
+        {isAhoLayer && ahoCounts && (
+          <>
+            {/* LEVEL CABANG (Zoom <= 7): Agregasi per Cabang (Anchored Flag) */}
+            {currentZoom <= 7 &&
+              ahoBranchAggregations.map((branch) => {
+                const isSelected = selectedBranch?.cabang === branch.cabang;
+                return (
+                  <Marker
+                    key={`aho-branch-${branch.cabang}`}
+                    position={[branch.latitude, branch.longitude]}
+                    icon={createBranchFlagIcon(branch, true, isSelected)}
+                    eventHandlers={{
+                      click: () => onSelectBranch?.(branch),
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
+                        <span className="font-bold">Cabang {branch.cabang}</span>: {formatAhoBadgeLabel(branch.totalStores, branch.storesWithTickets ?? 0)} ({(branch.percentage ?? 0).toFixed(1)}%)
+                      </div>
+                    </Tooltip>
+                  </Marker>
+                );
+              })}
+
+            {/* LEVEL CLUSTER (Zoom 8–12): Spatial Grid Cluster with SVG Donut */}
+            {currentZoom >= 8 &&
+              currentZoom <= 12 &&
+              ahoClusters.map((cluster, idx) => {
+                const isClusterSelected =
+                  selectedCluster?.lat === cluster.lat && selectedCluster?.lng === cluster.lng;
+                return (
+                  <Marker
+                    key={`aho-cluster-${cluster.lat.toFixed(3)}_${cluster.lng.toFixed(3)}_${idx}`}
+                    position={[cluster.lat, cluster.lng]}
+                    icon={createClusterCircleIcon(
+                      cluster.totalStores,
+                      true,
+                      cluster.storesWithTickets,
+                      cluster.percentage,
+                      isClusterSelected
+                    )}
+                    eventHandlers={{
+                      click: () => onSelectCluster?.(cluster),
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -22]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1">
+                        Cluster: {formatAhoBadgeLabel(cluster.totalStores, cluster.storesWithTickets ?? 0)} ({(cluster.percentage ?? 0).toFixed(1)}%) • Klik untuk ringkasan
+                      </div>
+                    </Tooltip>
+                  </Marker>
+                );
+              })}
+
+            {/* LEVEL TOKO INDIVIDUAL (Zoom >= 13): Viewport Culled Teardrop Pin */}
+            {currentZoom >= 13 &&
+              ahoVisibleStores.map((store) => {
+                const code = (store.kode_toko || "").toUpperCase().trim();
+                const ticketCount = ahoCounts[code] || 0;
+                const hasTicket = ticketCount > 0;
+                const isSelected = selectedStore?.id === store.id;
+
+                return (
+                  <Marker
+                    key={`aho-store-${store.id}`}
+                    position={[store.latitude, store.longitude]}
+                    icon={createStoreTeardropIcon(store, true, hasTicket, ticketCount, isSelected, !ahoError)}
+                    eventHandlers={{
+                      click: () => onSelectStore(store),
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
+                        <span className={hasTicket ? "font-bold text-red-600" : "font-bold text-emerald-600"}>
+                          [{store.kode_toko}]
+                        </span>{" "}
+                        {store.nama_toko} •{" "}
+                        <span className={hasTicket ? "text-red-600 font-bold" : "text-emerald-700 font-medium"}>
+                          {hasTicket ? `${ticketCount} Tiket AHO Aktif` : "Tanpa Tiket Aktif"}
+                        </span>
+                      </div>
+                    </Tooltip>
+                  </Marker>
+                );
+              })}
+          </>
+        )}
       </MapContainer>
+
+      {/* AHO LAYER CONTEXTUAL FLOATING LEGEND (Zoom-adaptive & Collapsible) */}
+      {isAhoLayer && (
+        <AhoLegend
+          zoom={currentZoom}
+          lastUpdated={ahoLastUpdated}
+          className="absolute bottom-6 left-3"
+        />
+      )}
+
+      {/* AHO Loading Indicator */}
+      {isAhoLayer && ahoLoading && !ahoCounts && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[460] px-3.5 py-2 rounded-full bg-slate-900/90 border border-amber-500/40 text-amber-300 text-xs font-semibold shadow-xl backdrop-blur-md flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+          <span>Memuat data tiket AHO SPARTA Maintenance...</span>
+        </div>
+      )}
+
+      {/* AHO Error Alert */}
+      {isAhoLayer && ahoError && (
+        <div
+          role="status"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-[460] max-w-md px-3.5 py-2.5 rounded-xl bg-amber-950/95 border border-amber-500 text-amber-200 text-xs font-medium shadow-xl backdrop-blur-md flex items-center justify-between gap-3 animate-in fade-in"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="leading-tight">
+              Data tiket AHO sedang tidak tersedia dari SPARTA Maintenance.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAhoRefreshKey((k) => k + 1)}
+            className="shrink-0 rounded-lg border border-amber-400/80 px-2 py-1 text-[11px] font-bold hover:bg-amber-900/60 transition-colors"
+          >
+            Coba lagi
+          </button>
+        </div>
+      )}
     </div>
   );
 }

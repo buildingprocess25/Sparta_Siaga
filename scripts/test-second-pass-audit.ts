@@ -20,7 +20,7 @@ import { correlateDisasters, CANONICAL_CORRELATION_THRESHOLDS } from "../lib/dis
 
 async function runTests() {
   console.log("====================================================");
-  console.log(" SPARTA SIAGA — SECOND PASS VERIFICATION SUITE");
+  console.log(" SPARTA SIAGA - SECOND PASS VERIFICATION SUITE");
   console.log("====================================================\n");
 
   let passed = 0;

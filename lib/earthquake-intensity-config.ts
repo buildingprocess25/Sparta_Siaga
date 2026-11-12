@@ -1,6 +1,6 @@
 /**
  * SPARTA SIAGA - Earthquake Intensity Configuration & Feature Flag
- *
+ * 
  * Safety: Feature flag defaults to false to prevent accidental activation in production.
  * Rule: Zero em dashes.
  */
@@ -30,3 +30,4 @@ export const EARTHQUAKE_INTENSITY_CONFIG = {
   // Source providers
   supportedProviders: ["USGS", "BMKG"] as const,
 };
+

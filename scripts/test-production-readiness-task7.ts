@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Task 7 production-readiness verification.
+ * SPARTA SIAGA - Task 7 production-readiness verification.
  *
  * The suite intentionally starts RED. Each scenario is converted from a
  * missing-contract failure to an executable behavior check as Task 7 lands.
@@ -36,7 +36,7 @@ function assert(condition: boolean, code: string, description: string, detail?: 
   total += 1;
   if (!condition) {
     failures += 1;
-    console.error(`[FAIL] ${code}: ${description}${detail ? ` — ${detail}` : ""}`);
+    console.error(`[FAIL] ${code}: ${description}${detail ? ` - ${detail}` : ""}`);
     process.exitCode = 1;
     return;
   }
@@ -377,7 +377,7 @@ function runP15(): ScenarioResult {
 
 async function main(): Promise<void> {
   console.log("============================================================");
-  console.log("SPARTA SIAGA — TASK 7 PRODUCTION READINESS VERIFICATION");
+  console.log("SPARTA SIAGA - TASK 7 PRODUCTION READINESS VERIFICATION");
   console.log("============================================================");
 
   const results = await Promise.all([

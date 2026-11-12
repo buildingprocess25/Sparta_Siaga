@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Phase 1 Business Rules & Report Lifecycle Verification Suite
+ * SPARTA SIAGA - Phase 1 Business Rules & Report Lifecycle Verification Suite
  *
  * Validates:
  * 1. Data separation: Real BMKG/USGS earthquakes, preliminary branch reports, BnM confirmed reports.
@@ -29,7 +29,7 @@ import {
 } from "../lib/approval-event-service";
 
 console.log("==========================================================================");
-console.log("  SPARTA SIAGA — PHASE 1: BUSINESS RULES & REPORT LIFECYCLE TEST SUITE    ");
+console.log("  SPARTA SIAGA - PHASE 1: BUSINESS RULES & REPORT LIFECYCLE TEST SUITE    ");
 console.log("==========================================================================");
 
 // --- Test Personas ---

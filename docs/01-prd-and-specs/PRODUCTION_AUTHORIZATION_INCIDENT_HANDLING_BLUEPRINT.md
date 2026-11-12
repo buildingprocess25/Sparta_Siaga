@@ -1,6 +1,14 @@
 # 🛡️ Blueprint Otorisasi Penanganan Insiden & Rencana Deployment Server Pusat
 **SPARTA Siaga - Production Security & Role-Based Access Control (RBAC) Specification**
 
+> [!WARNING] HISTORICAL RBAC SPECIFICATION & SUPERSESSION NOTICE
+> Dokumen ini merupakan cetak biru otorisasi RBAC tahap awal. Sebagian rancangan wewenang di dokumen ini telah disempurnakan oleh kebijakan tata kelola kanonikal terbaru:
+> - **Penegakan Head Office Read-Only:** Ketentuan pada dokumen ini yang menyatakan HO memiliki wewenang override operasional lintas cabang telah **DIREVISI/SUPERSEDED**. Head Office (`ho_admin`, `gm_ho`, `sm_ho`) berstatus **strictly monitoring-only (read-only)** pada seluruh endpoint operasional dan dilarang memutasikan tiket cabang.
+> - **Zero Operational Bypass:** Akun System Administrator tidak memiliki wewenang operasional untuk menyetujui penanganan atau menutup tiket lapangan.
+> - **Penyempurnaan Peran Lapangan:** Konsep awal "Duty Officer DC" telah dispesifikasikan menjadi 8 peran kanonikal: Spesialis Lapangan (`bms`, `bes`, `bbs`), Koordinator (`bmc`, `bec`, `bbc`), dan Branch Manager (`bmm`).
+> - **Pemisahan Notifikasi vs Laporan Insiden:** Aksi konfirmasi darurat notifikasi (`/api/notifications/ack`) adalah penanda bacaan peringatan dini (Early Warning), terpisah dari siklus hidup laporan kerusakan fisik (Inspeksi BMS -> Konfirmasi BnM Manajer -> 5 Milestone -> Review Koordinator -> Case Close BnM).
+> - **Rujukan Kanonikal Terkini:** Lihat [`docs/02-business-process/BUSINESS_PROCESS_SPARTA_SIAGA.md`](../02-business-process/BUSINESS_PROCESS_SPARTA_SIAGA.md) dan [`lib/role-catalog.ts`](../../lib/role-catalog.ts).
+
 > **Tujuan Dokumen:**  
 > Menjadi panduan arsitektur keamanan dan cetak biru teknis saat sistem SPARTA Siaga dinaikkan ke **Server Pusat (Production)**, memastikan aksi konfirmasi darurat (`Konfirmasi Terima & Tangani`) **hanya dapat dilakukan oleh Duty Officer cabang yang terdampak atau Tim HO Pusat**, tanpa mengganggu fleksibilitas pengujian di lingkungan lokal saat ini.
 

@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Real Operational UAT API Test Suite
+ * SPARTA SIAGA - Real Operational UAT API Test Suite
  *
  * Validates actual workflows through application route handlers:
  * 1. BMS inspection → photo evidence → BnM confirmation.
@@ -117,7 +117,7 @@ async function makeAuthRequest(
 
 async function runRealOperationalUat() {
   console.log("\n=======================================================");
-  console.log(" SPARTA SIAGA — REAL OPERATIONAL UAT API SUITE");
+  console.log(" SPARTA SIAGA - REAL OPERATIONAL UAT API SUITE");
   console.log("=======================================================\n");
 
   // Strictly enforce Testing Mode & Isolated Database

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useSiaga } from "@/components/layout/siaga-context";
 import { Earthquake, DisasterFeedResponse, SourceHealth } from "@/types/disaster";
+import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -165,18 +166,22 @@ function EarthquakeCard({ eq, isDark, onFocusMap }: EventCardProps) {
             </div>
             <div>
               <div className={`text-[10px] uppercase tracking-wider font-semibold mb-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                Zona Prioritas
+                Radius V1
               </div>
               <div className={`text-sm font-semibold ${isDark ? "text-slate-200" : "text-slate-800"}`}>
-                ±{eq.priorityRadiusKm} km
+                {(() => {
+                  const cov = eq.v1Coverage ?? getV1Coverage(eq.magnitude, eq.depthKm ?? 10);
+                  const r = eq.v1DistanceKm ?? cov.v1DistanceKm;
+                  return r !== null ? `${r} km` : (eq.magnitude < 4.0 ? "Hanya Pemantauan" : "Tidak Berlaku");
+                })()}
               </div>
             </div>
             <div>
               <div className={`text-[10px] uppercase tracking-wider font-semibold mb-0.5 ${isDark ? "text-slate-500" : "text-slate-400"}`}>
-                Zona Pantau
+                Kelompok Kedalaman
               </div>
               <div className={`text-sm font-semibold ${isDark ? "text-slate-200" : "text-slate-800"}`}>
-                ±{eq.monitoringRadiusKm} km
+                {(eq.v1Coverage ?? getV1Coverage(eq.magnitude, eq.depthKm ?? 10)).depthGroup}
               </div>
             </div>
             <div>
@@ -351,7 +356,7 @@ export default function AlertsPage() {
               { label: "Total Event", value: earthquakes.length, icon: Activity, color: "text-blue-500" },
               { label: "Signifikan (M5+)", value: significant.length, icon: AlertTriangle, color: "text-amber-500" },
               { label: "Potensi Tsunami", value: earthquakes.filter((e) => e.potensiTsunami).length, icon: Waves, color: "text-red-500" },
-              { label: "Status Data", value: feed.dataFreshness === "live" || feed.dataFreshness === "fresh" ? "Live" : feed.dataFreshness ?? "—", icon: Radio, color: "text-emerald-500", isText: true },
+              { label: "Status Data", value: feed.dataFreshness === "live" || feed.dataFreshness === "fresh" ? "Live" : feed.dataFreshness ?? "-", icon: Radio, color: "text-emerald-500", isText: true },
             ].map(({ label, value, icon: Icon, color, isText }) => (
               <div
                 key={label}
@@ -423,7 +428,7 @@ export default function AlertsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {/* Table header — desktop only */}
+            {/* Table header: desktop only */}
             <div className={`hidden sm:grid grid-cols-[1rem_1fr_auto] gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-widest ${isDark ? "text-slate-600" : "text-slate-400"}`}>
               <div />
               <div>Kejadian</div>
@@ -444,14 +449,14 @@ export default function AlertsPage() {
           </div>
         )}
 
-        {/* ── Information Footer ── */}
+        {/* Information Footer */}
         <div className={`flex items-start gap-2 p-3 rounded-lg border text-xs ${
           isDark ? "bg-slate-900 border-slate-800 text-slate-500" : "bg-slate-50 border-slate-200 text-slate-400"
         }`}>
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
           <p>
             Halaman ini menampilkan <strong>informasi kejadian bencana</strong> dari sumber eksternal resmi. Data ini bersifat
-            observasional — bukan laporan operasional. Untuk penanganan, verifikasi lapangan, dan tindak lanjut, gunakan menu{" "}
+            observasional: bukan laporan operasional. Untuk penanganan, verifikasi lapangan, dan tindak lanjut, gunakan menu{" "}
             <strong>Laporan Kejadian</strong>.
           </p>
         </div>

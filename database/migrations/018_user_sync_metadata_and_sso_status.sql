@@ -19,3 +19,4 @@ ALTER TABLE public.users
 -- Performance and lookup indexes for idempotent synchronization
 CREATE INDEX IF NOT EXISTS idx_users_sso_status ON public.users(sso_status);
 CREATE INDEX IF NOT EXISTS idx_users_email_lower ON public.users(LOWER(TRIM(email)));
+

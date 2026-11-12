@@ -1,5 +1,5 @@
 /**
- * SPARTA SIAGA — Test Suite: Testing Mode Toggle & Backend Isolation
+ * SPARTA SIAGA - Test Suite: Testing Mode Toggle & Backend Isolation
  *
  * Verifies:
  * 1. Testing Mode defaults to OFF.
@@ -42,7 +42,7 @@ function assert(condition: boolean, desc: string) {
 
 async function runTests() {
   console.log("\n=======================================================");
-  console.log(" SPARTA SIAGA — TESTING MODE & ISOLATION VERIFICATION");
+  console.log(" SPARTA SIAGA - TESTING MODE & ISOLATION VERIFICATION");
   console.log("=======================================================\n");
 
   const adminActor = { id: "ADM0001", name: "System Administrator" };

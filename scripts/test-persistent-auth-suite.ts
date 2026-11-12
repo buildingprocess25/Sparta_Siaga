@@ -23,7 +23,7 @@ import { dispatchEarthquakePushNotifications, savePushSubscription } from "../li
 
 async function runAuthSuite() {
   console.log("===============================================================");
-  console.log("SPARTA SIAGA — AUTH-01: Persistent Login & PWA Session Suite");
+  console.log("SPARTA SIAGA - AUTH-01: Persistent Login & PWA Session Suite");
   console.log("===============================================================\n");
 
   let passed = 0;

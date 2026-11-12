@@ -62,13 +62,13 @@ function recordResult(no: number, name: string, pass: boolean, evidence: string)
   const status: "PASS" | "FAIL" = pass ? "PASS" : "FAIL";
   results.push({ no, name, status, evidence });
   const icon = pass ? "✅" : "❌";
-  console.log(`${icon} [${status}] Skenario ${no}: ${name} — ${evidence}`);
+  console.log(`${icon} [${status}] Skenario ${no}: ${name} - ${evidence}`);
 }
 
 async function runTestSuite() {
   const dbInfo = setupIsolatedEnvironment();
   console.log("================================================================================");
-  console.log(" SPARTA SIAGA — EARTHQUAKE AUTOMATION & DEDUPLICATION QA TEST SUITE");
+  console.log(" SPARTA SIAGA - EARTHQUAKE AUTOMATION & DEDUPLICATION QA TEST SUITE");
   console.log(" Target Database: " + dbInfo.dbName + " (" + dbInfo.host + ")");
   console.log(" Environment Safety: READ-ONLY GUARD on defaultdb active; running on isolated DB");
   console.log("================================================================================\n");
@@ -460,7 +460,7 @@ async function runTestSuite() {
   }
 
   console.log("\n================================================================================");
-  console.log(" QA MATRIX REKAPITULASI — 18 SKENARIO");
+  console.log(" QA MATRIX REKAPITULASI - 18 SKENARIO");
   console.log("================================================================================");
   const totalPassed = results.filter(r => r.status === "PASS").length;
   const totalFailed = results.filter(r => r.status === "FAIL").length;

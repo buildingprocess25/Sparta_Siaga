@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isQuickLoginPermitted } from "@/lib/environment-policy";
 import { getDbPool } from "@/lib/db";
-import {
-  createDeviceSession,
-  revokeSessionByRefreshToken,
-  revokeAllUserSessions
+import { 
+  createDeviceSession, 
+  revokeSessionByRefreshToken, 
+  revokeAllUserSessions 
 } from "@/lib/session-service";
 import {
   ACCESS_TOKEN_COOKIE,
@@ -291,3 +291,4 @@ export async function POST(req: Request) {
     );
   }
 }
+

@@ -41,7 +41,7 @@ function assert(condition: boolean, code: string, message: string) {
 
 async function run() {
   console.log("================================================================");
-  console.log(" SPARTA SIAGA — USER & ROLE MANAGEMENT TEST SUITE");
+  console.log(" SPARTA SIAGA - USER & ROLE MANAGEMENT TEST SUITE");
   console.log("================================================================\n");
 
   const pool = getDbPool();

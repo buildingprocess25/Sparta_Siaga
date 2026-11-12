@@ -241,8 +241,8 @@ export async function sendSinglePushNotification(
 
       // Delivery confirmed by Push Service provider (FCM / Apple APNs / Mozilla)
       await pool.query(
-        `UPDATE user_push_subscriptions
-         SET last_success_at = NOW(), failure_count = 0
+        `UPDATE user_push_subscriptions 
+         SET last_success_at = NOW(), failure_count = 0 
          WHERE endpoint = $1`,
         [sub.endpoint]
       ).catch(() => {});
@@ -289,8 +289,8 @@ export async function sendSinglePushNotification(
 
       // Record failure in database
       await pool.query(
-        `UPDATE user_push_subscriptions
-         SET last_failure_at = NOW(), failure_count = COALESCE(failure_count, 0) + 1
+        `UPDATE user_push_subscriptions 
+         SET last_failure_at = NOW(), failure_count = COALESCE(failure_count, 0) + 1 
          WHERE endpoint = $1`,
         [sub.endpoint]
       ).catch(() => {});
@@ -365,8 +365,8 @@ export async function dispatchEarthquakePushNotifications(params: {
        LEFT JOIN users u ON s.user_id = u.id
        WHERE (u.id IS NULL OR (u.status = 'ACTIVE' AND LOWER(COALESCE(u.business_role, '')) NOT IN ('tim_toko', 'rekanan')))
          AND ($1::boolean = true
-          OR UPPER(s.branch) = $2
-          OR s.branch IS NULL
+          OR UPPER(s.branch) = $2 
+          OR s.branch IS NULL 
           OR UPPER(s.branch) = 'NASIONAL'
           OR s.branch = '')`,
       [isNational, targetBranch]

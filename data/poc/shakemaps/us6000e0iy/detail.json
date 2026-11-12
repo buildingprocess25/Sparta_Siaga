@@ -1,0 +1,1658 @@
+{
+  "type": "Feature",
+  "properties": {
+    "mag": 6,
+    "place": "45 km S of Sumberpucung, Indonesia",
+    "time": 1618038015485,
+    "updated": 1766429762531,
+    "tz": null,
+    "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000e0iy",
+    "felt": 126,
+    "cdi": 7.1,
+    "mmi": 5.362,
+    "alert": "green",
+    "status": "reviewed",
+    "tsunami": 0,
+    "sig": 643,
+    "net": "us",
+    "code": "6000e0iy",
+    "ids": ",us6000e0iy,usauto6000e0iy,pt21100000,iscgem620236368,",
+    "sources": ",us,usauto,pt,iscgem,",
+    "types": ",dyfi,ground-failure,impact-text,internal-moment-tensor,internal-origin,losspager,moment-tensor,origin,phase-data,shakemap,",
+    "nst": null,
+    "dmin": 1.631,
+    "rms": 0.83,
+    "gap": 21,
+    "magType": "mww",
+    "type": "earthquake",
+    "title": "M 6.0 - 45 km S of Sumberpucung, Indonesia",
+    "products": {
+      "dyfi": [
+        {
+          "indexid": 24447569,
+          "indexTime": 1710052341498,
+          "id": "urn:usgs-product:us:dyfi:us6000e0iy:1710052338031",
+          "type": "dyfi",
+          "code": "us6000e0iy",
+          "source": "us",
+          "updateTime": 1710052338031,
+          "status": "UPDATE",
+          "properties": {
+            "depth": "67",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.000Z",
+            "latitude": "-8.5707",
+            "longitude": "112.5054",
+            "magnitude": "6.0",
+            "maxmmi": "7.1",
+            "num-responses": "126",
+            "numResp": "126",
+            "original-signature": "MC4CFQCsSbwEU/l8AKvoKjtLyXP3MYjjlAIVAK7V/EOuCD+GIKofmZfcsygz1I/U",
+            "original-signature-version": "v1",
+            "pdl-client-version": "Version 2.7.10 2021-06-21"
+          },
+          "preferredWeight": 158,
+          "contents": {
+            "dyfi_zip.geojson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1710052337000,
+              "length": 7479,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_zip.geojson",
+              "sha256": "WX32TcUdNtEMCwydyyG/sIXpcSnAcjRxc3PqO3Tf9R0="
+            },
+            "dyfi_geo_10km.geojson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1710052337000,
+              "length": 17096,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_geo_10km.geojson",
+              "sha256": "fkG/nHsCh/dZJBPa6x9+s8om8c/AUDeXlxbMJLPxxFk="
+            },
+            "dyfi_geo_1km.geojson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1710052337000,
+              "length": 29655,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_geo_1km.geojson",
+              "sha256": "TnPulqpXicgP0VFbBpf1AKD7/M0OnuVOHlNYgTOluTQ="
+            },
+            "us6000e0iy_ciim_imap.html": {
+              "contentType": "text/html",
+              "lastModified": 1710052337000,
+              "length": 7878,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim_imap.html",
+              "sha256": "c+cycaXGPPcDPQ48WqiGT8ylMC6xFvZgIAQi+oRXvK8="
+            },
+            "us6000e0iy_plot_numresp.txt": {
+              "contentType": "text/plain",
+              "lastModified": 1710052337000,
+              "length": 5134,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_plot_numresp.txt",
+              "sha256": "oDI2wDrcKeHn40ZpOeP6LKljBFMA6JgeG8vIe8f3SgU="
+            },
+            "us6000e0iy_plot_atten.txt": {
+              "contentType": "text/plain",
+              "lastModified": 1710052337000,
+              "length": 3712,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_plot_atten.txt",
+              "sha256": "MFxFwEaiAiNfhLGmzIu3audNKmPqFGALdItS5EXNqJ8="
+            },
+            "cdi_geo.txt": {
+              "contentType": "text/plain",
+              "lastModified": 1710052337000,
+              "length": 5119,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/cdi_geo.txt",
+              "sha256": "TCzB1hXHsNUbi65iI6pjPWz/qelznSyZYZbKO6xIhHU="
+            },
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1710052337000,
+              "length": 4224,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/contents.xml",
+              "sha256": "eMi0KkmICEqLAd68b00FAItYBVnh97/hFJjgjoPBp90="
+            },
+            "cdi_geo_1km.txt": {
+              "contentType": "text/plain",
+              "lastModified": 1710052337000,
+              "length": 10137,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/cdi_geo_1km.txt",
+              "sha256": "9LfP6xZITsJt7iTYwRdeq/V7N6lwmW/Q94ZKcEk2CA4="
+            },
+            "dyfi_plot_atten.json": {
+              "contentType": "application/json",
+              "lastModified": 1710052337000,
+              "length": 4855,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_plot_atten.json",
+              "sha256": "GkwEd/tmpkN7s0IA2+xeJyiFpY2YPk1zyg6Mue9Wmew="
+            },
+            "us6000e0iy_ciim_geo.ps": {
+              "contentType": "application/postscript",
+              "lastModified": 1710052337000,
+              "length": 244667,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim_geo.ps",
+              "sha256": "XvwV8fV6+cCEUneZ6KWpT5PAFK49TvBoLG/dVGQXDYI="
+            },
+            "cdi_geo.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1710052337000,
+              "length": 17080,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/cdi_geo.xml",
+              "sha256": "nQM35JAEmDhRrAGWRSJqOHS4E0a5/KmwBnIhrRRVEqM="
+            },
+            "us6000e0iy_ciim_geo_imap.html": {
+              "contentType": "text/html",
+              "lastModified": 1710052337000,
+              "length": 15810,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim_geo_imap.html",
+              "sha256": "S43DbTyDcd78ExrkYbq1IJ7hLSvUROk+8D6X4G8Mlao="
+            },
+            "us6000e0iy_plot_atten.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1710052337000,
+              "length": 54744,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_plot_atten.jpg",
+              "sha256": "u5Y+esrsudPkSR9RwB/lZpCc0inKQYmzWYlsFSY07G8="
+            },
+            "cdi_zip.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1710052337000,
+              "length": 10486,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/cdi_zip.xml",
+              "sha256": "5bXIzy1kgu4ikSg5Wht13Rna2jAgUkMBQeJigePgXTM="
+            },
+            "dyfi_geo.kmz": {
+              "contentType": "application/vnd.google-earth.kmz",
+              "lastModified": 1710052337000,
+              "length": 4389,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_geo.kmz",
+              "sha256": "1wm4aHRsiiA7rU5fOC6JWKTrJJf3WPbUSQvPKRNyWBs="
+            },
+            "us6000e0iy_ciim_geo.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1710052337000,
+              "length": 107065,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim_geo.pdf",
+              "sha256": "CBmECvEYWiUjQnh8OkFQABEsXkPb4/PYnsm66KwFMxc="
+            },
+            "us6000e0iy_ciim.ps": {
+              "contentType": "application/postscript",
+              "lastModified": 1710052337000,
+              "length": 247715,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim.ps",
+              "sha256": "+wJrENO0eTIEn5t0uhV7KFHlhTdohwetUncbLESLnEc="
+            },
+            "dyfi_zip.kmz": {
+              "contentType": "application/vnd.google-earth.kmz",
+              "lastModified": 1710052337000,
+              "length": 3237,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_zip.kmz",
+              "sha256": "6oyJ4uUMRLzK5X1JEw2bag4OWzhdxNHRypEj6/QHCMs="
+            },
+            "us6000e0iy_plot_numresp.ps": {
+              "contentType": "application/postscript",
+              "lastModified": 1710052337000,
+              "length": 33683,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_plot_numresp.ps",
+              "sha256": "AnXccxay+6Ga15cANaIXnEE55b6mEA6adYmxUXLLMp4="
+            },
+            "cdi_zip.txt": {
+              "contentType": "text/plain",
+              "lastModified": 1710052337000,
+              "length": 5023,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/cdi_zip.txt",
+              "sha256": "58FHqvR8o2Vi4Nwj3C1EoLvEwPzE8RuG1ApPBebModU="
+            },
+            "us6000e0iy_ciim.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1710052337000,
+              "length": 109168,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim.pdf",
+              "sha256": "PeJLy+cE6MU/U+wD0vJW9VyTqdouWGQprHELCUZfJjg="
+            },
+            "event_data.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1710052337000,
+              "length": 3035,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/event_data.xml",
+              "sha256": "P2xa4PrN7VNKcjb3iOYn5/I4oaunDQjpZ1nNNmpkTdQ="
+            },
+            "us6000e0iy_plot_atten.ps": {
+              "contentType": "application/postscript",
+              "lastModified": 1710052337000,
+              "length": 52634,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_plot_atten.ps",
+              "sha256": "dkJZMZCqxoK4KUQ1M7JGzGKTCA8nfQgLcZrJfVlaOpU="
+            },
+            "dyfi_plot_numresp.json": {
+              "contentType": "application/json",
+              "lastModified": 1710052337000,
+              "length": 8133,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi_plot_numresp.json",
+              "sha256": "X0I248izUCUBPX5uppk40TFn3SKTmm6OulFP8sP9ECM="
+            },
+            "us6000e0iy_ciim_geo.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1710052337000,
+              "length": 87311,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim_geo.jpg",
+              "sha256": "dVQTGHS9VInvtbsE7iZq348oaSRwp29iBQCaS1KRbh4="
+            },
+            "us6000e0iy_plot_numresp.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1710052337000,
+              "length": 36335,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_plot_numresp.jpg",
+              "sha256": "LCGx3bwq2f7PBovSJSUpRWKndAVG7kjUgTK2Vq1su0U="
+            },
+            "dyfi.kmz": {
+              "contentType": "application/vnd.google-earth.kmz",
+              "lastModified": 1710052337000,
+              "length": 1158,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/dyfi.kmz",
+              "sha256": "ShAVfBpgVUxh8GJOr7rV7WUuStAlLqahit+p1LBbtxY="
+            },
+            "us6000e0iy_ciim.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1710052337000,
+              "length": 91949,
+              "url": "https://earthquake.usgs.gov/product/dyfi/us6000e0iy/us/1710052338031/us6000e0iy_ciim.jpg",
+              "sha256": "Pps7sE0/PJUChacwNlVNkAe0vmFzrojRxJ/heRjyJBg="
+            }
+          }
+        }
+      ],
+      "ground-failure": [
+        {
+          "indexid": 18950265,
+          "indexTime": 1619847334528,
+          "id": "urn:usgs-product:us:ground-failure:6000e0iy:1619847321988",
+          "type": "ground-failure",
+          "code": "6000e0iy",
+          "source": "us",
+          "updateTime": 1619847321988,
+          "status": "UPDATE",
+          "properties": {
+            "depth": "67.0",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.000Z",
+            "landslide-alert": "green",
+            "landslide-hazard-1std": "None",
+            "landslide-hazard-2std": "None",
+            "landslide-hazard-alert-color": "green",
+            "landslide-hazard-alert-parameter": "Aggregate Hazard",
+            "landslide-hazard-alert-value": "0.0",
+            "landslide-hazard-std": "0.0",
+            "landslide-maximum-latitude": "-6.732291666666668",
+            "landslide-maximum-longitude": "114.33229166666335",
+            "landslide-minimum-latitude": "-10.332291666666464",
+            "landslide-minimum-longitude": "110.68229166666667",
+            "landslide-overlay": "jessee_2018.png",
+            "landslide-population-1std": "None",
+            "landslide-population-2std": "None",
+            "landslide-population-alert-color": "green",
+            "landslide-population-alert-parameter": "Population exposure",
+            "landslide-population-alert-value": "0",
+            "landslide-population-std": "0.0",
+            "latitude": "-8.5528",
+            "liquefaction-alert": "green",
+            "liquefaction-hazard-1std": "None",
+            "liquefaction-hazard-2std": "None",
+            "liquefaction-hazard-alert-color": "green",
+            "liquefaction-hazard-alert-parameter": "Aggregate Hazard",
+            "liquefaction-hazard-alert-value": "0.0",
+            "liquefaction-hazard-std": "0.0",
+            "liquefaction-maximum-latitude": "-6.732238021773571",
+            "liquefaction-maximum-longitude": "114.33054777823776",
+            "liquefaction-minimum-latitude": "-10.332023723303838",
+            "liquefaction-minimum-longitude": "110.68063227093859",
+            "liquefaction-overlay": "zhu_2017_general.png",
+            "liquefaction-population-1std": "None",
+            "liquefaction-population-2std": "None",
+            "liquefaction-population-alert-color": "green",
+            "liquefaction-population-alert-parameter": "Population exposure",
+            "liquefaction-population-alert-value": "0",
+            "liquefaction-population-std": "0.0",
+            "longitude": "112.5149",
+            "magnitude": "6.0",
+            "maximum-latitude": "-6.733333333333334",
+            "maximum-longitude": "114.3284644931351",
+            "minimum-latitude": "-8.650873803665359",
+            "minimum-longitude": "110.6827155560455",
+            "original-signature": "MC0CFQCeAx4T+OpWsMVDfRCanhEpuniANAIUEYN+LPO/oJj9xtxhs5oM8uYfSyc=",
+            "original-signature-version": "v1",
+            "pdl-client-version": "Version 2.3.1 2020-04-13",
+            "rupture-warning": "False",
+            "shakemap-version": "5",
+            "version": "6"
+          },
+          "preferredWeight": 158,
+          "contents": {
+            "nowicki_2014_global.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847321000,
+              "length": 48972,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/nowicki_2014_global.png",
+              "sha256": "5MVEl6i3XuNPwM5RikFHk6tM6pPt4GhKTvrpYnQUpZ8="
+            },
+            "godt_2008_model.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 7948,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/godt_2008_model.tif",
+              "sha256": "OigeDT8uvSX209EWI6NYVaxWe4/iaLfZ7K54nVVEGf8="
+            },
+            "jessee_2018.hdf5": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847321000,
+              "length": 3289816,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/jessee_2018.hdf5",
+              "sha256": "RpHDltOMRQD4ghiKH3Ac46YXVrHrg5sb81f0B0RojRk="
+            },
+            "zhu_2017_general.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847321000,
+              "length": 3051,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2017_general.png",
+              "sha256": "FbMQ3vK8MfIiB8AIi+3RH9wYF0MACrm3aNX1SxweozA="
+            },
+            "godt_2008_modelmax.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 7948,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/godt_2008_modelmax.tif",
+              "sha256": "OigeDT8uvSX209EWI6NYVaxWe4/iaLfZ7K54nVVEGf8="
+            },
+            "jessee_2018.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847321000,
+              "length": 11889,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/jessee_2018.png",
+              "sha256": "QhSYVL/zavDFoX9aVRn1bTeZpd+UyA+cqEIDqzbvkkU="
+            },
+            "zhu_2015.hdf5": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847321000,
+              "length": 1059740,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2015.hdf5",
+              "sha256": "u9gQ7QDungJfIe+63QwhX+lHCNoCmRJOenhdYjVddCI="
+            },
+            "zhu_2017_general_beta_sigma.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 804736,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2017_general_beta_sigma.tif",
+              "sha256": "94YvIwHkIUkAvDSgVxOmYnDL0rtky4XkubMAiOcE7cg="
+            },
+            "godt_2008_modelmin.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 7948,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/godt_2008_modelmin.tif",
+              "sha256": "OigeDT8uvSX209EWI6NYVaxWe4/iaLfZ7K54nVVEGf8="
+            },
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847321000,
+              "length": 2271,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/contents.xml",
+              "sha256": "6By9syJhFk/HZkiIMK7DtZRjvuTnT6VeNfhD7rNzxqY="
+            },
+            "zhu_2017_general_model.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 54076,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2017_general_model.tif",
+              "sha256": "8dn2xcQhL3B8YvS1IUJkXYKsC8h8Hj4PKdn5Oo+Qk+s="
+            },
+            "nowicki_2014_global_model.kmz": {
+              "contentType": "application/vnd.google-earth.kmz",
+              "lastModified": 1619847321000,
+              "length": 31972,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/nowicki_2014_global_model.kmz",
+              "sha256": "3NB8ggovV2CcT+ZbXzuV/T4/nXZxb452rkeNUTGBtg0="
+            },
+            "zhu_2017_general.hdf5": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847321000,
+              "length": 871019,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2017_general.hdf5",
+              "sha256": "wy3MjbdieP/GumZhknKM0JuCzugORW2NYw+xPbgOpMs="
+            },
+            "godt_2008.hdf5": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847321000,
+              "length": 57020,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/godt_2008.hdf5",
+              "sha256": "ff8hK2S/cpnJbL67ODK3GG1Scy6Sadw7oeaor4LtyJs="
+            },
+            "nowicki_2014_global_model.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 941271,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/nowicki_2014_global_model.tif",
+              "sha256": "EGO7bPgMkHsiJEik9VDilSd8aRSVsRRCFIf2jlg653Y="
+            },
+            "godt_2008.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847321000,
+              "length": 845,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/godt_2008.png",
+              "sha256": "kPmHh9gdn/XfOKLlVjzmNJo7xIrqG+8UXChxyVtsDYk="
+            },
+            "nowicki_2014_global.hdf5": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847321000,
+              "length": 996397,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/nowicki_2014_global.hdf5",
+              "sha256": "w1d7L+lezdX+YlwHRVCPvL71IJJlOZ8UPnn+WnIV+6U="
+            },
+            "zhu_2015_model.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 998770,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2015_model.tif",
+              "sha256": "aHGNFIGJonRl+s+tXqV1wI2+Ei49G0XAIwFybI5rHj4="
+            },
+            "jessee_2018_model.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 1609942,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/jessee_2018_model.tif",
+              "sha256": "PHXkGlp5QUDx0FAjxeETZe8PI9ohHmv9iz4HE798gFQ="
+            },
+            "zhu_2015.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847321000,
+              "length": 3440,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2015.png",
+              "sha256": "Cw6Zp2UsWUm0VHm/xviKzCQqEIEoRchD9A/v5ZhEh9w="
+            },
+            "info.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847321000,
+              "length": 5698,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/info.json",
+              "sha256": "P6qFDI/RllpHPvd1iXjnX8ALpGmilun28dq++jz3EUg="
+            },
+            "jessee_2018_beta_sigma.tif": {
+              "contentType": "image/tiff",
+              "lastModified": 1619847321000,
+              "length": 2006006,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/jessee_2018_beta_sigma.tif",
+              "sha256": "TsKN2LJmV8w19h7jP0Dbb4N6v//lXadAPymdMfHdjiY="
+            },
+            "zhu_2015_model.kmz": {
+              "contentType": "application/vnd.google-earth.kmz",
+              "lastModified": 1619847321000,
+              "length": 29833,
+              "url": "https://earthquake.usgs.gov/product/ground-failure/6000e0iy/us/1619847321988/zhu_2015_model.kmz",
+              "sha256": "xI05pXuuoaKzeqLu2eGa0wot85XaXjw1s0RGNJQz2cs="
+            }
+          }
+        }
+      ],
+      "impact-text": [
+        {
+          "indexid": 19266188,
+          "indexTime": 1624138064637,
+          "id": "urn:usgs-product:us:impact-text:us6000e0iy:1624137888040",
+          "type": "impact-text",
+          "code": "us6000e0iy",
+          "source": "us",
+          "updateTime": 1624137888040,
+          "status": "UPDATE",
+          "properties": {
+            "eventParametersPublicID": "quakeml:us.anss.org/eventparameters/6000e0iy/1624137892",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "pdl-client-version": "Version 2.7.9 2021-02-10"
+          },
+          "preferredWeight": 8,
+          "contents": {
+            "": {
+              "contentType": "text/plain",
+              "lastModified": 1624137888000,
+              "length": 157,
+              "bytes": "At least nine people killed and 104 injured, 4,404 houses and 261 public buildings damaged and landslides and power outages occurred in southern Jawa Timur.\n",
+              "sha256": "QPuulpI+D8zwVVijpitB8OWTyJX6um5kqQdv16yjXiQ="
+            }
+          }
+        }
+      ],
+      "internal-moment-tensor": [
+        {
+          "indexid": 18838978,
+          "indexTime": 1618256207480,
+          "id": "urn:usgs-product:us:internal-moment-tensor:us_6000e0iy_mww:1618038346040",
+          "type": "internal-moment-tensor",
+          "code": "us_6000e0iy_mww",
+          "source": "us",
+          "updateTime": 1618038346040,
+          "status": "UPDATE",
+          "properties": {
+            "beachball-source": "us",
+            "depth": "72.8",
+            "derived-depth": "70.5",
+            "derived-eventtime": "2021-04-10T07:00:20.100Z",
+            "derived-latitude": "-9.1383",
+            "derived-longitude": "112.4700",
+            "derived-magnitude": "5.9",
+            "derived-magnitude-type": "Mww",
+            "evaluation-status": "confirmed",
+            "eventParametersPublicID": "quakeml:us.anss.org/eventparameters/6000e0iy/1618038347",
+            "eventsource": "usauto",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.100Z",
+            "latitude": "-9.1383",
+            "longitude": "112.4700",
+            "n-axis-azimuth": "308",
+            "n-axis-length": "-8.25466E+16",
+            "n-axis-plunge": "25",
+            "nodal-plane-1-dip": "25.25",
+            "nodal-plane-1-rake": "172.53",
+            "nodal-plane-1-strike": "209.95",
+            "nodal-plane-2-dip": "86.82",
+            "nodal-plane-2-rake": "64.94",
+            "nodal-plane-2-strike": "306.71",
+            "original-signature": "MC4CFQCN2pcxNopUBuOh9vA/q0DLrClCTAIVAKcbJirPmc+xaYhmhODzgDs0wr2N",
+            "original-signature-version": "v1",
+            "p-axis-azimuth": "59",
+            "p-axis-length": "-1.00597E+18",
+            "p-axis-plunge": "37",
+            "pdl-client-version": "Version 2.7.9 2021-02-10",
+            "percent-double-couple": "0.8483",
+            "quakeml-publicid": "quakeml:us.anss.org/focalmechanism/6000e0iy/mww",
+            "review-status": "automatic",
+            "scalar-moment": "1.05E+18",
+            "sourcetime-decaytime": "2.44",
+            "sourcetime-duration": "4.88",
+            "sourcetime-risetime": "2.44",
+            "sourcetime-type": "triangle",
+            "t-axis-azimuth": "193",
+            "t-axis-length": "1.08852E+18",
+            "t-axis-plunge": "43",
+            "tensor-mpp": "-4.835E+17",
+            "tensor-mrp": "5.066E+17",
+            "tensor-mrr": "1.242E+17",
+            "tensor-mrt": "-7.999E+17",
+            "tensor-mtp": "1.273E+17",
+            "tensor-mtt": "3.593E+17"
+          },
+          "preferredWeight": 163,
+          "contents": {
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1618038348000,
+              "length": 195,
+              "url": "https://earthquake.usgs.gov/product/internal-moment-tensor/us_6000e0iy_mww/us/1618038346040/contents.xml",
+              "sha256": "ABhLiaqdYWmIak24eD/csBAWouBShhatD9bUzLNEZFk="
+            },
+            "quakeml.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1618038346000,
+              "length": 8093,
+              "url": "https://earthquake.usgs.gov/product/internal-moment-tensor/us_6000e0iy_mww/us/1618038346040/quakeml.xml",
+              "sha256": "1seb33Q+VGFBRaepXX1rLXxYuqKKrBVxD57gCiIgThg="
+            }
+          }
+        }
+      ],
+      "internal-origin": [
+        {
+          "indexid": 18838972,
+          "indexTime": 1618256204904,
+          "id": "urn:usgs-product:pt:internal-origin:pt21100000:1618038309520",
+          "type": "internal-origin",
+          "code": "pt21100000",
+          "source": "pt",
+          "updateTime": 1618038309520,
+          "status": "UPDATE",
+          "properties": {
+            "azimuthal-gap": "197.9999841600012671998986240081101",
+            "cube-location-method": "z",
+            "cube-magnitude-type": "I",
+            "depth": "75.3",
+            "event-type": "earthquake",
+            "eventsource": "pt",
+            "eventsourcecode": "21100000",
+            "eventtime": "2021-04-10T07:00:17.000Z",
+            "latitude": "-8.69",
+            "location-method-algorithm": "z",
+            "location-method-class": "CUBE_Code",
+            "longitude": "112.518",
+            "magnitude": "5.9",
+            "magnitude-num-stations-used": "6",
+            "magnitude-type": "Mi",
+            "num-stations-used": "8",
+            "original-signature": "MCwCFF8SSAOFa//jumrco2MCKy1L8PxPAhQG7ZZ8GVghDHqLUUvFXtjFBLTbBg==",
+            "original-signature-version": "v1",
+            "review-status": "REVIEWED",
+            "standard-error": "0.98",
+            "title": "58 km SSW of Gongdanglegi Kulon, Indonesia",
+            "version": "A"
+          },
+          "preferredWeight": 6,
+          "contents": {
+            "contents.xml": {
+              "contentType": "text/plain",
+              "lastModified": 1618038309000,
+              "length": 272,
+              "url": "https://earthquake.usgs.gov/product/internal-origin/pt21100000/pt/1618038309520/contents.xml",
+              "sha256": "PzlTQj8FWkBJx8Aaw8QrZKtT8VeAHdXJtYpy43yn7+I="
+            },
+            "eqxml.xml": {
+              "contentType": "text/plain",
+              "lastModified": 1618038309000,
+              "length": 922,
+              "url": "https://earthquake.usgs.gov/product/internal-origin/pt21100000/pt/1618038309520/eqxml.xml",
+              "sha256": "btuiLM7OF2Yu22mweQ8zkb8hD7v8c4lFOTZExH2gYBo="
+            }
+          }
+        }
+      ],
+      "losspager": [
+        {
+          "indexid": 18950236,
+          "indexTime": 1619847239623,
+          "id": "urn:usgs-product:us:losspager:us6000e0iy:1619847219991",
+          "type": "losspager",
+          "code": "us6000e0iy",
+          "source": "us",
+          "updateTime": 1619847219991,
+          "status": "UPDATE",
+          "properties": {
+            "alertlevel": "green",
+            "depth": "67.0",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.000Z",
+            "latitude": "-8.5528",
+            "longitude": "112.5149",
+            "magnitude": "6.0",
+            "maxmmi": "5",
+            "original-signature": "MCwCFByQZhW0ACG0CBZjnaSN7bcasAj+AhQS+vnVbFlsHC6/Ipx00hmYSxGOqw==",
+            "original-signature-version": "v1",
+            "pdl-client-version": "Version 2.7.9 2021-02-10",
+            "review-status": "automatic"
+          },
+          "preferredWeight": 158,
+          "contents": {
+            "json/cities.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 351431,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/cities.json",
+              "sha256": "/vxlLxTbaPx+czVNiheP8L5BMP2Dy95VfBwGJvRuvhI="
+            },
+            "onepager.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847219000,
+              "length": 1472542,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/onepager.pdf",
+              "sha256": "nZUZSr3KGquChYXBnK6o7Kf1GJJswuf+hK5Zu4guFqQ="
+            },
+            "json/alerts.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 1459,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/alerts.json",
+              "sha256": "1UfVeYoG8PYt0qCOYuSzpCEavmb3Z+POM8nMv2AEjb0="
+            },
+            "json/exposures.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 613,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/exposures.json",
+              "sha256": "xuQPiaYCB4lXJ/Nv9hsbH5oeEEtlbhn3hqcd/qbRFOk="
+            },
+            "json/historical_earthquakes.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 1570,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/historical_earthquakes.json",
+              "sha256": "J+c1fSbMWBrTH9MtpLX8LqsF5WRRABcbbWysJt0UYZY="
+            },
+            "grid.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847185000,
+              "length": 11235068,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/grid.xml",
+              "sha256": "bMc+n3v8M6YX2A9rXnYgo85IyW47bqPrPB7Q62VryfY="
+            },
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847219000,
+              "length": 2951,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/contents.xml",
+              "sha256": "4YQYOxrL0fquA/rZdjmRkwL065QhV7flQVnnu+RBWCE="
+            },
+            "alertfatal.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847201000,
+              "length": 10136,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertfatal.pdf",
+              "sha256": "R1bYsXeslIrWBUttX5OmBv+/5bcx4Itvi1Mn6B/TS9c="
+            },
+            "json/event.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 719,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/event.json",
+              "sha256": "pteE9IIkbNlxrHRIjpxqaiy5c98f53BneceeJPDGGQ4="
+            },
+            "onepager.log": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847219000,
+              "length": 27080,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/onepager.log",
+              "sha256": "nmZXawQrzVzopW1dYBfqXoqlTzrErUAy2c6hZuvnbb4="
+            },
+            "alertfatal.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847201000,
+              "length": 12787,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertfatal.png",
+              "sha256": "+9IMVDFMBPUaxY+B56yGRMPK5sd1rngvtDYaagpGsp8="
+            },
+            "alertecon.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847202000,
+              "length": 13714,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertecon.png",
+              "sha256": "g/RKtheIvIM3/Sd2KlHhbGy0SeSjPCPvz+HCsLt/4as="
+            },
+            "json/comments.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 746,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/comments.json",
+              "sha256": "/6Pg2xh8rTskMyo/G0ob7xxK0ta9MCFerpTV+Vp4IRQ="
+            },
+            "exposure.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847214000,
+              "length": 161533,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/exposure.png",
+              "sha256": "PZvcNkaQGMlbyQMsOshIp6/Xm9Po42pc0I0HyFV/3pk="
+            },
+            "alertfatal_small.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847201000,
+              "length": 5577,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertfatal_small.png",
+              "sha256": "JMFNGHQ4PL0SSl1a4V9AyM2FVvYn6DTaFYgmUF83Wzw="
+            },
+            "alertecon.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847202000,
+              "length": 11452,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertecon.pdf",
+              "sha256": "XqrzWZje9+5fHJEqTHA8m4+NXTg78EFdj3IFkOhV3/Q="
+            },
+            "onepager.aux": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847219000,
+              "length": 166,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/onepager.aux",
+              "sha256": "Wogp1VdeNQAUFhvWSLY6a2xGsMZxAcv6AdpewII2+W4="
+            },
+            "exposure.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847214000,
+              "length": 1154241,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/exposure.pdf",
+              "sha256": "zv0ayER9TwdWgzguUfaXBU5P7zWlkHdbHwJXJMbRbgQ="
+            },
+            "json/losses.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847218000,
+              "length": 1014,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/json/losses.json",
+              "sha256": "gEPzB1ml7Ada5+DA/ahcQUl3zbVSMosutNq5xAUMDrs="
+            },
+            "alertfatal_smaller.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847202000,
+              "length": 3272,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertfatal_smaller.png",
+              "sha256": "pMU4xfxlOOffx4AHkn2fj6Vyq82W6YdOJMfnoUVmmOI="
+            },
+            "onepager.tex": {
+              "contentType": "application/x-tex",
+              "lastModified": 1619847219000,
+              "length": 17709,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/onepager.tex",
+              "sha256": "ZbwpyJ/3YeZUoFXQmywvgwYqzsFKOGzgzkk0OQRziw4="
+            },
+            "pager.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847219000,
+              "length": 273126,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/pager.xml",
+              "sha256": "xraWCzd9f2lq5W3Dqx0NGzMgs/30JqVt5+2QThNY9V8="
+            },
+            "alertecon_small.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847202000,
+              "length": 6007,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertecon_small.png",
+              "sha256": "SvkwbNnCfy9lZvO8P9U/3B+kvIfItMKV7nClTAV80Og="
+            },
+            "alertecon_smaller.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847202000,
+              "length": 3470,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/alertecon_smaller.png",
+              "sha256": "G4wiX/rgMW3oYY07CxWiLvdZ3VR+boziWGo8Wh9Gcx0="
+            },
+            "event.log": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847219000,
+              "length": 3889,
+              "url": "https://earthquake.usgs.gov/product/losspager/us6000e0iy/us/1619847219991/event.log",
+              "sha256": "nbzsMgj+1AHR+QOq/0DXG9xA/RSbZaohQxrTYb5XV6Y="
+            }
+          }
+        }
+      ],
+      "moment-tensor": [
+        {
+          "indexid": 19266190,
+          "indexTime": 1624138066055,
+          "id": "urn:usgs-product:us:moment-tensor:us_6000e0iy_mww:1624137888040",
+          "type": "moment-tensor",
+          "code": "us_6000e0iy_mww",
+          "source": "us",
+          "updateTime": 1624137888040,
+          "status": "UPDATE",
+          "properties": {
+            "beachball-source": "us",
+            "depth": "67",
+            "derived-depth": "60.5",
+            "derived-eventtime": "2021-04-10T07:00:21.600Z",
+            "derived-latitude": "-9.1707",
+            "derived-longitude": "112.5045",
+            "derived-magnitude": "6.0",
+            "derived-magnitude-type": "Mww",
+            "evaluation-status": "reviewed",
+            "eventParametersPublicID": "quakeml:us.anss.org/eventparameters/6000e0iy/1624137892",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.500Z",
+            "latitude": "-8.5707",
+            "longitude": "112.5045",
+            "n-axis-azimuth": "322",
+            "n-axis-length": "2.527E+16",
+            "n-axis-plunge": "21",
+            "nodal-plane-1-dip": "27.71",
+            "nodal-plane-1-rake": "140.73",
+            "nodal-plane-1-strike": "189.29",
+            "nodal-plane-2-dip": "72.88",
+            "nodal-plane-2-rake": "67.87",
+            "nodal-plane-2-strike": "315.19",
+            "p-axis-azimuth": "62",
+            "p-axis-length": "-1.334E+18",
+            "p-axis-plunge": "25",
+            "pdl-client-version": "Version 2.7.9 2021-02-10",
+            "percent-double-couple": "0.9621",
+            "quakeml-publicid": "quakeml:us.anss.org/focalmechanism/6000e0iy/mww",
+            "review-status": "reviewed",
+            "scalar-moment": "1.32E+18",
+            "sourcetime-decaytime": "2.18",
+            "sourcetime-duration": "4.36",
+            "sourcetime-risetime": "2.18",
+            "sourcetime-type": "triangle",
+            "t-axis-azimuth": "196",
+            "t-axis-length": "1.30873E+18",
+            "t-axis-plunge": "57",
+            "tensor-mpp": "-8.224E+17",
+            "tensor-mrp": "6.225E+17",
+            "tensor-mrr": "6.809E+17",
+            "tensor-mrt": "-8.071E+17",
+            "tensor-mtp": "3.572E+17",
+            "tensor-mtt": "1.414E+17"
+          },
+          "preferredWeight": 218,
+          "contents": {
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624138060000,
+              "length": 195,
+              "url": "https://earthquake.usgs.gov/product/moment-tensor/us_6000e0iy_mww/us/1624137888040/contents.xml",
+              "sha256": "ABhLiaqdYWmIak24eD/csBAWouBShhatD9bUzLNEZFk="
+            },
+            "quakeml.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624137888000,
+              "length": 8950,
+              "url": "https://earthquake.usgs.gov/product/moment-tensor/us_6000e0iy_mww/us/1624137888040/quakeml.xml",
+              "sha256": "MJNVsxJaKhlzs2V0wn3kF95Rmb2bOybrg8WH73lzfVQ="
+            }
+          }
+        },
+        {
+          "indexid": 19266192,
+          "indexTime": 1624138067539,
+          "id": "urn:usgs-product:us:moment-tensor:us_6000e0iy_mwb:1624137888040",
+          "type": "moment-tensor",
+          "code": "us_6000e0iy_mwb",
+          "source": "us",
+          "updateTime": 1624137888040,
+          "status": "UPDATE",
+          "properties": {
+            "beachball-source": "us",
+            "depth": "69.4",
+            "derived-depth": "71",
+            "derived-eventtime": "1970-01-01T00:00:00.000Z",
+            "derived-latitude": "0.0000",
+            "derived-longitude": "0.0000",
+            "derived-magnitude": "6.0",
+            "derived-magnitude-type": "Mwb",
+            "evaluation-status": "reviewed",
+            "eventParametersPublicID": "quakeml:us.anss.org/eventparameters/6000e0iy/1624137892",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:16.100Z",
+            "latitude": "-8.5656",
+            "longitude": "112.5306",
+            "n-axis-azimuth": "304",
+            "n-axis-length": "-2.23724E+17",
+            "n-axis-plunge": "23",
+            "nodal-plane-1-dip": "85.15",
+            "nodal-plane-1-rake": "66.52",
+            "nodal-plane-1-strike": "301.56",
+            "nodal-plane-2-dip": "23.95",
+            "nodal-plane-2-rake": "167.99",
+            "nodal-plane-2-strike": "200.56",
+            "p-axis-azimuth": "52",
+            "p-axis-length": "-1.07287E+18",
+            "p-axis-plunge": "36",
+            "pdl-client-version": "Version 2.7.9 2021-02-10",
+            "percent-double-couple": "0.6549",
+            "quakeml-publicid": "quakeml:us.anss.org/focalmechanism/6000e0iy/mwb",
+            "review-status": "reviewed",
+            "scalar-moment": "1.2E+18",
+            "t-axis-azimuth": "188",
+            "t-axis-length": "1.29659E+18",
+            "t-axis-plunge": "45",
+            "tensor-mpp": "-5.537E+17",
+            "tensor-mrp": "4.249E+17",
+            "tensor-mrr": "2.419E+17",
+            "tensor-mrt": "-1.0013E+18",
+            "tensor-mtp": "1.638E+17",
+            "tensor-mtt": "3.118E+17"
+          },
+          "preferredWeight": 159,
+          "contents": {
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624138060000,
+              "length": 195,
+              "url": "https://earthquake.usgs.gov/product/moment-tensor/us_6000e0iy_mwb/us/1624137888040/contents.xml",
+              "sha256": "ABhLiaqdYWmIak24eD/csBAWouBShhatD9bUzLNEZFk="
+            },
+            "quakeml.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624137888000,
+              "length": 21517,
+              "url": "https://earthquake.usgs.gov/product/moment-tensor/us_6000e0iy_mwb/us/1624137888040/quakeml.xml",
+              "sha256": "irFQfwKSZZnssCsiw3Pyj5S7nAbt4jolDWS6w6Fgegw="
+            }
+          }
+        }
+      ],
+      "origin": [
+        {
+          "indexid": 19266184,
+          "indexTime": 1624138062295,
+          "id": "urn:usgs-product:us:origin:us6000e0iy:1624137888040",
+          "type": "origin",
+          "code": "us6000e0iy",
+          "source": "us",
+          "updateTime": 1624137888040,
+          "status": "UPDATE",
+          "properties": {
+            "azimuthal-gap": "21",
+            "depth": "67",
+            "depth-type": "from modeling of broad-band P waveforms",
+            "error-ellipse-azimuth": "188",
+            "error-ellipse-intermediate": "8300",
+            "error-ellipse-major": "15000",
+            "error-ellipse-minor": "2900",
+            "error-ellipse-plunge": "0",
+            "error-ellipse-rotation": "89",
+            "evaluation-status": "reviewed",
+            "event-type": "earthquake",
+            "eventParametersPublicID": "quakeml:us.anss.org/eventparameters/6000e0iy/1624137892",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.485Z",
+            "eventtime-error": "1.69",
+            "horizontal-error": "7.3",
+            "latitude": "-8.5707",
+            "latitude-error": "0.0881",
+            "longitude": "112.5054",
+            "longitude-error": "0.0509",
+            "magnitude": "6.0",
+            "magnitude-error": "0.066",
+            "magnitude-num-stations-used": "22",
+            "magnitude-source": "us",
+            "magnitude-type": "mww",
+            "minimum-distance": "1.631",
+            "num-phases-used": "181",
+            "origin-source": "us",
+            "pdl-client-version": "Version 2.7.9 2021-02-10",
+            "quakeml-magnitude-publicid": "quakeml:us.anss.org/magnitude/6000e0iy/mww",
+            "quakeml-origin-publicid": "quakeml:us.anss.org/origin/6000e0iy",
+            "quakeml-publicid": "quakeml:us.anss.org/event/6000e0iy",
+            "review-status": "reviewed",
+            "standard-error": "0.83",
+            "title": "45 km S of Sumberpucung, Indonesia",
+            "vertical-error": "1.9"
+          },
+          "preferredWeight": 158,
+          "contents": {
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624138060000,
+              "length": 195,
+              "url": "https://earthquake.usgs.gov/product/origin/us6000e0iy/us/1624137888040/contents.xml",
+              "sha256": "ABhLiaqdYWmIak24eD/csBAWouBShhatD9bUzLNEZFk="
+            },
+            "quakeml.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624137888000,
+              "length": 3685,
+              "url": "https://earthquake.usgs.gov/product/origin/us6000e0iy/us/1624137888040/quakeml.xml",
+              "sha256": "EiKdMWz1Mh3sWv9BXIhNxMbb7Reat5WuQPdIeMII7CE="
+            }
+          }
+        },
+        {
+          "indexid": 27500331,
+          "indexTime": 1766429764519,
+          "id": "urn:usgs-product:us:origin:iscgem620236368:1766429762531",
+          "type": "origin",
+          "code": "iscgem620236368",
+          "source": "us",
+          "updateTime": 1766429762531,
+          "status": "UPDATE",
+          "properties": {
+            "depth": "89.6",
+            "depth-type": "from location",
+            "evaluation-status": "final",
+            "event-type": "earthquake",
+            "eventParametersPublicID": "quakeml:us.anss.org/eventParameters/620236368",
+            "eventsource": "iscgem",
+            "eventsourcecode": "620236368",
+            "eventtime": "2021-04-10T07:00:16.740Z",
+            "latitude": "-8.592",
+            "longitude": "112.474",
+            "magnitude": "6.01",
+            "magnitude-error": "0.10",
+            "magnitude-source": "iscgem",
+            "magnitude-type": "mw",
+            "origin-source": "iscgem",
+            "pdl-client-version": "Version 2.9.1 2023-05-15",
+            "quakeml-magnitude-publicid": "quakeml:us.anss.org/magnitude/iscgem620236368/Mw",
+            "quakeml-origin-publicid": "quakeml:us.anss.org/origin/iscgem620236368",
+            "quakeml-publicid": "quakeml:us.anss.org/event/iscgem620236368",
+            "review-status": "reviewed",
+            "title": "47 km S of Sumberpucung, Indonesia",
+            "vertical-error": "5.3"
+          },
+          "preferredWeight": 103,
+          "contents": {
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1766429762000,
+              "length": 195,
+              "url": "https://earthquake.usgs.gov/product/origin/iscgem620236368/us/1766429762531/contents.xml",
+              "sha256": "ABhLiaqdYWmIak24eD/csBAWouBShhatD9bUzLNEZFk="
+            },
+            "quakeml.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1766429762000,
+              "length": 2174,
+              "url": "https://earthquake.usgs.gov/product/origin/iscgem620236368/us/1766429762531/quakeml.xml",
+              "sha256": "czdmcUXSJtPr8SrJBP892tVlFsyn4a72Y9Hk/VoD9+0="
+            }
+          }
+        }
+      ],
+      "phase-data": [
+        {
+          "indexid": 19266187,
+          "indexTime": 1624138064027,
+          "id": "urn:usgs-product:us:phase-data:us6000e0iy:1624137888040",
+          "type": "phase-data",
+          "code": "us6000e0iy",
+          "source": "us",
+          "updateTime": 1624137888040,
+          "status": "UPDATE",
+          "properties": {
+            "azimuthal-gap": "21",
+            "depth": "67",
+            "depth-type": "from modeling of broad-band P waveforms",
+            "error-ellipse-azimuth": "188",
+            "error-ellipse-intermediate": "8300",
+            "error-ellipse-major": "15000",
+            "error-ellipse-minor": "2900",
+            "error-ellipse-plunge": "0",
+            "error-ellipse-rotation": "89",
+            "evaluation-status": "reviewed",
+            "event-type": "earthquake",
+            "eventParametersPublicID": "quakeml:us.anss.org/eventparameters/6000e0iy/1624137892",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.485Z",
+            "eventtime-error": "1.69",
+            "horizontal-error": "7.3",
+            "latitude": "-8.5707",
+            "latitude-error": "0.0881",
+            "longitude": "112.5054",
+            "longitude-error": "0.0509",
+            "magnitude": "6.0",
+            "magnitude-error": "0.066",
+            "magnitude-num-stations-used": "22",
+            "magnitude-source": "us",
+            "magnitude-type": "mww",
+            "minimum-distance": "1.631",
+            "num-phases-used": "181",
+            "origin-source": "us",
+            "pdl-client-version": "Version 2.7.9 2021-02-10",
+            "quakeml-magnitude-publicid": "quakeml:us.anss.org/magnitude/6000e0iy/mww",
+            "quakeml-origin-publicid": "quakeml:us.anss.org/origin/6000e0iy",
+            "quakeml-publicid": "quakeml:us.anss.org/event/6000e0iy",
+            "review-status": "reviewed",
+            "standard-error": "0.83",
+            "vertical-error": "1.9"
+          },
+          "preferredWeight": 158,
+          "contents": {
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624138060000,
+              "length": 195,
+              "url": "https://earthquake.usgs.gov/product/phase-data/us6000e0iy/us/1624137888040/contents.xml",
+              "sha256": "ABhLiaqdYWmIak24eD/csBAWouBShhatD9bUzLNEZFk="
+            },
+            "quakeml.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1624137888000,
+              "length": 527925,
+              "url": "https://earthquake.usgs.gov/product/phase-data/us6000e0iy/us/1624137888040/quakeml.xml",
+              "sha256": "wgCIKSAFGDCeJ2bdCimJkKGB6SXzqHIMeWidqwXTI9Y="
+            }
+          }
+        }
+      ],
+      "shakemap": [
+        {
+          "indexid": 18950230,
+          "indexTime": 1619847185245,
+          "id": "urn:usgs-product:us:shakemap:us6000e0iy:1619847120458",
+          "type": "shakemap",
+          "code": "us6000e0iy",
+          "source": "us",
+          "updateTime": 1619847120458,
+          "status": "UPDATE",
+          "properties": {
+            "depth": "67.0",
+            "event-description": "USGS NEIC ShakeMap",
+            "event-type": "ACTUAL",
+            "eventsource": "us",
+            "eventsourcecode": "6000e0iy",
+            "eventtime": "2021-04-10T07:00:15.000Z",
+            "gmice": "WGRW12",
+            "latitude": "-8.5528",
+            "longitude": "112.5149",
+            "magnitude": "6.0",
+            "map-status": "automatic",
+            "maximum-latitude": "-6.733",
+            "maximum-longitude": "114.333",
+            "maxmmi": "5.362",
+            "maxmmi-grid": "5.431",
+            "maxpga": "0.077",
+            "maxpga-grid": "0.081",
+            "maxpgv": "1.419",
+            "maxpgv-grid": "1.419",
+            "maxpsa03": "0.137",
+            "maxpsa03-grid": "0.139",
+            "maxpsa10": "0.044",
+            "maxpsa10-grid": "0.044",
+            "maxpsa30": "0.006",
+            "maxpsa30-grid": "0.006",
+            "minimum-latitude": "-10.333",
+            "minimum-longitude": "110.683",
+            "original-signature": "MCwCFHA0s1XUEgneU18fRX7efocXBnyKAhRCl3Bl/2StseniqIZTVkcted58ww==",
+            "original-signature-version": "v1",
+            "pdl-client-version": "Version 2.4.0 2020-05-11",
+            "process-timestamp": "2021-05-01T05:31:09Z",
+            "review-status": "automatic",
+            "shakemap-code-version": "4.0.2+431.g3c0d2d0",
+            "version": "5"
+          },
+          "preferredWeight": 233,
+          "contents": {
+            "download/coverage_psa3p0_high_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 1122399,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa3p0_high_res.covjson",
+              "sha256": "Qa3DCzfQToqWk/7D9jv80pc1AnG4J5qyOWATS0Ta00Q="
+            },
+            "download/coverage_psa3p0_medium_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 282462,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa3p0_medium_res.covjson",
+              "sha256": "10bjczx4ijND8GAb6Jm64rm10bzQUmOHuaClLwg/fwk="
+            },
+            "download/coverage_pgv_high_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 1090949,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_pgv_high_res.covjson",
+              "sha256": "fnflQSLFKjlH3Kl3Ci2y54R9G2Ohyv6f9v0XlRh8Qjw="
+            },
+            "download/mmi_legend.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847086000,
+              "length": 48985,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/mmi_legend.png",
+              "sha256": "80m4kl/L9kQcvmzceDp9MlYRNS2PCXdRGZiyvXzxQZ0="
+            },
+            "download/rupture.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847119000,
+              "length": 533,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/rupture.json",
+              "sha256": "8MzcfB4KYhW4MxzJ3agAbKcuv8TkwPFxlq0kt4Kqx8Q="
+            },
+            "download/info.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847074000,
+              "length": 4914,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/info.json",
+              "sha256": "ATNi5ohjpd+8qNdNxcTpKZiH9weux2lK/WQuWYLvIfs="
+            },
+            "download/coverage_psa0p3_high_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 1122260,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa0p3_high_res.covjson",
+              "sha256": "S8PyJWm0/AlSN2ehcz4dVwBROliXLneyG5TUePihPBk="
+            },
+            "download/psa3p0.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1619847112000,
+              "length": 232804,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa3p0.jpg",
+              "sha256": "zyOHLGsomhITb+ghRz/0Ew/m4DgpK/nNyFUfQgnLP9k="
+            },
+            "download/cont_psa0p3.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847071000,
+              "length": 16153,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_psa0p3.json",
+              "sha256": "V4WKhWPZDBaoiS/sMWECSVeCFN/U8SRzpwcIETH0vrs="
+            },
+            "download/coverage_pga_high_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 1122392,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_pga_high_res.covjson",
+              "sha256": "sUy3TyKnTv3PHUhAvPmFistZBd88T1+Fdd60t74HpI0="
+            },
+            "download/coverage_psa0p3_low_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 71580,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa0p3_low_res.covjson",
+              "sha256": "yR5xw7sTWoGsZ9L0VnEkhAMWO/apiaZ4PdLpRo+T5QI="
+            },
+            "download/attenuation_curves.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847114000,
+              "length": 52749,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/attenuation_curves.json",
+              "sha256": "ZahzrF5HYMBTT3gwemCRjhusfBs7nDmzLqRId1Kil1s="
+            },
+            "download/intensity.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1619847092000,
+              "length": 236140,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/intensity.jpg",
+              "sha256": "jD4DKgihGO5zVS5q4zJA8U42DWvVXADRG/iUVS8BLzc="
+            },
+            "download/raster.zip": {
+              "contentType": "application/zip",
+              "lastModified": 1619847117000,
+              "length": 6964133,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/raster.zip",
+              "sha256": "1/Blvg5U4rGFRHDpO0OX/Hz9zJ5uA8MoZLUykdfbPQU="
+            },
+            "download/pga.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847096000,
+              "length": 1245975,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pga.pdf",
+              "sha256": "XRp8JUdJzEgClMMfeXgw0dNMK7wLSVnFQIftdA7xtp0="
+            },
+            "download/pga_regr.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847113000,
+              "length": 94947,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pga_regr.png",
+              "sha256": "idzMTOsehfYoY2gEXgJhrQiA+dFjdr0siRcjWNgNOi8="
+            },
+            "download/coverage_mmi_low_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 48898,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_mmi_low_res.covjson",
+              "sha256": "JBeKJwYX+rt0uwTGnQWy6QwqnKtKf2csT02ymv1jgLc="
+            },
+            "download/coverage_mmi_high_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 761286,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_mmi_high_res.covjson",
+              "sha256": "2Kc1T8+BD5vRXn24pKXOTYgoesYm8brZSx6KvQCAY/Q="
+            },
+            "download/intensity.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847091000,
+              "length": 1232047,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/intensity.pdf",
+              "sha256": "+Y2NGBgOTLW4o3oPghcWb35gmgxqubCzk05YoTnrbtY="
+            },
+            "download/mmi_regr.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847113000,
+              "length": 84369,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/mmi_regr.png",
+              "sha256": "MxIhdemrjp8qY2XPmxcjnW42bY1e64vqdiXfbvDKJXs="
+            },
+            "download/psa3p0.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847111000,
+              "length": 1248112,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa3p0.pdf",
+              "sha256": "BCOJpzohoBVCFYhvGVd4xTPx8l5CU4M3mraxNVwBqPA="
+            },
+            "download/coverage_psa1p0_high_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 1122172,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa1p0_high_res.covjson",
+              "sha256": "dw19K6n1Qd4uBi01/7s5RdY4eMA9pTT9IS/3FhbchV0="
+            },
+            "download/uncertainty.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847074000,
+              "length": 10727613,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/uncertainty.xml",
+              "sha256": "gbevcr8ROnr6vhnoJoa6fyZOKmDpjSZWEDmJ9uLYpJ0="
+            },
+            "download/pin-thumbnail.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847093000,
+              "length": 25596,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pin-thumbnail.png",
+              "sha256": "1+/YmR1UtZC8bciDS8Q2N+pAE3XAT8gP1woCx+5bnB4="
+            },
+            "download/cont_mmi.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847070000,
+              "length": 12259,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_mmi.json",
+              "sha256": "dKWKwTpvaSsPgDelW/duRz0qAAkieFXg5uEYvMKoW2Y="
+            },
+            "download/coverage_pgv_low_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 69589,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_pgv_low_res.covjson",
+              "sha256": "GN0B0Fss4IWuVydHCwAOgSKLkZM5lIVPSTS/Rhx88ys="
+            },
+            "download/coverage_mmi_medium_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 191898,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_mmi_medium_res.covjson",
+              "sha256": "HE+Y3JLBvmGTGFGo304i1p2Oa+CJ/A9Z26sKzWMrx2k="
+            },
+            "download/pgv.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847100000,
+              "length": 1250397,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pgv.pdf",
+              "sha256": "L9dI8/Fk0B/UXWN0qPDhQEQGM64c+hyR0hhI6+u9BwM="
+            },
+            "contents.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847119000,
+              "length": 12211,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/contents.xml",
+              "sha256": "yXZ04XQCE3nykDLVHYNl5ykaKZpzCWv2+req0qSBt24="
+            },
+            "download/cont_psa1p0.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847072000,
+              "length": 16185,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_psa1p0.json",
+              "sha256": "oycKyB/OqBT/0sQ08KqMTd+lmtWnR1tL7cbBWtkkkFY="
+            },
+            "download/cont_psa3p0.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847072000,
+              "length": 14841,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_psa3p0.json",
+              "sha256": "cderzg2veY6Gtvf9ndO0dWWD2ABh4DpIwNwa6vke770="
+            },
+            "download/psa1p0.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847108000,
+              "length": 1250747,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa1p0.pdf",
+              "sha256": "m1Ra426iUXFcKdIFttVVQjv34YzyaSpIzceCv68G8/A="
+            },
+            "download/coverage_pgv_medium_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 274653,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_pgv_medium_res.covjson",
+              "sha256": "kXa66x8KSBZp5BSj+BgfN9gX/+i20nlTxuPsKQ6bg7o="
+            },
+            "download/psa1p0_regr.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847114000,
+              "length": 92258,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa1p0_regr.png",
+              "sha256": "N0g5RsOjdbGu9lG3UXzHQc7QNZVI3iKQ01X/2z10ajA="
+            },
+            "download/coverage_psa3p0_low_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 71473,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa3p0_low_res.covjson",
+              "sha256": "47S6CdYeKY/uf8t0CiRQr/e+SUVh1Xz8EOE44h7g+TI="
+            },
+            "download/pga.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1619847097000,
+              "length": 230921,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pga.jpg",
+              "sha256": "8ACiByX1rKQkG8a2TtTxBPlmAqmxqZbr1aQI9RPE39U="
+            },
+            "download/coverage_psa1p0_medium_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 282461,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa1p0_medium_res.covjson",
+              "sha256": "f9r/6oNgZ8t/1xhONpogtYtWK3/WDoma3sTM+4A0EpA="
+            },
+            "download/psa0p3.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1619847105000,
+              "length": 237388,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa0p3.jpg",
+              "sha256": "BsbxJGZ1y87UC9KGkiZLEyjqpGI6RyGS7WxCCL4gnT8="
+            },
+            "download/shake_result.hdf": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847120000,
+              "length": 24368322,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/shake_result.hdf",
+              "sha256": "f0YhVDjA6KpVMVkh1JxA6a6DTMcG32vf8xuZTh40Xlw="
+            },
+            "download/cont_pga.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847070000,
+              "length": 10866,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_pga.json",
+              "sha256": "q8jFsNe5VSEzZIGpZut/pz77cpNRaPa2hnCyI2yrE7w="
+            },
+            "download/pgv.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1619847101000,
+              "length": 230863,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pgv.jpg",
+              "sha256": "x+Goqs6i3r+koEm+zdI151k8lHZPssPK99lJpNR/9Ec="
+            },
+            "download/psa1p0.jpg": {
+              "contentType": "image/jpeg",
+              "lastModified": 1619847108000,
+              "length": 234683,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa1p0.jpg",
+              "sha256": "gfUd+B4Y6Rpb39vSVCHOqHj+bDN7VIt2iv4mAddOs+U="
+            },
+            "download/cont_mi.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847070000,
+              "length": 12259,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_mi.json",
+              "sha256": "dKWKwTpvaSsPgDelW/duRz0qAAkieFXg5uEYvMKoW2Y="
+            },
+            "download/pgv_regr.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847113000,
+              "length": 88133,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/pgv_regr.png",
+              "sha256": "F6LSIhHcRZ/Q6lTIDYhfat8rkw3nVq4hky2145LgexM="
+            },
+            "download/intensity_overlay.pngw": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847093000,
+              "length": 40,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/intensity_overlay.pngw",
+              "sha256": "gIahuD4ufQW89PfAe+ED2Kq2WvS+a9SZ3ftl4WxAPBk="
+            },
+            "download/coverage_pga_low_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 71508,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_pga_low_res.covjson",
+              "sha256": "6XCGNsjmPdfRVbRaWhcJ6OsH38A0NPQky/N5zdBKEP8="
+            },
+            "download/coverage_pga_medium_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847115000,
+              "length": 282420,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_pga_medium_res.covjson",
+              "sha256": "IYBbcMJez2IbvAPpqr4uoeudw1qexEIgZu64eQqagpc="
+            },
+            "download/grid.xml": {
+              "contentType": "application/xml",
+              "lastModified": 1619847073000,
+              "length": 11235068,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/grid.xml",
+              "sha256": "bMc+n3v8M6YX2A9rXnYgo85IyW47bqPrPB7Q62VryfY="
+            },
+            "download/coverage_psa1p0_low_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 71510,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa1p0_low_res.covjson",
+              "sha256": "KnQuv6axrtFgU8jmEhX8gWW5vFIt9b5qHP8tgllJtOk="
+            },
+            "download/intensity_overlay.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847093000,
+              "length": 47135,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/intensity_overlay.png",
+              "sha256": "JhUHEHXcRm6vpRL7hUlPnaVMuqnjvBF6kQ7dyY3w+a4="
+            },
+            "download/psa0p3_regr.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847114000,
+              "length": 94775,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa0p3_regr.png",
+              "sha256": "XO8MW5KYnxnjXwNNMZ/9L4WX6qQEP3BzUzVXPAocQak="
+            },
+            "download/stationlist.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847119000,
+              "length": 30760,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/stationlist.json",
+              "sha256": "7acwadzXaLYZ7EUUXwO7k+cdkoYJ3jnFO4r9VU0wHmo="
+            },
+            "download/psa3p0_regr.png": {
+              "contentType": "image/png",
+              "lastModified": 1619847114000,
+              "length": 82336,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa3p0_regr.png",
+              "sha256": "q8KJhSdX3okoG4+2RddOWiTWhini+BoJnpzoHtHcVrk="
+            },
+            "download/shakemap.kmz": {
+              "contentType": "application/vnd.google-earth.kmz",
+              "lastModified": 1619847081000,
+              "length": 178225,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/shakemap.kmz",
+              "sha256": "aavSvWzXOCcb1cq7fqEgwglsFgOPfeQfGdtyehLuUFs="
+            },
+            "download/psa0p3.pdf": {
+              "contentType": "application/pdf",
+              "lastModified": 1619847104000,
+              "length": 1250997,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/psa0p3.pdf",
+              "sha256": "q1LoTDu6cx80oz5M2gRbz5yNxMprtFRtqGZAN7E7tQQ="
+            },
+            "download/coverage_psa0p3_medium_res.covjson": {
+              "contentType": "application/octet-stream",
+              "lastModified": 1619847116000,
+              "length": 282461,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/coverage_psa0p3_medium_res.covjson",
+              "sha256": "ewUTjSLpD1ZUfrqVNNeGt4A36SSlrIFoRlHrLv2ptC0="
+            },
+            "download/cont_pgv.json": {
+              "contentType": "application/json",
+              "lastModified": 1619847071000,
+              "length": 15820,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/cont_pgv.json",
+              "sha256": "cIKRD1y8Zd+o6oNFREkl5JIPYF1JkvRXD82NR20I480="
+            },
+            "download/shape.zip": {
+              "contentType": "application/zip",
+              "lastModified": 1619847119000,
+              "length": 2239379,
+              "url": "https://earthquake.usgs.gov/product/shakemap/us6000e0iy/us/1619847120458/download/shape.zip",
+              "sha256": "l0T2SV1J4QAfN8zvBhXfGSL+Y2cb5aufzLZzwA73YYg="
+            }
+          }
+        }
+      ]
+    }
+  },
+  "geometry": {
+    "type": "Point",
+    "coordinates": [
+      112.5054,
+      -8.5707,
+      67
+    ]
+  },
+  "id": "us6000e0iy"
+}

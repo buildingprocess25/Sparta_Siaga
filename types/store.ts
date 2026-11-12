@@ -1,6 +1,6 @@
 import { Earthquake } from "./disaster";
 
-export type SpatialRisk = "SAFE" | "MONITOR" | "PRIORITY_MONITOR";
+export type SpatialRisk = "SAFE" | "MONITOR" | "PRIORITY_MONITOR" | "UNASSESSED";
 export type StoreStatus = SpatialRisk; // Backward compatibility alias
 
 export type OperationalStatus =
@@ -34,6 +34,10 @@ export interface Store {
   // Dimension 1: Spatial Risk
   status?: StoreStatus;
   spatialRisk?: SpatialRisk;
+  isInsideV1?: boolean;
+  officialMmi?: number | null;
+  intensityStatus?: "INTENSITY_TRIGGERED" | "BELOW_INSPECTION_THRESHOLD" | "UNASSESSED";
+  assessmentNote?: string;
 
   // Dimension 2: Operational Status
   operationalStatus?: OperationalStatus;

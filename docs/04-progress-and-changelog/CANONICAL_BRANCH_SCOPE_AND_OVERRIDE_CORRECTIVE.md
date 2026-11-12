@@ -1,4 +1,4 @@
-# SPARTA SIAGA — CANONICAL BRANCH SCOPE & EFFECTIVE PERMISSION CORRECTIVE
+# SPARTA SIAGA  -  CANONICAL BRANCH SCOPE & EFFECTIVE PERMISSION CORRECTIVE
 
 **Date:** 2026-10-08  
 **Branch:** `development`  
@@ -10,8 +10,8 @@
 ## 1. Executive Summary
 
 This corrective resolves two critical security and domain issues reported in SPARTA SIAGA Administration:
-1. **Canonical Branch Identity in Edit User (Finding A):** The branch selector previously searched store-level records (`/api/stores/search?type=TOKO`), erroneously binding organizational users to single store labels (e.g. `CIKOKOL — ABDUL HADI`) and displaying `Cabang tidak ditemukan` upon autocomplete focus. We implemented an authoritative organizational Branch domain model (`lib/branch-service.ts` and `/api/branches`) containing the 28 canonical organizational branches covering all 21,550 stores.
-2. **Legacy Override Compatibility & Effective Access Display (Findings B & C):** In "Akses Khusus User", legacy override `ovr_1791446489576_v05v7` (`REPORT_CONFIRM` with `ALLOW` and `ALL_BRANCHES`) was incorrectly rendered with an active green `DIIZINKAN` badge despite violating the security policy introduced in `bc0dff0` (which prohibits `ALL_BRANCHES` for operational actions). We separated stored configuration from effective operational authority: the UI now renders `Tidak Berlaku — Bertentangan dengan Kebijakan` with an amber badge, policy explanation warning banner, and a safe remediation revocation button. Backend authorization strictly denies cross-branch operational mutation, maintaining deny-safe isolation.
+1. **Canonical Branch Identity in Edit User (Finding A):** The branch selector previously searched store-level records (`/api/stores/search?type=TOKO`), erroneously binding organizational users to single store labels (e.g. `CIKOKOL  -  ABDUL HADI`) and displaying `Cabang tidak ditemukan` upon autocomplete focus. We implemented an authoritative organizational Branch domain model (`lib/branch-service.ts` and `/api/branches`) containing the 28 canonical organizational branches covering all 21,550 stores.
+2. **Legacy Override Compatibility & Effective Access Display (Findings B & C):** In "Akses Khusus User", legacy override `ovr_1791446489576_v05v7` (`REPORT_CONFIRM` with `ALLOW` and `ALL_BRANCHES`) was incorrectly rendered with an active green `DIIZINKAN` badge despite violating the security policy introduced in `bc0dff0` (which prohibits `ALL_BRANCHES` for operational actions). We separated stored configuration from effective operational authority: the UI now renders `Tidak Berlaku  -  Bertentangan dengan Kebijakan` with an amber badge, policy explanation warning banner, and a safe remediation revocation button. Backend authorization strictly denies cross-branch operational mutation, maintaining deny-safe isolation.
 
 ---
 
@@ -41,9 +41,9 @@ This corrective resolves two critical security and domain issues reported in SPA
 [Store T770: "ABDUL HADI"] ──> [Report INC-001 (branch: "CIKOKOL")] ──> [Authorized for Cikokol Roles]
 ```
 
-### 2.3 Meaning of `CIKOKOL — ABDUL HADI`
+### 2.3 Meaning of `CIKOKOL  -  ABDUL HADI`
 In the master store dataset (`data/stores-master.csv` row 12,792), store `T770` has `nama_toko = "ABDUL HADI"` under `cabang = "CIKOKOL"`.  
-The previous `handleOpenEdit` function erroneously queried `/api/stores/search?q=CIKOKOL&type=TOKO&limit=1`, matched store `T770`, and set `branch = "CIKOKOL — ABDUL HADI"`. When the user clicked the input to edit, the autocomplete queried store records matching `"CIKOKOL — ABDUL HADI"`, found 0 results, and printed `Cabang tidak ditemukan`.
+The previous `handleOpenEdit` function erroneously queried `/api/stores/search?q=CIKOKOL&type=TOKO&limit=1`, matched store `T770`, and set `branch = "CIKOKOL  -  ABDUL HADI"`. When the user clicked the input to edit, the autocomplete queried store records matching `"CIKOKOL  -  ABDUL HADI"`, found 0 results, and printed `Cabang tidak ditemukan`.
 
 ---
 
@@ -65,7 +65,7 @@ The previous `handleOpenEdit` function erroneously queried `/api/stores/search?q
 - Distinguishes:
   - `ACTIVE_ALLOWED` (Effective ALLOW)
   - `ACTIVE_DENIED` (Effective DENY)
-  - `POLICY_CONFLICT` (`Tidak Berlaku — Bertentangan dengan Kebijakan` — amber badge)
+  - `POLICY_CONFLICT` (`Tidak Berlaku  -  Bertentangan dengan Kebijakan`  -  amber badge)
   - `EXPIRED` (`KADALUARSA`)
   - `REVOKED` (`DICABUT`)
 - Displays an alert banner explaining that operational actions forbid `ALL_BRANCHES` due to branch isolation policy.
