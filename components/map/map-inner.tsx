@@ -18,22 +18,25 @@ import { Store, SpatialRisk } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
 import { getV1Coverage } from "@/lib/earthquake-v1-parameters";
 import {
-  Building,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   ShieldAlert,
   ExternalLink,
-  Wrench,
-  Clock,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
 import {
-  getAhoColor,
   calculateAhoPercentage,
   formatAhoBadgeLabel,
 } from "@/lib/aho-utils";
+import {
+  createBranchFlagIcon,
+  createClusterCircleIcon,
+  createStoreTeardropIcon,
+  createDcFacilityIcon,
+  type BranchAggregationData,
+  type ClusterAggregationData,
+} from "./map-marker-icons";
+import { AhoLegend } from "./aho-legend";
 
 interface MapInnerProps {
   stores: Store[];
@@ -44,6 +47,10 @@ interface MapInnerProps {
   statusFilter: "all" | SpatialRisk;
   selectedStore: Store | null;
   onSelectStore: (store: Store) => void;
+  onSelectBranch?: (branch: BranchAggregationData) => void;
+  onSelectCluster?: (cluster: ClusterAggregationData) => void;
+  selectedBranch?: BranchAggregationData | null;
+  selectedCluster?: ClusterAggregationData | null;
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
   showRadar?: boolean;
   radarTileUrl?: string;
@@ -156,82 +163,6 @@ function ViewportTracker({
   return null;
 }
 
-// Function to generate dynamic Alfamart store and DC markers using L.divIcon
-function createStoreIcon(store: Store, isSelected: boolean = false) {
-  const isFacility = store.id.startsWith("FACILITY:");
-  const isDC = isFacility && (store.fr_type === "FACILITY_DC" || (store.nama_toko && store.nama_toko.toUpperCase().includes("DC")));
-  const markerLabel = isDC ? "DC" : isFacility ? "F" : "A";
-  const visualStatus = store.visualStatus || (
-    store.status === "PRIORITY_MONITOR" ? "TERDAMPAK" :
-    store.status === "MONITOR" ? "PERLU_PERHATIAN" : "NORMAL"
-  );
-
-  let ringColor = isDC ? "border-indigo-500 shadow-indigo-500/20" : "border-emerald-500 shadow-emerald-500/20";
-  let pulseClass = "";
-  let badgeColor = isDC ? "bg-indigo-600" : "bg-emerald-600";
-  let innerColor = isDC ? "bg-indigo-600" : "bg-emerald-600";
-
-  if (isSelected) {
-    ringColor = "border-cyan-400 shadow-cyan-400/80 scale-125";
-    pulseClass = "pulse-beacon";
-    badgeColor = "bg-cyan-500";
-    innerColor = "bg-cyan-500";
-  } else if (visualStatus === "TERDAMPAK") {
-    ringColor = "border-red-600 shadow-red-600/50";
-    pulseClass = "pulse-beacon";
-    badgeColor = "bg-red-600";
-    innerColor = "bg-red-600";
-  } else if (visualStatus === "DALAM_PENANGANAN") {
-    ringColor = "border-blue-500 shadow-blue-500/40";
-    pulseClass = "pulse-beacon";
-    badgeColor = "bg-blue-600";
-    innerColor = "bg-blue-600";
-  } else if (visualStatus === "PERLU_PERHATIAN") {
-    ringColor = "border-amber-500 shadow-amber-500/30";
-    badgeColor = "bg-amber-500";
-    innerColor = "bg-amber-500";
-  } else if (visualStatus === "SELESAI") {
-    ringColor = "border-teal-500 shadow-teal-500/30";
-    badgeColor = "bg-teal-600";
-    innerColor = "bg-teal-600";
-  }
-
-  const isFlood = !!store.floodWarning;
-
-  const html = `
-    <div class="relative group cursor-pointer flex items-center justify-center">
-      ${isSelected
-        ? `<div class="absolute -inset-3 bg-cyan-400/50 rounded-full animate-ping"></div>`
-        : visualStatus === "TERDAMPAK"
-        ? `<div class="absolute -inset-2 bg-red-600/40 rounded-full animate-ping"></div>`
-        : visualStatus === "DALAM_PENANGANAN"
-        ? `<div class="absolute -inset-2 bg-blue-500/30 rounded-full animate-pulse"></div>`
-        : isFlood
-        ? `<div class="absolute -inset-2 bg-blue-500/40 rounded-full animate-ping"></div>`
-        : ""
-      }
-      <div class="w-8 h-8 rounded-full bg-slate-900 border-2 ${ringColor} ${pulseClass} flex items-center justify-center shadow-lg transition-transform hover:scale-125 z-20">
-        <div class="w-5 h-5 rounded-full ${innerColor} flex items-center justify-center ${isDC ? "text-[8px]" : "text-[9px]"} font-black text-white tracking-tighter">
-          ${markerLabel}
-        </div>
-      </div>
-      <div class="absolute -bottom-1 -right-1 w-3 h-3 rounded-full ${badgeColor} border border-slate-900 z-30"></div>
-      ${isFlood
-        ? `<div class="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-blue-600 border border-slate-900 text-[8px] flex items-center justify-center shadow-md z-30" title="Peringatan Banjir / Hujan Lebat">💧</div>`
-        : ""
-      }
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-store-pin",
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -18],
-  });
-}
-
 // Function to generate dynamic epicenter earthquake marker
 function createEpicenterIcon(earthquake: Earthquake, isFocused: boolean = false) {
   const isTsunami = earthquake.potensiTsunami;
@@ -256,220 +187,6 @@ function createEpicenterIcon(earthquake: Earthquake, isFocused: boolean = false)
     iconAnchor: [18, 18],
     popupAnchor: [0, -20],
   });
-}
-
-interface BranchAggregation {
-  cabang: string;
-  latitude: number;
-  longitude: number;
-  totalStores: number;
-  dangerCount: number;
-  warningCount: number;
-}
-
-function createBranchIcon(branch: BranchAggregation) {
-  const hasDanger = branch.dangerCount > 0;
-  const hasWarning = branch.warningCount > 0;
-
-  const dotColor = hasDanger
-    ? "bg-rose-500"
-    : hasWarning
-      ? "bg-amber-500"
-      : "bg-emerald-500";
-
-  const countBadge = hasDanger
-    ? "bg-rose-950/80 text-rose-300 border-rose-800"
-    : hasWarning
-      ? "bg-amber-950/80 text-amber-300 border-amber-800"
-      : "bg-slate-800 text-slate-300 border-slate-700";
-
-  const html = `
-    <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      ${hasDanger ? '<div class="absolute -inset-1 bg-rose-600/25 rounded-full animate-ping"></div>' : ""}
-      <div class="px-2.5 py-1 rounded-full bg-slate-900/95 dark:bg-slate-950/95 border border-slate-700/80 hover:border-slate-400 text-slate-100 shadow-md backdrop-blur-md flex items-center gap-1.5 transition-all duration-200 group-hover:scale-105 z-20">
-        <span class="w-2 h-2 rounded-full ${dotColor} shrink-0"></span>
-        <span class="tracking-tight text-[11px] font-semibold text-slate-100 whitespace-nowrap">${branch.cabang}</span>
-        <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold border ${countBadge} whitespace-nowrap">${branch.totalStores} Toko</span>
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-branch-marker",
-    iconSize: [140, 28],
-    iconAnchor: [70, 14],
-    popupAnchor: [0, -16],
-  });
-}
-
-// Function to generate grid cluster icon for Zoom 8–12 (Requirement 12)
-function createClusterIcon(count: number) {
-  const size = count > 100 ? 36 : count > 20 ? 32 : 28;
-  const html = `
-    <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      <div style="width: ${size}px; height: ${size}px;" class="rounded-full bg-slate-900/95 border border-slate-700 text-slate-200 shadow-md flex items-center justify-center font-mono font-bold text-xs transition-transform duration-200 group-hover:scale-110">
-        <span class="text-[11px]">${count}</span>
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-grid-cluster",
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2],
-  });
-}
-
-// Subcomponent to render a clickable cluster marker with smooth flyTo zoom
-function ClusterMarkerItem({
-  cluster,
-  zoom,
-}: {
-  cluster: { lat: number; lng: number; count: number; stores: Store[] };
-  zoom: number;
-}) {
-  const map = useMap();
-
-  return (
-    <Marker
-      position={[cluster.lat, cluster.lng]}
-      icon={createClusterIcon(cluster.count)}
-      eventHandlers={{
-        click: () => {
-          map.flyTo([cluster.lat, cluster.lng], Math.min(14, zoom + 2), {
-            duration: 0.8,
-          });
-        },
-      }}
-    >
-      <Tooltip direction="top" offset={[0, -16]} opacity={0.95}>
-        <div className="text-xs font-semibold text-slate-900 px-1">
-          {cluster.count} Toko, klik untuk memperbesar
-        </div>
-      </Tooltip>
-    </Marker>
-  );
-}
-
-// ============================================================================
-// AHO Layer Specific Markers & Helpers (SPARTA Maintenance Integration)
-// ============================================================================
-
-interface AhoBranchAggregation {
-  cabang: string;
-  latitude: number;
-  longitude: number;
-  totalStores: number;
-  storesWithTickets: number;
-  totalTickets: number;
-  percentage: number;
-}
-
-function createAhoBranchIcon(branch: AhoBranchAggregation) {
-  const ahoColor = getAhoColor(branch.percentage);
-  const roundedPct = Math.round(branch.percentage);
-  const hasCriticalTickets = branch.percentage > 70;
-
-  const html = `
-    <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      ${hasCriticalTickets ? `<div class="absolute -inset-1 ${ahoColor.bgClass}/25 rounded-full animate-ping"></div>` : ""}
-      <div class="px-2.5 py-1 rounded-full bg-slate-900/95 dark:bg-slate-950/95 border border-slate-700/80 hover:border-slate-400 text-slate-100 shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-all duration-200 group-hover:scale-105 z-20">
-        <span class="w-2 h-2 rounded-full ${ahoColor.bgClass} shrink-0"></span>
-        <span class="tracking-tight text-[11px] font-semibold text-slate-100 whitespace-nowrap">${branch.cabang}</span>
-        <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${ahoColor.badgeClass} whitespace-nowrap">${roundedPct}% (${branch.storesWithTickets}/${branch.totalStores})</span>
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-aho-branch-marker",
-    iconSize: [140, 28],
-    iconAnchor: [70, 14],
-    popupAnchor: [0, -16],
-  });
-}
-
-function createAhoClusterIcon(totalStores: number, storesWithTickets: number, percentage: number) {
-  const ahoColor = getAhoColor(percentage);
-  const roundedPct = Math.round(percentage);
-  const size = totalStores > 100 ? 38 : totalStores > 25 ? 34 : 30;
-
-  const html = `
-    <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      <div style="width:${size}px;height:${size}px;" class="rounded-full bg-slate-900/95 border border-slate-700/80 shadow-md backdrop-blur-md flex flex-col items-center justify-center font-bold transition-all duration-200 group-hover:scale-110">
-        <span class="font-mono text-[11px] font-bold leading-none ${ahoColor.textClass}">${roundedPct}%</span>
-        <span class="text-[9px] font-mono text-slate-400 leading-none mt-0.5">${storesWithTickets}/${totalStores}</span>
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-aho-cluster-marker",
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2],
-  });
-}
-
-function createAhoStoreIcon(store: Store, hasTicket: boolean, ticketCount: number, isSelected: boolean = false) {
-  const ringColor = isSelected
-    ? "border-cyan-400 shadow-cyan-400/80 scale-125"
-    : hasTicket
-    ? "border-rose-600/90 shadow-rose-600/30"
-    : "border-emerald-600/80 shadow-emerald-600/20";
-
-  const badgeColor = isSelected ? "bg-cyan-500" : hasTicket ? "bg-rose-600" : "bg-emerald-600";
-  const innerColor = isSelected ? "bg-cyan-500" : hasTicket ? "bg-rose-600" : "bg-emerald-600";
-  const markerLabel = hasTicket ? (ticketCount > 9 ? "9+" : String(ticketCount)) : "A";
-
-  const html = `
-    <div class="relative group cursor-pointer flex items-center justify-center">
-      ${isSelected ? '<div class="absolute -inset-2 bg-cyan-400/40 rounded-full animate-ping"></div>' : hasTicket ? '<div class="absolute -inset-1.5 bg-rose-600/25 rounded-full animate-ping"></div>' : ""}
-      <div class="w-7 h-7 rounded-full bg-slate-900 border-2 ${ringColor} flex items-center justify-center shadow-md transition-transform hover:scale-125 z-20">
-        <div class="w-4.5 h-4.5 rounded-full ${innerColor} flex items-center justify-center text-[8px] font-black text-white tracking-tighter">
-          ${markerLabel}
-        </div>
-      </div>
-      <div class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ${badgeColor} border border-slate-900 z-30"></div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html,
-    className: "custom-aho-store-pin",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -16],
-  });
-}
-
-function AhoFlyToButton({
-  lat,
-  lng,
-  zoom,
-  label,
-}: {
-  lat: number;
-  lng: number;
-  zoom: number;
-  label: string;
-}) {
-  const map = useMap();
-  return (
-    <button
-      type="button"
-      onClick={() => map.flyTo([lat, lng], zoom, { duration: 1.0 })}
-      className="w-full mt-2 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors shadow-xs"
-    >
-      <span>{label}</span>
-      <ChevronRight className="w-3.5 h-3.5" />
-    </button>
-  );
 }
 
 function formatWIBTime(iso: string) {
@@ -676,6 +393,10 @@ export default function MapInner({
   statusFilter,
   selectedStore,
   onSelectStore,
+  onSelectBranch,
+  onSelectCluster,
+  selectedBranch,
+  selectedCluster,
   flyToTarget,
   showRadar = false,
   radarTileUrl,
@@ -702,7 +423,6 @@ export default function MapInner({
   // AHO Layer state and data fetching (SPARTA Maintenance Integration)
   // Strictly mode-aware: AHO is ONLY valid when locationMode === "store"
   const isAhoLayer = locationMode === "store" && activeLayer === "aho";
-  const [isLegendCollapsed, setIsLegendCollapsed] = useState(false);
   const [ahoCounts, setAhoCounts] = useState<Record<string, number> | null>(null);
   const [ahoLastUpdated, setAhoLastUpdated] = useState<string | null>(null);
   const [ahoTotalTickets, setAhoTotalTickets] = useState(0);
@@ -796,7 +516,7 @@ export default function MapInner({
       }
     }
 
-    const result: AhoBranchAggregation[] = [];
+    const result: BranchAggregationData[] = [];
     map.forEach((item) => {
       if (item.totalStores > 0) {
         const percentage = calculateAhoPercentage(item.totalStores, item.storesWithTickets);
@@ -868,15 +588,7 @@ export default function MapInner({
       }
     }
 
-    const result: Array<{
-      lat: number;
-      lng: number;
-      totalStores: number;
-      storesWithTickets: number;
-      totalTickets: number;
-      percentage: number;
-      stores: Store[];
-    }> = [];
+    const result: ClusterAggregationData[] = [];
 
     gridMap.forEach((cell) => {
       const totalStores = cell.stores.length;
@@ -947,7 +659,7 @@ export default function MapInner({
       }
     }
 
-    const result: BranchAggregation[] = [];
+    const result: BranchAggregationData[] = [];
     map.forEach((item) => {
       if (item.count > 0) {
         // If incidentOnly is ON, hide branches that have zero affected stores
@@ -1251,16 +963,15 @@ export default function MapInner({
             );
           })}
 
-        {/* DC mode: few master locations, always render INDIVIDUAL markers,
-            independently of zoom. Click resolves the same LocationDetailPanel as stores. */}
+        {/* DC mode: facility marker with warehouse icon, always renders INDIVIDUAL markers independently of zoom */}
         {showStoresLayer && locationMode === "dc" && stores.map((dc) => (
           <Marker
             key={dc.id}
             position={[dc.latitude, dc.longitude]}
-            icon={createStoreIcon(dc, selectedStore?.id === dc.id)}
+            icon={createDcFacilityIcon(dc, selectedStore?.id === dc.id)}
             eventHandlers={{ click: () => onSelectStore(dc) }}
           >
-            <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+            <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
               <div className="px-1 text-xs text-slate-900">
                 <span className="font-bold text-blue-700">DC {dc.kode_toko}</span>
                 <div className="font-medium">{dc.nama_toko}</div>
@@ -1276,30 +987,28 @@ export default function MapInner({
         {/* 2. STORES LAYER (LOD: Zoom <= 7 Branch Aggregation, Zoom 8–12 Clustering, Zoom >= 13 Individual) */}
         {showStoresLayer && locationMode !== "dc" && (
           <>
-            {/* LEVEL NASIONAL / PROVINSI (Zoom <= 7): Titik Percabang (Kantor Cabang / DC) */}
+            {/* LEVEL NASIONAL / PROVINSI (Zoom <= 7): Titik Percabang (Anchored Flag) */}
             {currentZoom <= 7 &&
               branchAggregations.map((branch) => (
                 <Marker
                   key={branch.cabang}
                   position={[branch.latitude, branch.longitude]}
-                  icon={createBranchIcon(branch)}
+                  icon={createBranchFlagIcon(branch, false, selectedBranch?.cabang === branch.cabang)}
                   eventHandlers={{
-                    click: (e) => {
-                      e.target._map?.flyTo([branch.latitude, branch.longitude], 10, {
-                        duration: 1.2,
-                      });
+                    click: () => {
+                      onSelectBranch?.(branch);
                     },
                   }}
                 >
-                  <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                  <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
                     <div className="text-xs font-semibold text-slate-900 px-1">
-                      Klik untuk fokus ke {branch.cabang} ({branch.totalStores} Toko)
+                      Cabang {branch.cabang}: {branch.totalStores} Toko (Klik untuk ringkasan)
                     </div>
                   </Tooltip>
                 </Marker>
               ))}
 
-            {/* LEVEL REGIONAL / KABUPATEN (Zoom 8–12): Grid Clustering untuk Normal/Safe Stores (Req 12) */}
+            {/* LEVEL REGIONAL / KABUPATEN (Zoom 8–12): Circular Aggregate Cluster */}
             {currentZoom >= 8 &&
               currentZoom <= 12 &&
               !incidentOnly &&
@@ -1307,92 +1016,98 @@ export default function MapInner({
                 if (cluster.count === 1) {
                   const s = cluster.stores[0];
                   return (
-                    <CircleMarker
+                    <Marker
                       key={`single-${s.id}`}
-                      center={[s.latitude, s.longitude]}
-                      radius={4}
-                      pathOptions={{
-                        color: "#059669",
-                        fillColor: "#10b981",
-                        fillOpacity: 0.8,
-                        weight: 1,
-                      }}
+                      position={[s.latitude, s.longitude]}
+                      icon={createStoreTeardropIcon(s, false, false, 0, selectedStore?.id === s.id)}
                       eventHandlers={{
                         click: () => onSelectStore(s),
                       }}
                     >
-                      <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+                      <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                         <div className="text-[11px] font-medium text-slate-900 px-1">
                           <span className="font-bold text-emerald-700">[{s.kode_toko}]</span>{" "}
                           {s.nama_toko}
                         </div>
                       </Tooltip>
-                    </CircleMarker>
+                    </Marker>
                   );
                 }
 
+                const isClusterSelected =
+                  selectedCluster?.lat === cluster.lat && selectedCluster?.lng === cluster.lng;
+
                 return (
-                  <ClusterMarkerItem
+                  <Marker
                     key={`cluster-${cluster.lat.toFixed(3)}_${cluster.lng.toFixed(3)}_${idx}`}
-                    cluster={cluster}
-                    zoom={currentZoom}
-                  />
+                    position={[cluster.lat, cluster.lng]}
+                    icon={createClusterCircleIcon(cluster.count, false, 0, 0, isClusterSelected)}
+                    eventHandlers={{
+                      click: () => {
+                        onSelectCluster?.({
+                          lat: cluster.lat,
+                          lng: cluster.lng,
+                          totalStores: cluster.count,
+                          storesWithTickets: 0,
+                          totalTickets: 0,
+                          percentage: 0,
+                          stores: cluster.stores,
+                        });
+                      },
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -22]} opacity={0.95}>
+                      <div className="text-xs font-semibold text-slate-900 px-1">
+                        Cluster: {cluster.count} Toko (Klik untuk ringkasan)
+                      </div>
+                    </Tooltip>
+                  </Marker>
                 );
               })}
 
-            {/* LEVEL KOTA / JALAN (Zoom >= 13): Individual Safe Store Markers dengan Viewport Culling */}
+            {/* LEVEL KOTA / JALAN (Zoom >= 13): Individual Teardrop Location Pins dengan Viewport Culling */}
             {currentZoom >= 13 &&
               !incidentOnly &&
               safeStores
                 .filter((store) => !mapBounds || mapBounds.contains([store.latitude, store.longitude]))
                 .map((store) => (
-                  <CircleMarker
+                  <Marker
                     key={store.id}
-                    center={[store.latitude, store.longitude]}
-                    radius={6}
-                    pathOptions={{
-                      color: "#059669",
-                      fillColor: "#10b981",
-                      fillOpacity: 0.75,
-                      weight: 1.5,
-                    }}
+                    position={[store.latitude, store.longitude]}
+                    icon={createStoreTeardropIcon(store, false, false, 0, selectedStore?.id === store.id)}
                     eventHandlers={{
                       click: () => onSelectStore(store),
                     }}
                   >
-                    <Tooltip direction="top" offset={[0, -5]} opacity={0.9}>
+                    <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                       <div className="text-[11px] font-medium text-slate-900 px-1">
                         <span className="font-bold text-emerald-700">[{store.kode_toko}]</span>{" "}
                         {store.nama_toko} ({store.cabang})
                       </div>
                     </Tooltip>
-                  </CircleMarker>
+                  </Marker>
                 ))}
           </>
         )}
 
-        {/* 3. OPERATIONAL & AFFECTED STORES (Requirements 10, 11, 31)
-            Always distinctly visible on Zoom >= 8 even if quake >72h old */}
+        {/* 3. OPERATIONAL & AFFECTED STORES (Distinct teardrop pins, click opens Right Detail Panel) */}
         {showStoresLayer && locationMode !== "dc" &&
           currentZoom >= 8 &&
           operationalStores.map((store) => {
-            const isDanger =
-              store.visualStatus === "TERDAMPAK" || store.status === "PRIORITY_MONITOR";
             const isSelected = store.id === selectedStore?.id;
 
             return (
               <Marker
                 key={store.id}
                 position={[store.latitude, store.longitude]}
-                icon={createStoreIcon(store, isSelected)}
+                icon={createStoreTeardropIcon(store, false, false, 0, isSelected)}
                 eventHandlers={{
-                  click: (e) => {
+                  click: () => {
                     onSelectStore(store);
-                    e.target.openPopup();
                   },
                 }}
               >
-                <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                   <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
                     <span className="font-bold text-red-600">[{store.kode_toko}]</span>{" "}
                     {store.nama_toko}
@@ -1403,149 +1118,6 @@ export default function MapInner({
                     )}
                   </div>
                 </Tooltip>
-
-                {/* Final Store Popup (Requirement 31) */}
-                <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                  <div className={`p-3 rounded-xl border w-72 space-y-2 text-xs transition-colors ${
-                    isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                        isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200"
-                      }`}>
-                        {store.kode_toko}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          store.visualStatus === "TERDAMPAK"
-                            ? "bg-red-600 text-white animate-pulse"
-                            : store.visualStatus === "DALAM_PENANGANAN"
-                            ? "bg-blue-600 text-white"
-                            : store.visualStatus === "PERLU_PERHATIAN"
-                            ? "bg-amber-600 text-white"
-                            : store.visualStatus === "SELESAI"
-                            ? "bg-emerald-600 text-white"
-                            : isDark ? "bg-slate-700 text-slate-300" : "bg-slate-200 text-slate-700"
-                        }`}
-                      >
-                        {store.visualStatus === "TERDAMPAK"
-                          ? "Terdampak"
-                          : store.visualStatus === "DALAM_PENANGANAN"
-                          ? "Dalam Penanganan"
-                          : store.visualStatus === "PERLU_PERHATIAN"
-                          ? "Perlu Perhatian"
-                          : store.visualStatus === "SELESAI"
-                          ? "Selesai"
-                          : isDanger
-                          ? "Prioritas Pantau"
-                          : "Perlu Pantau"}
-                      </span>
-                    </div>
-
-                    <h3 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
-                      {store.nama_toko}
-                    </h3>
-
-                    <div className={`text-[11px] flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                      <Building className="w-3 h-3 text-slate-400" />
-                      <span>Cabang {store.cabang}</span>
-                      <span className="text-slate-400">•</span>
-                      <span className={`font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                        {store.fr_type === "F" ? "Franchise" : "Reguler"}
-                      </span>
-                    </div>
-
-                    {/* 2D Status Details (Requirement 9 & 31) */}
-                    <div className={`p-2 rounded border text-[11px] space-y-1 ${
-                      isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200 text-slate-700"
-                    }`}>
-                      <div className="flex justify-between">
-                        <span className={isDark ? "text-slate-400" : "text-slate-500"}>Status Spasial:</span>
-                        <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
-                          {store.spatialRisk === "PRIORITY_MONITOR"
-                            ? (store.officialMmi && store.officialMmi >= 6.0 && store.isInsideV1 === false
-                              ? `Memenuhi Ambang MMI (${store.officialMmi})`
-                              : "Prioritas Pantau (Dalam V1)")
-                            : store.spatialRisk === "MONITOR"
-                            ? "Perlu Dipantau"
-                            : store.spatialRisk === "UNASSESSED"
-                            ? "Di Luar V1 (Intensitas Belum Terkaji)"
-                            : "Normal"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className={isDark ? "text-slate-400" : "text-slate-500"}>Status Operasional:</span>
-                        <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
-                          {store.operationalStatus === "CONFIRMED_AFFECTED"
-                            ? "Terdampak Lapangan"
-                            : store.operationalStatus === "NEED_CONFIRMATION"
-                            ? "Perlu Konfirmasi"
-                            : store.operationalStatus === "IN_PROGRESS" ||
-                              store.operationalStatus === "ESTIMATION" ||
-                              store.operationalStatus === "READY_FOR_WORK"
-                            ? "Dalam Penanganan"
-                            : store.operationalStatus === "RESOLVED" ||
-                              store.operationalStatus === "WORK_COMPLETED"
-                            ? "Selesai"
-                            : "Tidak Ada Laporan"}
-                        </span>
-                      </div>
-                      {store.riskSourceEvent && (
-                        <div className={`flex justify-between text-[10px] pt-1 border-t ${
-                          isDark ? "border-slate-800/80" : "border-slate-200"
-                        }`}>
-                          <span className={isDark ? "text-slate-400" : "text-slate-500"}>Sumber Risiko:</span>
-                          <span
-                            className="font-medium text-amber-600 dark:text-amber-300 text-right truncate max-w-[140px]"
-                            title={store.riskSourceEvent.title}
-                          >
-                            M{store.riskSourceEvent.magnitude} {store.riskSourceEvent.title}
-                          </span>
-                        </div>
-                      )}
-                      {store.distanceFromDisasterKm !== undefined && (
-                        <div className="flex justify-between text-[10px]">
-                          <span className={isDark ? "text-slate-400" : "text-slate-500"}>Jarak Episentrum:</span>
-                          <span className={`font-mono font-bold ${isDark ? "text-slate-200" : "text-slate-900"}`}>
-                            {store.distanceFromDisasterKm} km
-                          </span>
-                        </div>
-                      )}
-                      {store.activeReportProgress !== undefined && (
-                        <div className={`flex justify-between text-[10px] text-blue-500 dark:text-blue-300 pt-1 border-t ${
-                          isDark ? "border-slate-800/80" : "border-slate-200"
-                        }`}>
-                          <span>Progress Penanganan:</span>
-                          <span className="font-mono font-bold">
-                            {store.activeReportProgress}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {store.floodWarning && (
-                      <div className="p-1.5 rounded bg-blue-950/80 border border-blue-600/60 text-[10px] text-blue-200 flex items-center gap-1.5">
-                        <span className="text-xs shrink-0">🌧️</span>
-                        <div className="leading-tight">
-                          <span className="font-bold text-blue-300">Waspada Potensi Banjir</span>
-                          {store.rainIntensityMm && (
-                            <span className="block text-slate-300 text-[9px]">
-                              Curah Hujan: {store.rainIntensityMm} mm/jam
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => onSelectStore(store)}
-                      className="w-full mt-2 py-1.5 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <span>Lihat Detail</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </Popup>
               </Marker>
             );
           })}
@@ -1563,73 +1135,20 @@ export default function MapInner({
             <Marker
               key={`selected-${selectedStore.id}`}
               position={[selectedStore.latitude, selectedStore.longitude]}
-              icon={createStoreIcon(selectedStore, true)}
+              icon={createStoreTeardropIcon(selectedStore, false, false, 0, true)}
               eventHandlers={{
-                click: (e) => {
+                click: () => {
                   onSelectStore(selectedStore);
-                  e.target.openPopup();
                 },
               }}
             >
-              <Tooltip direction="top" offset={[0, -18]} opacity={0.98} permanent>
+              <Tooltip direction="top" offset={[0, -24]} opacity={0.98} permanent>
                 <div className="text-xs font-bold text-slate-900 px-1.5 py-0.5 flex items-center gap-1.5">
                   <span className="text-cyan-600 font-extrabold">🎯 [{selectedStore.kode_toko}]</span>
                   <span>{selectedStore.nama_toko}</span>
                   <span className="text-slate-500 font-normal">({selectedStore.cabang})</span>
                 </div>
               </Tooltip>
-
-              <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                <div className={`p-3 rounded-xl border w-68 space-y-2 text-xs transition-colors ${
-                  isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-600/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
-                      {selectedStore.kode_toko}
-                    </span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                      Operasional Aman
-                    </span>
-                  </div>
-
-                  <h3 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
-                    {selectedStore.nama_toko}
-                  </h3>
-
-                  <div className={`text-[11px] flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    <Building className="w-3 h-3 text-slate-400" />
-                    <span>Cabang {selectedStore.cabang}</span>
-                    <span className="text-slate-400">•</span>
-                    <span className={`font-medium ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-                      {selectedStore.fr_type === "F" ? "Franchise" : "Reguler"}
-                    </span>
-                  </div>
-
-                  {selectedStore.floodWarning && (
-                    <div className={`p-1.5 rounded border text-[10px] flex items-center gap-1.5 ${
-                      isDark ? "bg-blue-950/80 border-blue-600/60 text-blue-200" : "bg-blue-50 border-blue-200 text-blue-900"
-                    }`}>
-                      <span className="text-xs shrink-0">🌧️</span>
-                      <div className="leading-tight">
-                        <span className="font-bold text-blue-500">Waspada Potensi Banjir</span>
-                        {selectedStore.rainIntensityMm && (
-                          <span className={`block text-[9px] ${isDark ? "text-slate-300" : "text-slate-600"}`}>
-                            Curah Hujan: {selectedStore.rainIntensityMm} mm/jam
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => onSelectStore(selectedStore)}
-                    className="w-full mt-2 py-1.5 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors shadow-sm"
-                  >
-                    <span>Lihat Detail</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </Popup>
             </Marker>
           )}
 
@@ -1639,121 +1158,59 @@ export default function MapInner({
            ========================================================================= */}
         {isAhoLayer && ahoCounts && (
           <>
-            {/* LEVEL CABANG (Zoom <= 7): Agregasi per Cabang */}
+            {/* LEVEL CABANG (Zoom <= 7): Agregasi per Cabang (Anchored Flag) */}
             {currentZoom <= 7 &&
               ahoBranchAggregations.map((branch) => {
-                const ahoColor = getAhoColor(branch.percentage);
+                const isSelected = selectedBranch?.cabang === branch.cabang;
                 return (
                   <Marker
                     key={`aho-branch-${branch.cabang}`}
                     position={[branch.latitude, branch.longitude]}
-                    icon={createAhoBranchIcon(branch)}
+                    icon={createBranchFlagIcon(branch, true, isSelected)}
+                    eventHandlers={{
+                      click: () => onSelectBranch?.(branch),
+                    }}
                   >
-                    <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                    <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
                       <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
-                        <span className="font-bold">Cabang {branch.cabang}</span>: {formatAhoBadgeLabel(branch.totalStores, branch.storesWithTickets)}
+                        <span className="font-bold">Cabang {branch.cabang}</span>: {formatAhoBadgeLabel(branch.totalStores, branch.storesWithTickets ?? 0)} ({(branch.percentage ?? 0).toFixed(1)}%)
                       </div>
                     </Tooltip>
-                    <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                      <div className={`p-3.5 rounded-xl border w-72 space-y-2.5 text-xs transition-colors ${
-                        isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                      }`}>
-                        <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
-                            Agregasi Cabang
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${ahoColor.bgClass}`}>
-                            {ahoColor.category}
-                          </span>
-                        </div>
-                        <h3 className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
-                          Cabang {branch.cabang}
-                        </h3>
-                        <div className={`p-2.5 rounded-lg border text-[11px] space-y-1.5 ${
-                          isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200"
-                        }`}>
-                          <div className="flex justify-between">
-                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Total Toko:</span>
-                            <strong className={isDark ? "text-white" : "text-slate-900"}>{branch.totalStores} Toko</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Toko Bertiket Aktif:</span>
-                            <strong className="text-red-500 font-bold">{branch.storesWithTickets} Toko</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Total Tiket AHO:</span>
-                            <strong className="text-amber-500 font-bold">{branch.totalTickets} Tiket</strong>
-                          </div>
-                          <div className="flex justify-between pt-1 border-t border-slate-700/60">
-                            <span className={isDark ? "text-slate-400" : "text-slate-500"}>Persentase Toko Bertiket:</span>
-                            <strong className={`font-bold ${ahoColor.textClass}`}>
-                              {branch.percentage.toFixed(1)}%
-                            </strong>
-                          </div>
-                        </div>
-                        <AhoFlyToButton lat={branch.latitude} lng={branch.longitude} zoom={10} label="Fokus ke Cabang Ini" />
-                      </div>
-                    </Popup>
                   </Marker>
                 );
               })}
 
-            {/* LEVEL CLUSTER (Zoom 8–12): Spatial Grid Cluster */}
+            {/* LEVEL CLUSTER (Zoom 8–12): Spatial Grid Cluster with SVG Donut */}
             {currentZoom >= 8 &&
               currentZoom <= 12 &&
               ahoClusters.map((cluster, idx) => {
-                const ahoColor = getAhoColor(cluster.percentage);
+                const isClusterSelected =
+                  selectedCluster?.lat === cluster.lat && selectedCluster?.lng === cluster.lng;
                 return (
                   <Marker
                     key={`aho-cluster-${cluster.lat.toFixed(3)}_${cluster.lng.toFixed(3)}_${idx}`}
                     position={[cluster.lat, cluster.lng]}
-                    icon={createAhoClusterIcon(cluster.totalStores, cluster.storesWithTickets, cluster.percentage)}
+                    icon={createClusterCircleIcon(
+                      cluster.totalStores,
+                      true,
+                      cluster.storesWithTickets,
+                      cluster.percentage,
+                      isClusterSelected
+                    )}
+                    eventHandlers={{
+                      click: () => onSelectCluster?.(cluster),
+                    }}
                   >
-                    <Tooltip direction="top" offset={[0, -16]} opacity={0.95}>
+                    <Tooltip direction="top" offset={[0, -22]} opacity={0.95}>
                       <div className="text-xs font-semibold text-slate-900 px-1">
-                        Cluster: {formatAhoBadgeLabel(cluster.totalStores, cluster.storesWithTickets)}, klik untuk perbesar
+                        Cluster: {formatAhoBadgeLabel(cluster.totalStores, cluster.storesWithTickets ?? 0)} ({(cluster.percentage ?? 0).toFixed(1)}%) • Klik untuk ringkasan
                       </div>
                     </Tooltip>
-                    <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                      <div className={`p-3 rounded-xl border w-68 space-y-2 text-xs transition-colors ${
-                        isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                      }`}>
-                        <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
-                            Cluster Koordinat
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${ahoColor.bgClass}`}>
-                            {Math.round(cluster.percentage)}%
-                          </span>
-                        </div>
-                        <div className={`p-2 rounded-lg border text-[11px] space-y-1 ${
-                          isDark ? "bg-slate-950/80 border-slate-800" : "bg-slate-50 border-slate-200"
-                        }`}>
-                          <div className="flex justify-between">
-                            <span>Total Toko:</span>
-                            <strong>{cluster.totalStores}</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Toko Bertiket:</span>
-                            <strong className="text-red-500">{cluster.storesWithTickets}</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Total Tiket:</span>
-                            <strong className="text-amber-500">{cluster.totalTickets}</strong>
-                          </div>
-                          <div className="flex justify-between pt-1 border-t border-slate-700/60">
-                            <span>Persentase:</span>
-                            <strong className={`font-bold ${ahoColor.textClass}`}>{cluster.percentage.toFixed(1)}%</strong>
-                          </div>
-                        </div>
-                        <AhoFlyToButton lat={cluster.lat} lng={cluster.lng} zoom={Math.min(14, currentZoom + 2)} label="Perbesar Cluster Ini" />
-                      </div>
-                    </Popup>
                   </Marker>
                 );
               })}
 
-            {/* LEVEL TOKO INDIVIDUAL (Zoom >= 13): Viewport Culled Store Pins */}
+            {/* LEVEL TOKO INDIVIDUAL (Zoom >= 13): Viewport Culled Teardrop Pin */}
             {currentZoom >= 13 &&
               ahoVisibleStores.map((store) => {
                 const code = (store.kode_toko || "").toUpperCase().trim();
@@ -1765,15 +1222,12 @@ export default function MapInner({
                   <Marker
                     key={`aho-store-${store.id}`}
                     position={[store.latitude, store.longitude]}
-                    icon={createAhoStoreIcon(store, hasTicket, ticketCount, isSelected)}
+                    icon={createStoreTeardropIcon(store, true, hasTicket, ticketCount, isSelected, !ahoError)}
                     eventHandlers={{
-                      click: (e) => {
-                        onSelectStore(store);
-                        e.target.openPopup();
-                      },
+                      click: () => onSelectStore(store),
                     }}
                   >
-                    <Tooltip direction="top" offset={[0, -18]} opacity={0.95}>
+                    <Tooltip direction="top" offset={[0, -24]} opacity={0.95}>
                       <div className="text-xs font-semibold text-slate-900 px-1 py-0.5">
                         <span className={hasTicket ? "font-bold text-red-600" : "font-bold text-emerald-600"}>
                           [{store.kode_toko}]
@@ -1784,65 +1238,6 @@ export default function MapInner({
                         </span>
                       </div>
                     </Tooltip>
-
-                    <Popup className={`custom-leaflet-popup ${isDark ? "popup-dark" : "popup-light"}`}>
-                      <div className={`p-3.5 rounded-xl border w-72 space-y-2.5 text-xs transition-colors ${
-                        isDark ? "bg-slate-900 text-white border-slate-700 shadow-2xl" : "bg-white text-slate-900 border-slate-200 shadow-xl"
-                      }`}>
-                        {/* Header: Identitas */}
-                        <div className="flex items-center justify-between">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                            isDark ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200"
-                          }`}>
-                            {store.kode_toko}
-                          </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${
-                            hasTicket ? "bg-red-600 animate-pulse" : "bg-emerald-600"
-                          }`}>
-                            {hasTicket ? `${ticketCount} Tiket AHO Aktif` : "Tidak Ada Tiket Aktif"}
-                          </span>
-                        </div>
-
-                        <h3 className={`font-bold text-sm leading-snug ${isDark ? "text-white" : "text-slate-900"}`}>
-                          {store.nama_toko}
-                        </h3>
-
-                        <div className={`text-[11px] flex items-center gap-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                          <Building className="w-3 h-3 text-slate-400" />
-                          <span>Cabang {store.cabang}</span>
-                        </div>
-
-                        {/* Bagian B Preview: Penanggung Jawab Toko */}
-                        <div className={`p-2.5 rounded-lg border text-[11px] space-y-1 ${
-                          isDark ? "bg-slate-950/80 border-slate-800 text-slate-300" : "bg-slate-50 border-slate-200 text-slate-700"
-                        }`}>
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center justify-between">
-                            <span>Penanggung Jawab</span>
-                            <span className="text-[9px] font-normal text-amber-500">Kondisi A</span>
-                          </div>
-                          <div className="flex justify-between text-[10px]">
-                            <span className="text-slate-500">BMS:</span>
-                            <span className="italic text-slate-400">Data belum tersedia</span>
-                          </div>
-                          <div className="flex justify-between text-[10px]">
-                            <span className="text-slate-500">BMC:</span>
-                            <span className="italic text-slate-400">Data belum tersedia</span>
-                          </div>
-                          <div className="flex justify-between text-[10px]">
-                            <span className="text-slate-500">BnM Manager:</span>
-                            <span className="italic text-slate-400">Data belum tersedia</span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => onSelectStore(store)}
-                          className="w-full mt-2 py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <span>Lihat Detail Lengkap</span>
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </Popup>
                   </Marker>
                 );
               })}
@@ -1850,98 +1245,13 @@ export default function MapInner({
         )}
       </MapContainer>
 
-      {/* AHO LAYER FLOATING LEGEND (Hanya tampil saat mode Toko & layer AHO aktif) */}
+      {/* AHO LAYER CONTEXTUAL FLOATING LEGEND (Zoom-adaptive & Collapsible) */}
       {isAhoLayer && (
-        isLegendCollapsed ? (
-          <button
-            type="button"
-            onClick={() => setIsLegendCollapsed(false)}
-            className="absolute bottom-6 left-3 z-[400] pointer-events-auto rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md px-3 py-2 text-xs text-white shadow-xl flex items-center gap-2 hover:bg-slate-800 transition-all hover:scale-105"
-            title="Buka Legenda Tiket AHO"
-            aria-label="Buka Legenda Tiket AHO"
-          >
-            <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="font-semibold text-xs text-slate-200">Legenda AHO</span>
-            <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
-          </button>
-        ) : (
-          <div className="absolute bottom-6 left-3 z-[400] pointer-events-auto max-w-[280px] sm:max-w-[320px] rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md p-3 text-xs text-white shadow-2xl animate-in fade-in duration-150">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
-              <div className="flex items-center gap-1.5 font-bold text-slate-100">
-                <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Legenda Tiket AHO</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600/25 text-blue-300 border border-blue-500/30 font-mono">
-                  SPARTA Maintenance
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsLegendCollapsed(true)}
-                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                  title="Ciutkan Legenda"
-                  aria-label="Ciutkan Legenda"
-                >
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Persentase Kelompok */}
-            <div className="space-y-1.5 mb-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Persentase Toko Bertiket (Cabang / Cluster)
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 border border-white/20" />
-                  <span className="text-slate-200">&gt; 70% (Tinggi)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-orange-600 shrink-0 border border-white/20" />
-                  <span className="text-slate-200">50% – 70% (Sedang)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0 border border-white/20" />
-                  <span className="text-slate-200">20% – &lt;50% (Rendah)</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 border border-white/20" />
-                  <span className="text-slate-200">&lt; 20% (Sangat Rendah)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Toko Individual */}
-            <div className="space-y-1.5 pt-2 border-t border-slate-800/80 mb-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Toko Individual (Zoom &ge; 13)
-              </div>
-              <div className="flex items-center gap-4 text-[11px]">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 border border-white/20" />
-                  <span className="text-slate-200">Ada Tiket Aktif</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 border border-white/20" />
-                  <span className="text-slate-200">Tanpa Tiket Aktif</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Important Disclaimers */}
-            <p className="text-[9px] text-slate-400 italic leading-snug pt-1 border-t border-slate-800/60">
-              * Warna hanya menunjukkan kepemilikan / persentase tiket AHO aktif dari SPARTA Maintenance, bukan tingkat kerusakan atau risiko bencana.
-            </p>
-
-            {ahoLastUpdated && (
-              <div className="mt-1.5 text-[9px] text-slate-400 flex items-center gap-1 pt-1 border-t border-slate-800/60">
-                <Clock className="w-2.5 h-2.5 text-cyan-400 shrink-0" />
-                <span className="truncate">Perubahan terakhir: {formatWIBTime(ahoLastUpdated)}</span>
-              </div>
-            )}
-          </div>
-        )
+        <AhoLegend
+          zoom={currentZoom}
+          lastUpdated={ahoLastUpdated}
+          className="absolute bottom-6 left-3"
+        />
       )}
 
       {/* AHO Loading Indicator */}

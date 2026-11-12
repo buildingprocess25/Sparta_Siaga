@@ -25,7 +25,12 @@ import {
 import { useSiaga } from "@/components/layout/siaga-context";
 type MapMode = "event" | "store" | "dc";
 import { MapControls } from "@/components/map/map-controls";
-import { LocationDetailPanel, type FacilityDetail } from "@/components/map/location-detail-panel";
+import {
+  LocationDetailPanel,
+  type FacilityDetail,
+  type BranchSummaryDetail,
+  type ClusterSummaryDetail,
+} from "@/components/map/location-detail-panel";
 import { LocationListSheet } from "@/components/map/location-list-sheet";
 import { EarthquakeListModal } from "@/components/disaster/earthquake-list-modal";
 import { assessStoreRisk } from "@/lib/haversine";
@@ -135,6 +140,8 @@ export default function MonitoringPage() {
   const [facilityRefreshKey, setFacilityRefreshKey] = useState(0);
   const [isLocationListOpen, setIsLocationListOpen] = useState(false);
   const [selectedFacility, setSelectedFacility] = useState<FacilityDetail | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<BranchSummaryDetail | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<ClusterSummaryDetail | null>(null);
   const [isEarthquakeModalOpen, setIsEarthquakeModalOpen] = useState(false);
   const [viewport, setViewport] = useState<{ north: number; south: number; east: number; west: number } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -193,6 +200,7 @@ export default function MonitoringPage() {
     selectedStore,
     handleSelectStore,
     flyToTarget,
+    setFlyToTarget,
     showRadar,
     setShowRadar,
     radarData,
@@ -390,6 +398,8 @@ export default function MonitoringPage() {
   const handleCloseDetail = () => {
     handleSelectStore(null as any);
     setSelectedFacility(null);
+    setSelectedBranch(null);
+    setSelectedCluster(null);
   };
 
   const handleCloseAllSheets = () => {
@@ -722,11 +732,15 @@ export default function MonitoringPage() {
             incidentOnly={mapMode === "event" && incidentOnly}
             statusFilter={mapMode === "event" ? statusFilter : "all"}
             selectedStore={selectedStore}
+            selectedBranch={selectedBranch}
+            selectedCluster={selectedCluster}
             onSelectStore={(store) => {
               setFilterOpen(false);
               setIsLocationListOpen(false);
               setIsEarthquakeModalOpen(false);
               setIsAffectedSheetOpen(false);
+              setSelectedBranch(null);
+              setSelectedCluster(null);
               const fac = facilityByStoreId.get(store.id);
               if (fac) {
                 setSelectedFacility(fac);
@@ -734,6 +748,26 @@ export default function MonitoringPage() {
                 setSelectedFacility(null);
               }
               handleSelectStore(store);
+            }}
+            onSelectBranch={(branch) => {
+              setFilterOpen(false);
+              setIsLocationListOpen(false);
+              setIsEarthquakeModalOpen(false);
+              setIsAffectedSheetOpen(false);
+              handleSelectStore(null as any);
+              setSelectedFacility(null);
+              setSelectedCluster(null);
+              setSelectedBranch(branch);
+            }}
+            onSelectCluster={(cluster) => {
+              setFilterOpen(false);
+              setIsLocationListOpen(false);
+              setIsEarthquakeModalOpen(false);
+              setIsAffectedSheetOpen(false);
+              handleSelectStore(null as any);
+              setSelectedFacility(null);
+              setSelectedBranch(null);
+              setSelectedCluster(cluster);
             }}
             flyToTarget={flyToTarget}
             showRadar={mapMode === "event" && showRadar}
@@ -762,28 +796,38 @@ export default function MonitoringPage() {
         </div>
 
         {/* Right Contextual Detail Panel (Desktop in-workspace panel - Region G) */}
-        {!isMobile && (activeDetailStore || activeDetailFacility) && (
+        {!isMobile && (activeDetailStore || activeDetailFacility || selectedBranch || selectedCluster) && (
           <LocationDetailPanel
             location={activeDetailStore}
             facility={activeDetailFacility}
+            branch={selectedBranch}
+            cluster={selectedCluster}
             onClose={handleCloseDetail}
             isMobile={false}
             currentEarthquake={latestEq}
             activeLayer={activeLayer}
+            onFlyTo={(lat, lng, zoom) => {
+              setFlyToTarget({ lat, lng, zoom });
+            }}
           />
         )}
       </div>
 
       {/* CONTEXTUAL DETAIL SHEET (MOBILE: Non-overlapping Bottom Sheet - Region G) */}
-      {isMobile && (activeDetailStore || activeDetailFacility) && (
+      {isMobile && (activeDetailStore || activeDetailFacility || selectedBranch || selectedCluster) && (
         <div data-testid="detail-fasilitas-sheet" aria-label="Detail fasilitas">
           <LocationDetailPanel
             location={activeDetailStore}
             facility={activeDetailFacility}
+            branch={selectedBranch}
+            cluster={selectedCluster}
             onClose={handleCloseDetail}
             isMobile={true}
             currentEarthquake={latestEq}
             activeLayer={activeLayer}
+            onFlyTo={(lat, lng, zoom) => {
+              setFlyToTarget({ lat, lng, zoom });
+            }}
           />
         </div>
       )}

@@ -126,20 +126,20 @@ async function runComprehensiveTests() {
   assert.equal(label1, "23% (23/100)", "Label format must be 23% (23/100)");
   console.log(` [PASS] Calculation formula: 23/100 = ${pct1}% (Label: ${label1})`);
 
-  // Color thresholds (Phase 8 Refined Muted Enterprise Palette):
-  // > 70%     : Muted Red    (#b91c1c)
-  // 50% - 70% : Muted Orange (#c2410c)
-  // 20% - <50%: Muted Yellow (#ca8a04)
-  // < 20%     : Muted Green  (#15803d)
-  assert.equal(getAhoColor(71).color, "#b91c1c");
-  assert.equal(getAhoColor(70.001).color, "#b91c1c");
-  assert.equal(getAhoColor(70).color, "#c2410c");
-  assert.equal(getAhoColor(50).color, "#c2410c");
-  assert.equal(getAhoColor(49.99).color, "#ca8a04");
-  assert.equal(getAhoColor(20).color, "#ca8a04");
-  assert.equal(getAhoColor(19.99).color, "#15803d");
-  assert.equal(getAhoColor(0).color, "#15803d");
-  console.log(" [PASS] All color boundary thresholds verified: >70% Muted Red (#b91c1c), 50-70% Muted Orange (#c2410c), 20-<50% Muted Yellow (#ca8a04), <20% Muted Green (#15803d).");
+  // Color thresholds (Section 9 Restored Standard AHO Palette):
+  // > 70%     : Red    (#dc2626)
+  // 50% - 70% : Orange (#f97316)
+  // 20% - <50%: Yellow (#facc15)
+  // < 20%     : Green  (#16a34a)
+  assert.equal(getAhoColor(71).color, "#dc2626");
+  assert.equal(getAhoColor(70.001).color, "#dc2626");
+  assert.equal(getAhoColor(70).color, "#f97316");
+  assert.equal(getAhoColor(50).color, "#f97316");
+  assert.equal(getAhoColor(49.99).color, "#facc15");
+  assert.equal(getAhoColor(20).color, "#facc15");
+  assert.equal(getAhoColor(19.99).color, "#16a34a");
+  assert.equal(getAhoColor(0).color, "#16a34a");
+  console.log(" [PASS] All color boundary thresholds verified: >70% Red (#dc2626), 50-70% Orange (#f97316), 20-<50% Yellow (#facc15), <20% Green (#16a34a).");
 
   // ---------------------------------------------------------------------------
   // E. Authenticated API Endpoints

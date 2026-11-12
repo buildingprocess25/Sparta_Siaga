@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Store, SpatialRisk } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
 import { Loader2 } from "lucide-react";
+import type { BranchAggregationData, ClusterAggregationData } from "./map-marker-icons";
 
 const MapInner = dynamic(() => import("./map-inner"), {
   ssr: false,
@@ -28,6 +29,10 @@ interface MapViewProps {
   statusFilter: "all" | SpatialRisk;
   selectedStore: Store | null;
   onSelectStore: (store: Store) => void;
+  onSelectBranch?: (branch: BranchAggregationData) => void;
+  onSelectCluster?: (cluster: ClusterAggregationData) => void;
+  selectedBranch?: BranchAggregationData | null;
+  selectedCluster?: ClusterAggregationData | null;
   flyToTarget: { lat: number; lng: number; zoom?: number } | null;
   showRadar?: boolean;
   radarTileUrl?: string;
