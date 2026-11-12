@@ -271,21 +271,25 @@ function createBranchIcon(branch: BranchAggregation) {
   const hasDanger = branch.dangerCount > 0;
   const hasWarning = branch.warningCount > 0;
 
-  const badgeBg = hasDanger
-    ? "bg-red-600 border-red-300 ring-4 ring-red-500/30"
+  const dotColor = hasDanger
+    ? "bg-rose-500"
     : hasWarning
-      ? "bg-amber-600 border-amber-300 ring-4 ring-amber-500/20"
-      : "bg-slate-900 border-cyan-400/80 shadow-cyan-500/20";
+      ? "bg-amber-500"
+      : "bg-emerald-500";
 
-  const dotColor = hasDanger ? "bg-white animate-ping" : hasWarning ? "bg-white" : "bg-cyan-400";
+  const countBadge = hasDanger
+    ? "bg-rose-950/80 text-rose-300 border-rose-800"
+    : hasWarning
+      ? "bg-amber-950/80 text-amber-300 border-amber-800"
+      : "bg-slate-800 text-slate-300 border-slate-700";
 
   const html = `
     <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      ${hasDanger ? '<div class="absolute -inset-3 bg-red-600/40 rounded-full animate-ping"></div>' : ''}
-      <div class="px-3 py-1 rounded-full ${badgeBg} border-2 text-white shadow-2xl flex items-center gap-2 font-bold text-xs whitespace-nowrap transition-transform duration-200 group-hover:scale-110">
-        <span class="w-2.5 h-2.5 rounded-full ${dotColor} shrink-0"></span>
-        <span class="tracking-tight text-[11px] font-semibold">${branch.cabang}</span>
-        <span class="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px] font-mono font-bold">${branch.totalStores} Toko</span>
+      ${hasDanger ? '<div class="absolute -inset-1 bg-rose-600/25 rounded-full animate-ping"></div>' : ""}
+      <div class="px-2.5 py-1 rounded-full bg-slate-900/95 dark:bg-slate-950/95 border border-slate-700/80 hover:border-slate-400 text-slate-100 shadow-md backdrop-blur-md flex items-center gap-1.5 transition-all duration-200 group-hover:scale-105 z-20">
+        <span class="w-2 h-2 rounded-full ${dotColor} shrink-0"></span>
+        <span class="tracking-tight text-[11px] font-semibold text-slate-100 whitespace-nowrap">${branch.cabang}</span>
+        <span class="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold border ${countBadge} whitespace-nowrap">${branch.totalStores} Toko</span>
       </div>
     </div>
   `;
@@ -293,19 +297,19 @@ function createBranchIcon(branch: BranchAggregation) {
   return L.divIcon({
     html,
     className: "custom-branch-marker",
-    iconSize: [140, 32],
-    iconAnchor: [70, 16],
-    popupAnchor: [0, -18],
+    iconSize: [140, 28],
+    iconAnchor: [70, 14],
+    popupAnchor: [0, -16],
   });
 }
 
 // Function to generate grid cluster icon for Zoom 8–12 (Requirement 12)
 function createClusterIcon(count: number) {
-  const size = count > 100 ? 38 : count > 20 ? 34 : 30;
+  const size = count > 100 ? 36 : count > 20 ? 32 : 28;
   const html = `
     <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      <div class="w-${size} h-${size} rounded-full bg-slate-900/90 border-2 border-emerald-400 text-emerald-300 shadow-xl flex items-center justify-center font-bold text-xs transition-transform duration-200 group-hover:scale-110">
-        <span class="font-mono text-[11px]">${count}</span>
+      <div style="width: ${size}px; height: ${size}px;" class="rounded-full bg-slate-900/95 border border-slate-700 text-slate-200 shadow-md flex items-center justify-center font-mono font-bold text-xs transition-transform duration-200 group-hover:scale-110">
+        <span class="text-[11px]">${count}</span>
       </div>
     </div>
   `;
@@ -396,7 +400,7 @@ function createAhoClusterIcon(totalStores: number, storesWithTickets: number, pe
 
   const html = `
     <div class="relative flex items-center justify-center cursor-pointer group select-none">
-      <div class="w-[${size}px] h-[${size}px] rounded-full bg-slate-900/95 border border-slate-700/80 shadow-md backdrop-blur-md flex flex-col items-center justify-center font-bold transition-all duration-200 group-hover:scale-110">
+      <div style="width:${size}px;height:${size}px;" class="rounded-full bg-slate-900/95 border border-slate-700/80 shadow-md backdrop-blur-md flex flex-col items-center justify-center font-bold transition-all duration-200 group-hover:scale-110">
         <span class="font-mono text-[11px] font-bold leading-none ${ahoColor.textClass}">${roundedPct}%</span>
         <span class="text-[9px] font-mono text-slate-400 leading-none mt-0.5">${storesWithTickets}/${totalStores}</span>
       </div>
