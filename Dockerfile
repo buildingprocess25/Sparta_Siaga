@@ -28,6 +28,7 @@ COPY . .
 
 # Defense-in-depth: Prune non-production, test, and simulation artifacts before build
 RUN rm -rf \
+    app/api/simulation \
     tests \
     playwright.config.ts \
     test-api.mjs \
