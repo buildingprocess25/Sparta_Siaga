@@ -435,46 +435,28 @@ export function MapControls({
 
   return (
     <>
-      {/* 1. DESKTOP FLOATING PANEL (Always visible on large screens) */}
-      <div className="hidden lg:flex absolute top-[72px] left-4 z-[400] flex-col pointer-events-auto transition-all duration-200 w-[min(276px,calc(100vw-1.5rem))]">
-        {isMinimized ? (
-          <button
-            onClick={() => setIsMinimized(false)}
-            className={`p-2.5 rounded-xl shadow-xl backdrop-blur-md transition-all hover:scale-105 flex items-center justify-center ${
-              isDark
-                ? "bg-slate-900/95 border border-slate-700 text-white hover:bg-slate-800"
-                : "bg-white/95 border border-slate-300 text-slate-800 hover:bg-slate-100 shadow-md"
-            }`}
-            title="Buka Kontrol Peta"
-            aria-label="Buka Kontrol Peta"
-          >
-            <Layers className="w-4 h-4 text-cyan-500" />
-            {showRadar && (
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping ml-1" />
-            )}
-          </button>
-        ) : (
-          <div
-            className={`border rounded-xl p-3 shadow-lg backdrop-blur-md w-full text-xs space-y-2 transition-colors duration-200 max-h-[min(540px,calc(100dvh-155px))] overflow-y-auto ${
-              isDark
-                ? "bg-slate-900/95 border-slate-700/80 text-white"
-                : "bg-white/95 border-slate-200 text-slate-900 shadow-xl"
-            }`}
-          >
-            <div className={`flex items-center justify-between border-b pb-1.5 ${isDark ? "border-slate-800" : "border-slate-100"}`}>
-              <div className="flex items-center gap-1.5 font-bold text-xs tracking-tight">
-                <Layers className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
-                <span>Kontrol Peta</span>
-              </div>
-              <button
-                onClick={() => setIsMinimized(true)}
-                className={`p-1 rounded-md transition-colors ${
-                  isDark
-                    ? "hover:bg-slate-800 text-slate-400 hover:text-white"
-                    : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
-                }`}
-                title="Minimalkan Kontrol"
-                aria-label="Minimalkan kontrol peta"
+      {/* ========================================================================= */}
+      {/* 1. DESKTOP INTEGRATED CONTROL RAIL / PANEL                                */}
+      {/* ========================================================================= */}
+      {isOpen ? (
+        <aside
+          className="hidden lg:flex flex-col w-72 shrink-0 border-r border-border bg-card/95 z-20 transition-all duration-200 h-full overflow-hidden select-none"
+          aria-label="Panel Kontrol Peta"
+        >
+          {/* Header */}
+          <div className="h-11 px-3.5 border-b border-border flex items-center justify-between shrink-0 bg-muted/30">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+              <h2 className="text-xs font-semibold text-foreground tracking-tight">Kontrol Peta</h2>
+            </div>
+            {onToggleOpen && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={onToggleOpen}
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                title="Sembunyikan Panel Kontrol"
+                aria-label="Sembunyikan panel kontrol peta"
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
@@ -510,11 +492,7 @@ export function MapControls({
             onTouchMove={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
-            className={`relative w-full rounded-t-2xl shadow-2xl p-4 sm:p-5 border-t max-h-[82vh] overflow-y-auto overscroll-y-contain pb-20 animate-in slide-in-from-bottom duration-200 z-10 ${
-              isDark
-                ? "bg-slate-900 border-slate-800 text-white"
-                : "bg-white border-slate-200 text-slate-900"
-            }`}
+            className="relative w-full rounded-t-2xl shadow-2xl p-4 sm:p-5 border-t border-border bg-card text-card-foreground max-h-[85vh] overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom duration-200 z-10"
           >
             {/* Sheet Handle */}
             <div className="w-12 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-3" />
