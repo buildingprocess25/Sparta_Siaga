@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Store } from "@/types/store";
+import { Store, getStoreOwnershipLabel } from "@/types/store";
 import { Earthquake } from "@/types/disaster";
 import {
   X,
@@ -191,7 +191,7 @@ export function AffectedStoresSheet({
 
                 <div className={`pt-2 flex items-center justify-between text-[10px] border-t ${isLight ? "border-slate-100" : "border-slate-800"}`}>
                   <span className={isLight ? "text-slate-400" : "text-slate-500"}>
-                    {store.fr_type === "F" ? "Franchise" : "Reguler"}
+                    {getStoreOwnershipLabel(store.fr_type)}
                   </span>
                   
                   <span className={`font-semibold transition-transform group-hover:translate-x-1 flex items-center ${isLight ? "text-slate-400 group-hover:text-slate-700" : "text-slate-500 group-hover:text-slate-300"}`}>

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getDbPool } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { getOrLoadMasterStores } from "@/lib/store-master-loader";
+import { portalStoresEnabled } from "@/lib/sparta-master-contract";
+import { canonicalBranchKey } from "@/lib/sparta-master-sync";
 
 // Known canonical branch alias mappings (e.g. testing codes / historical prefixes)
 const BRANCH_CANONICAL_MAP: Record<string, string> = {
@@ -155,6 +157,18 @@ export async function GET(request: Request) {
     }
 
     const canSearchAllStores = isAdmin || isHO;
+    if (portalStoresEnabled()) {
+      const pool = getDbPool();
+      const code = canSearchAllStores ? null : await canonicalBranchKey(sessionUser.branchCode || sessionUser.branch);
+      if (!canSearchAllStores && !code) return NextResponse.json({ data: [], count: 0, type: "TOKO", source: "SPARTA_PORTAL" });
+      const { rows } = await pool.query(`SELECT id,kode_toko,nama_toko,cabang,branch_code,alamat,latitude,longitude,
+        fr_type,branch_emergency_contact FROM stores WHERE is_active=TRUE AND master_source='SPARTA_PORTAL'
+        AND ($1::text IS NULL OR branch_code=$1)
+        AND (nama_toko ILIKE $2 OR kode_toko ILIKE $2 OR alamat ILIKE $2)
+        ORDER BY nama_toko LIMIT $3`, [code, `%${q.trim()}%`, Number.isFinite(limit) ? Math.max(1, limit) : 40]);
+      const data = rows.map(row => ({ ...row, locationKind: "STORE", locationId: row.kode_toko }));
+      return NextResponse.json({ data, count: data.length, type: "TOKO", masterAvailable: true, source: "SPARTA_PORTAL" });
+    }
     let formattedStores: Array<{
       id: string;
       kode_toko: string;

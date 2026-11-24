@@ -15,6 +15,7 @@ export function rowToIncident(row: Record<string, unknown>): IncidentRecord {
     storeId: row.store_id as string,
     storeName: (row.location_name_snapshot ?? row.store_name ?? "Lokasi tanpa nama") as string,
     branch: row.branch as string,
+    branchCode: (row.branch_code as string) ?? null,
     locationCity: row.location_city as string,
     locationKind: (row.location_kind as IncidentRecord["locationKind"]) ?? undefined,
     locationId: (row.location_id as string) ?? undefined,

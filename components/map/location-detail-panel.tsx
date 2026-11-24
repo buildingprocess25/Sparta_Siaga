@@ -92,6 +92,7 @@ interface LocationDetailPanelProps {
   cluster?: ClusterSummaryDetail | null;
   onClose: () => void;
   isMobile?: boolean;
+  locationMode?: "event" | "store" | "dc";
   currentEarthquake?: {
     latitude: number;
     longitude: number;
@@ -110,6 +111,7 @@ export function LocationDetailPanel({
   cluster,
   onClose,
   isMobile = false,
+  locationMode = "store",
   currentEarthquake,
   activeRole,
   activeLayer,
@@ -159,7 +161,7 @@ export function LocationDetailPanel({
 
   // Compute distance from current earthquake epicenter if available
   const distanceKm = React.useMemo(() => {
-    if (!location || !currentEarthquake) return null;
+    if (locationMode !== "event" || !location || !currentEarthquake) return null;
     const lat1 = location.latitude;
     const lon1 = location.longitude;
     const lat2 = currentEarthquake.latitude;
@@ -175,9 +177,9 @@ export function LocationDetailPanel({
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c * 10) / 10;
-  }, [location, currentEarthquake]);
+  }, [locationMode, location, currentEarthquake]);
 
-  const isFacility = Boolean(facility || location?.id?.startsWith("FACILITY:"));
+  const isFacility = locationMode === "dc" || Boolean(facility || location?.id?.startsWith("FACILITY:"));
   const locCode = facility?.code || location?.kode_toko || "-";
   const locName = facility?.name || location?.nama_toko || "Lokasi";
   const locType = facility?.facility_type
@@ -214,21 +216,24 @@ export function LocationDetailPanel({
         icon: ShieldAlert,
       };
     }
-    if (location.status === "PRIORITY_MONITOR") {
-      return {
-        label: "Radius Evaluasi (V1)",
-        sub: "Dalam radius evaluasi gempa BMKG (V1)",
-        variant: "outline" as const,
-        icon: AlertTriangle,
-      };
-    }
-    if (location.status === "MONITOR") {
-      return {
-        label: "Radius Pemantauan",
-        sub: "Dalam radius pemantauan operasional wilayah",
-        variant: "outline" as const,
-        icon: Clock,
-      };
+    // Earthquake-specific radius terminology only applies when in event mode
+    if (locationMode === "event") {
+      if (location.status === "PRIORITY_MONITOR") {
+        return {
+          label: "Radius Evaluasi (V1)",
+          sub: "Dalam radius evaluasi gempa BMKG (V1)",
+          variant: "outline" as const,
+          icon: AlertTriangle,
+        };
+      }
+      if (location.status === "MONITOR") {
+        return {
+          label: "Radius Pemantauan",
+          sub: "Dalam radius pemantauan operasional wilayah",
+          variant: "outline" as const,
+          icon: Clock,
+        };
+      }
     }
     return {
       label: "Operasional Normal",
@@ -259,7 +264,7 @@ export function LocationDetailPanel({
           onTouchMove={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className={`bg-card text-card-foreground border-border z-[1200] flex flex-col transition-all duration-200 ${
+          className={`bg-card text-card-foreground border-border z-[1200] flex flex-col min-h-0 transition-all duration-200 ${
             isMobile
               ? "fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t shadow-2xl overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom"
               : "w-96 md:w-[400px] h-full border-l shadow-lg shrink-0 overflow-hidden"
@@ -305,7 +310,7 @@ export function LocationDetailPanel({
             </Button>
           </div>
 
-          <ScrollArea className="flex-1 p-3.5 space-y-3.5 text-xs">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 text-xs">
             <div className="space-y-3.5">
               {/* Stats Card */}
               <Card>
@@ -387,7 +392,7 @@ export function LocationDetailPanel({
                 </Button>
               </div>
             </div>
-          </ScrollArea>
+          </div>
         </aside>
       </>
     );
@@ -414,7 +419,7 @@ export function LocationDetailPanel({
           onTouchMove={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className={`bg-card text-card-foreground border-border z-[1200] flex flex-col transition-all duration-200 ${
+          className={`bg-card text-card-foreground border-border z-[1200] flex flex-col min-h-0 transition-all duration-200 ${
             isMobile
               ? "fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t shadow-2xl overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom"
               : "w-96 md:w-[400px] h-full border-l shadow-lg shrink-0 overflow-hidden"
@@ -460,7 +465,7 @@ export function LocationDetailPanel({
             </Button>
           </div>
 
-          <ScrollArea className="flex-1 p-3.5 space-y-3.5 text-xs">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 text-xs">
             <div className="space-y-3.5">
               <Card>
                 <CardHeader className="p-3 pb-2 flex-row items-center justify-between space-y-0">
@@ -518,7 +523,7 @@ export function LocationDetailPanel({
                 </Button>
               </div>
             </div>
-          </ScrollArea>
+          </div>
         </aside>
       </>
     );
@@ -542,7 +547,7 @@ export function LocationDetailPanel({
         onTouchMove={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
-        className={`bg-card text-card-foreground border-border z-[1200] flex flex-col transition-all duration-200 ${
+        className={`bg-card text-card-foreground border-border z-[1200] flex flex-col min-h-0 transition-all duration-200 ${
           isMobile
             ? "fixed inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t shadow-2xl overflow-y-auto overscroll-y-contain pb-24 animate-in slide-in-from-bottom"
             : "w-96 md:w-[400px] h-full border-l shadow-lg shrink-0 overflow-hidden"
@@ -588,7 +593,7 @@ export function LocationDetailPanel({
         </div>
 
         {/* Scrollable Content Body */}
-        <ScrollArea className="flex-1 p-3.5 space-y-3.5 text-xs">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-3.5 text-xs">
           <div className="space-y-3.5">
             {/* Status Terminology Card */}
             {termBadge && (
@@ -605,8 +610,8 @@ export function LocationDetailPanel({
               </div>
             )}
 
-            {/* Earthquake Exposure Info */}
-            {distanceKm !== null && currentEarthquake && (
+            {/* Earthquake Exposure Info (strictly isolated to Mode Kejadian) */}
+            {locationMode === "event" && distanceKm !== null && currentEarthquake && (
               <Card>
                 <CardContent className="p-3 space-y-1.5 text-xs">
                   <div className="flex items-center justify-between text-muted-foreground">
@@ -669,14 +674,15 @@ export function LocationDetailPanel({
                   {/* BMS */}
                   <div className="p-2 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-[10px] text-muted-foreground uppercase font-semibold truncate">
-                        BMS (Building Maintenance Supervisor)
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase font-semibold">
+                        <span>BMS</span>
+                        <span className="text-[9px] lowercase font-normal opacity-80">(supervisor)</span>
                       </div>
-                      <div className="font-medium text-xs text-foreground mt-0.5 truncate">
+                      <div className="font-medium text-xs text-foreground mt-0.5 truncate" title={ahoData?.personnel?.bms || "-"}>
                         {ahoData?.personnel?.bms || "Data belum tersedia"}
                       </div>
                     </div>
-                    <Badge variant={ahoData?.personnel?.bms ? "default" : "outline"} className="text-[9px] shrink-0">
+                    <Badge variant={ahoData?.personnel?.bms ? "default" : "outline"} className="text-[9px] shrink-0 font-medium">
                       {ahoData?.personnel?.bms ? "Aktif" : "Menunggu Akses"}
                     </Badge>
                   </div>
@@ -684,14 +690,15 @@ export function LocationDetailPanel({
                   {/* BMC */}
                   <div className="p-2 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-[10px] text-muted-foreground uppercase font-semibold truncate">
-                        BMC (Building Maintenance Coordinator)
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase font-semibold">
+                        <span>BMC</span>
+                        <span className="text-[9px] lowercase font-normal opacity-80">(koordinator)</span>
                       </div>
-                      <div className="font-medium text-xs text-foreground mt-0.5 truncate">
+                      <div className="font-medium text-xs text-foreground mt-0.5 truncate" title={ahoData?.personnel?.bmc || "-"}>
                         {ahoData?.personnel?.bmc || "Data belum tersedia"}
                       </div>
                     </div>
-                    <Badge variant={ahoData?.personnel?.bmc ? "default" : "outline"} className="text-[9px] shrink-0">
+                    <Badge variant={ahoData?.personnel?.bmc ? "default" : "outline"} className="text-[9px] shrink-0 font-medium">
                       {ahoData?.personnel?.bmc ? "Aktif" : "Menunggu Akses"}
                     </Badge>
                   </div>
@@ -699,14 +706,15 @@ export function LocationDetailPanel({
                   {/* BnM Manager */}
                   <div className="p-2 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-[10px] text-muted-foreground uppercase font-semibold truncate">
-                        BnM Manager (Branch Maintenance Manager)
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground uppercase font-semibold">
+                        <span>BnM Manager</span>
+                        <span className="text-[9px] lowercase font-normal opacity-80">(cabang)</span>
                       </div>
-                      <div className="font-medium text-xs text-foreground mt-0.5 truncate">
+                      <div className="font-medium text-xs text-foreground mt-0.5 truncate" title={ahoData?.personnel?.bnmManager || "-"}>
                         {ahoData?.personnel?.bnmManager || "Data belum tersedia"}
                       </div>
                     </div>
-                    <Badge variant={ahoData?.personnel?.bnmManager ? "default" : "outline"} className="text-[9px] shrink-0">
+                    <Badge variant={ahoData?.personnel?.bnmManager ? "default" : "outline"} className="text-[9px] shrink-0 font-medium">
                       {ahoData?.personnel?.bnmManager ? "Aktif" : "Menunggu Akses"}
                     </Badge>
                   </div>
@@ -849,7 +857,7 @@ export function LocationDetailPanel({
               </Link>
             </div>
           </div>
-        </ScrollArea>
+        </div>
       </aside>
     </>
   );

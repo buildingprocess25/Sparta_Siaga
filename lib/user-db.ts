@@ -11,6 +11,7 @@ export interface UserModel {
   businessRole: SpartaRole | null;
   scope: Scope | null;
   branch: string | null;
+  branchCode?: string | null;
   status: "ACTIVE" | "INACTIVE";
   source: string;
   passwordHash?: string | null;
@@ -32,6 +33,7 @@ function rowToUser(row: any): UserModel {
     businessRole: row.business_role as SpartaRole | null,
     scope: row.scope as Scope | null,
     branch: row.branch,
+    branchCode: row.branch_code ?? null,
     status: row.status as "ACTIVE" | "INACTIVE",
     source: row.source || "LOCAL",
     passwordHash: row.password_hash,

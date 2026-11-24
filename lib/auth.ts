@@ -46,6 +46,7 @@ function buildUserContext(dbUser: UserModel): UserContext | null {
     systemRole: dbUser.systemRole,
     scope: isSystemAdmin ? null : dbUser.scope,
     branch: isSystemAdmin ? null : dbUser.branch,
+    branchCode: isSystemAdmin || process.env.SPARTA_BRANCH_MASTER_ENABLED !== "true" ? null : dbUser.branchCode,
   };
 }
 
@@ -94,7 +95,7 @@ export async function getSessionUser(req?: Request): Promise<UserContext | null>
 
       if (dbUser && dbUser.status === "ACTIVE") {
         // Multi-device session revocation check: if user's token version was bumped, old tokens are invalidated
-        if (!dbUser.tokenVersion || !payload.v || payload.v >= dbUser.tokenVersion) {
+        if (payload.v === (dbUser.tokenVersion || 1) || (!payload.v && (dbUser.tokenVersion || 1) === 1)) {
           return buildUserContext(dbUser);
         }
         console.warn(`[Auth] User ${dbUser.id} session revoked (token version ${payload.v} < ${dbUser.tokenVersion})`);

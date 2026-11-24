@@ -1,4 +1,5 @@
 import { getDbPool } from "./db";
+import { branchSqlKey, branchSqlParameter } from "./sparta-rollout";
 
 export async function assignIncidentPicForPersistedAction(
   client: { query: (text: string, values?: unknown[]) => Promise<{ rows: any[]; rowCount?: number }> },
@@ -11,7 +12,7 @@ export async function assignIncidentPicForPersistedAction(
   }
 ): Promise<{ assigned: boolean; currentPicUserId: string | null; reason?: string }> {
   const locked = await client.query(
-    `SELECT primary_pic_user_id, location_kind, tkp_type, branch FROM incidents WHERE id = $1 FOR UPDATE`,
+    `SELECT primary_pic_user_id, location_kind, tkp_type, branch, to_jsonb(incidents)->>'branch_code' AS branch_code FROM incidents WHERE id = $1 FOR UPDATE`,
     [input.incidentId]
   );
   if (!locked.rows[0]) {
@@ -25,7 +26,8 @@ export async function assignIncidentPicForPersistedAction(
 
   // Check branch
   if (input.branch && row.branch) {
-    if (input.branch.trim().toLowerCase() !== row.branch.trim().toLowerCase()) {
+    const match = await client.query(`SELECT ${branchSqlParameter("$1")}=${branchSqlParameter("$2")} AS same_branch`, [input.branch, row.branch_code || row.branch]);
+    if (!match.rows[0]?.same_branch) {
       return { assigned: false, currentPicUserId: null, reason: "BRANCH_MISMATCH" };
     }
   }
@@ -79,7 +81,7 @@ export async function claimIncidentPic(input: {
     let branchClause = "";
     if (input.systemRole !== "ADMIN") {
       values.push(input.branch);
-      branchClause = ` AND branch = $${values.length}`;
+      branchClause = ` AND ${branchSqlKey("branch")} = ${branchSqlParameter(`$${values.length}`)}`;
     }
 
     const checkRes = await client.query<{ primary_pic_user_id: string | null; location_kind: string | null; tkp_type: string | null; status: string }>(
@@ -172,7 +174,7 @@ export async function changeIncidentPic(input: {
     let scope = "";
     if (input.systemRole !== "ADMIN") {
       values.push(input.branch);
-      scope = ` AND branch = $${values.length}`;
+      scope = ` AND ${branchSqlKey("branch")} = ${branchSqlParameter(`$${values.length}`)}`;
     }
     const locked = await client.query<{ primary_pic_user_id: string | null; location_kind: string | null }>(
       `SELECT primary_pic_user_id, location_kind FROM incidents WHERE id = $1${scope} FOR UPDATE`, values
@@ -184,7 +186,7 @@ export async function changeIncidentPic(input: {
       const requiredRole = locked.rows[0].location_kind === "FACILITY" ? "bes" : "bms";
       const eligible = await client.query(
         `SELECT id FROM users WHERE id = $1 AND status = 'ACTIVE'
-          AND branch = (SELECT branch FROM incidents WHERE id = $2)
+          AND ${branchSqlKey("branch")} = (SELECT ${branchSqlKey("branch")} FROM incidents WHERE id = $2)
           AND business_role = $3`,
         [input.nextUserId, input.incidentId, requiredRole]
       );
@@ -215,9 +217,9 @@ export async function changeIncidentPic(input: {
 export async function getIncidentPicDetails(incidentId: string, branch?: string | null) {
   const values: unknown[] = [incidentId];
   let scope = "";
-  if (branch !== undefined) { values.push(branch); scope = ` AND i.branch = $${values.length}`; }
+  if (branch !== undefined) { values.push(branch); scope = ` AND ${branchSqlKey("i.branch")} = ${branchSqlParameter(`$${values.length}`)}`; }
   const incident = await getDbPool().query(
-    `SELECT i.id, i.branch, i.location_kind, i.primary_pic_user_id, u.name AS primary_pic_name
+    `SELECT i.id, i.branch, to_jsonb(i)->>'branch_code' AS branch_code, i.location_kind, i.primary_pic_user_id, u.name AS primary_pic_name
        FROM incidents i LEFT JOIN users u ON u.id = i.primary_pic_user_id
       WHERE i.id = $1${scope}`, values
   );
@@ -234,9 +236,9 @@ export async function getIncidentPicDetails(incidentId: string, branch?: string 
     ),
     getDbPool().query(
       `SELECT id, name, business_role FROM users
-        WHERE branch = $1 AND status = 'ACTIVE'
+        WHERE ${branchSqlKey("branch")} = ${branchSqlParameter("$1")} AND status = 'ACTIVE'
           AND business_role = CASE WHEN $2 = 'FACILITY' THEN 'bes' ELSE 'bms' END
-        ORDER BY name`, [incident.rows[0].branch, incident.rows[0].location_kind]
+        ORDER BY name`, [incident.rows[0].branch_code || incident.rows[0].branch, incident.rows[0].location_kind]
     ),
   ]);
   return { ...incident.rows[0], history: history.rows, eligibleUsers: eligible.rows };

@@ -17,10 +17,10 @@ import { Earthquake } from '@/types/disaster';
 import { getExternalApiConfig } from './runtime-config';
 
 import {
-  syncStoresFromGoogleSheets,
   getLastStoreSyncHistory,
   StoreSyncHistoryRecord
 } from './google-sheets-sync';
+import { syncMasterStores } from './store-sync';
 
 export const AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES = parseInt(process.env.AUTO_EARTHQUAKE_ALERT_MAX_AGE_MINUTES || '60', 10);
 export const AUTO_EARTHQUAKE_BACKFILL_MAX_AGE_MINUTES = parseInt(process.env.AUTO_EARTHQUAKE_BACKFILL_MAX_AGE_MINUTES || '1440', 10);
@@ -346,7 +346,7 @@ export async function runAutonomousStoreSyncCycle(force: boolean = false): Promi
   isStoreSyncRunning = true;
   console.log("[Autonomous Store Sync] Starting periodic store sync cycle...");
   try {
-    const record = await syncStoresFromGoogleSheets();
+    const record = await syncMasterStores();
     console.log(
       `[Autonomous Store Sync] Cycle completed with status: ${record.status} (${record.records_added} added, ${record.records_updated} updated)`
     );

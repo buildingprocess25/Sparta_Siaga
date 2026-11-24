@@ -6,6 +6,10 @@ import { getJwtSecret } from './lib/runtime-config';
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === '/internal/sparta/provision' && request.method === 'POST') {
+    return NextResponse.next();
+  }
+
   // 1. Public and PWA infrastructure assets (Must NEVER be redirected to /login)
   const isPwaOrStatic =
     pathname === '/manifest.webmanifest' ||

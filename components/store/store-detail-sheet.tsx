@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Store } from "@/types/store";
+import { Store, getStoreOwnership, getStoreOwnershipLabel } from "@/types/store";
 import { WeatherResponse } from "@/types/weather";
 import {
   X,
@@ -71,7 +71,7 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
   };
 
 
-  const isFranchise = store.fr_type === "F";
+  const isFranchise = getStoreOwnership(store.fr_type) === "FRANCHISE";
   const isDark = theme === "dark";
 
   return (
@@ -106,7 +106,7 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
                   : isDark ? "bg-blue-950/80 text-blue-300 border-blue-600/40" : "bg-blue-100 text-blue-800 border-blue-200"
               }`}
             >
-              {isFranchise ? "Franchise" : "Reguler"}
+              {getStoreOwnershipLabel(store.fr_type)}
             </span>
 
             <span

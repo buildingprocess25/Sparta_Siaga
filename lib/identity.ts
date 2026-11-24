@@ -18,6 +18,7 @@ export interface UserIdentity {
   businessRole: SpartaRole | null;
   scope: Scope | null;
   branch: string | null;
+  branchCode?: string | null;
   role: SpartaRole | null;
   position: string;
   effectivePermissions?: Record<PermissionKey, boolean>;
@@ -63,6 +64,7 @@ export async function resolveUserIdentityFromSession(session: UserContext): Prom
     businessRole: isSystemAdmin ? null : session.role,
     scope: isSystemAdmin ? null : session.scope,
     branch: isSystemAdmin ? null : session.branch,
+    branchCode: isSystemAdmin ? null : session.branchCode,
     role: isSystemAdmin ? null : session.role,
     position: isSystemAdmin
       ? "System Administrator"

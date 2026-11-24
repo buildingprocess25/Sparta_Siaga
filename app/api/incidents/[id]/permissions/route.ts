@@ -9,6 +9,7 @@ import {
 } from "@/lib/permission-service";
 import { ProgressService } from "@/lib/progress-service";
 import { deriveWorkflowActions } from "@/lib/workflow-actions";
+import { samePortalBranch } from "@/lib/sparta-master-sync";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -55,10 +56,7 @@ export async function GET(_: Request, { params }: RouteContext) {
       checkUserPermission({ user: sessionUser, permission: "COMPLETION_APPROVE_COORDINATOR", report: incident }),
     ]);
 
-    const sameBranch = Boolean(
-      sessionUser.branch && incident.branch &&
-      sessionUser.branch.trim().toLowerCase() === incident.branch.trim().toLowerCase()
-    );
+    const sameBranch = await samePortalBranch(sessionUser.branchCode || sessionUser.branch, incident.branchCode || incident.branch);
     const actorRole = (sessionUser.role || "").toLowerCase();
     const operationalActor = sessionUser.systemRole !== "ADMIN" && sessionUser.scope !== "HO" && sameBranch;
 

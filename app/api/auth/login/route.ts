@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { signSession } from "@/lib/jwt";
 import { cookies } from "next/headers";
 import { getSessionCookieOptions } from "@/lib/session-config";
+import { canUseLocalPassword } from "@/lib/sparta-identity";
 
 export async function POST(request: Request) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
         );
       }
 
-      return NextResponse.json(
+      if (!user || !canUseLocalPassword(user.source, true, process.env.SPARTA_LOCAL_LOGIN_TRANSITION_ENABLED === "true")) return NextResponse.json(
         {
           error: "Autentikasi langsung dengan password dinonaktifkan. Wajib masuk melalui Portal SSO SPARTA.",
           code: "SSO_LOGIN_REQUIRED",
@@ -52,6 +53,10 @@ export async function POST(request: Request) {
     }
 
     const user = await dbGetUserByIdentifier(identifier);
+
+    if (user && !canUseLocalPassword(user.source, isProd || isUat, process.env.SPARTA_LOCAL_LOGIN_TRANSITION_ENABLED === "true")) {
+      return NextResponse.json({ error: "Akun ini wajib masuk melalui Portal SPARTA (SSO).", code: "SSO_LOGIN_REQUIRED" }, { status: 403 });
+    }
 
     if (user) {
       const { isProductionEnvironment } = await import("@/lib/environment-policy");

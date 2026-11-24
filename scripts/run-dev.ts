@@ -24,7 +24,7 @@ console.log("=================================================================="
 const nextBin = path.resolve(process.cwd(), "node_modules/next/dist/bin/next");
 const child = spawn(
   process.execPath,
-  ["--max-old-space-size=4096", nextBin, "dev", "-p", "3004", "--webpack"],
+  ["--max-old-space-size=4096", nextBin, "dev", "-p", "3004", "-H", "0.0.0.0", "--webpack"],
   {
     stdio: "inherit",
     env: {

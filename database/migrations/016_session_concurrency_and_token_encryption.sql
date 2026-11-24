@@ -5,9 +5,8 @@
 ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS current_token_encrypted TEXT;
 
 -- Composite index to accelerate concurrent rotation and grace-period lookups
-CREATE INDEX IF NOT EXISTS idx_user_sessions_prev_token_grace 
+CREATE INDEX IF NOT EXISTS idx_user_sessions_prev_token_grace
   ON user_sessions (previous_refresh_token_hash, previous_token_expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_user_sessions_active_lookup
   ON user_sessions (refresh_token_hash, is_revoked, expires_at);
-

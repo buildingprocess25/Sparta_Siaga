@@ -13,7 +13,7 @@ export const GOOGLE_SHEET_EXPORT_URL =
 export interface StoreSyncHistoryRecord {
   id: string;
   sync_source: string;
-  sourceType?: "GOOGLE_SHEETS" | "LOCAL_MASTER";
+  sourceType?: "GOOGLE_SHEETS" | "LOCAL_MASTER" | "SPARTA_PORTAL";
   sourceLabel?: string;
   status: "COMPLETED" | "OFFLINE_SOURCE_PRESERVED" | "LOCAL_FALLBACK" | "IN_PROGRESS" | "FAILED";
   started_at: string;
@@ -283,8 +283,8 @@ export async function getLastStoreSyncHistory(): Promise<StoreSyncHistoryRecord 
 
     const row = res.rows[0];
     const isRemote = row.sync_source === "GOOGLE_SHEET_REMOTE" || row.sync_source === "GOOGLE_SHEETS_API";
-    const sourceType: "GOOGLE_SHEETS" | "LOCAL_MASTER" = isRemote ? "GOOGLE_SHEETS" : "LOCAL_MASTER";
-    const sourceLabel = isRemote
+    const sourceType = row.sync_source === "SPARTA_PORTAL" ? "SPARTA_PORTAL" : isRemote ? "GOOGLE_SHEETS" : "LOCAL_MASTER";
+    const sourceLabel = row.sync_source === "SPARTA_PORTAL" ? "Portal SPARTA" : isRemote
       ? "Google Sheets (Sinkron)"
       : "Master Toko Lokal (Akses Google Sheets Privat Memerlukan Kredensial)";
 

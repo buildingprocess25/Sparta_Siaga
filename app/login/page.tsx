@@ -151,9 +151,18 @@ export default function LoginPage() {
           setSsoPortalUrl(data.ssoPortalUrl);
         }
 
-        if (data.isDevelopment && data.isQuickLoginAllowed) {
-          setIsDevMode(true);
-          setInitLoading(false);
+        if (data.isDevelopment) {
+          if (data.isQuickLoginAllowed) {
+            setIsDevMode(true);
+            setInitLoading(false);
+          } else {
+            setIsDevMode(false);
+            setError(
+              data.quickLoginReason ||
+                "Quick Login hanya dapat diakses melalui loopback lokal (localhost/127.0.0.1)."
+            );
+            setInitLoading(false);
+          }
         } else {
           setIsDevMode(false);
           // If in UAT or Production and there's NO error query parameter, redirect to Portal SSO immediately

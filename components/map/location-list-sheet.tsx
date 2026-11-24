@@ -226,7 +226,7 @@ export function LocationListSheet({
 
                       <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
                         <span>{loc.cabang === "Belum dipetakan" ? "Belum dipetakan ke cabang" : `Cabang ${loc.cabang || "-"}`}</span>
-                        {loc.distanceFromDisasterKm !== undefined && (
+                        {mapMode === "event" && loc.distanceFromDisasterKm !== undefined && (
                           <>
                             <span>•</span>
                             <span className="font-mono">{loc.distanceFromDisasterKm} km dari episentrum</span>
@@ -241,12 +241,12 @@ export function LocationListSheet({
                             Perlu Pemetaan Cabang
                           </span>
                         )}
-                        {isPriority && (
+                        {mapMode === "event" && isPriority && (
                           <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 text-[10px] font-bold">
                             Radius Prioritas
                           </span>
                         )}
-                        {isAttention && (
+                        {mapMode === "event" && isAttention && (
                           <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-bold">
                             Radius Pantau
                           </span>

@@ -17,6 +17,13 @@ export interface UserContext {
   systemRole: SystemRole;
   scope: Scope | null;
   branch: string | null;
+  branchCode?: string | null;
+}
+
+export function reportBranchKeys(user: UserContext, report: IncidentRecord): [string, string] {
+  const useCodes = Boolean(user.branchCode && report.branchCode);
+  return [(useCodes ? user.branchCode : user.branch)?.trim().toLowerCase() || "__missing_user_branch__",
+    (useCodes ? report.branchCode : report.branch)?.trim().toLowerCase() || "__missing_report_branch__"];
 }
 
 // ============================================================
@@ -101,8 +108,7 @@ export function canViewReport(
   if (user.scope === "HO") {
     return isReportVisibleToHo(report);
   }
-  const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
-  const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+  const [userBranch, reportBranch] = reportBranchKeys(user, report);
   return userBranch === reportBranch;
 }
 
@@ -113,8 +119,7 @@ export function canActOnReport(
   if (user.scope === "HO") return false; // HO strictly read-only
   if (user.systemRole === "ADMIN") return true; // Admin SPARTA SIAGA full access
 
-  const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
-  const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+  const [userBranch, reportBranch] = reportBranchKeys(user, report);
   return userBranch === reportBranch;
 }
 
@@ -132,8 +137,7 @@ export function canInspectReport(
   if (user.systemRole === "ADMIN") return true; // Admin can inspect both Toko & DC across branches
   if (user.scope === "HO") return false;
 
-  const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
-  const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+  const [userBranch, reportBranch] = reportBranchKeys(user, report);
   if (userBranch !== reportBranch) return false;
 
   const tkp = report.tkpType || "toko";
@@ -150,8 +154,7 @@ export function canApproveAsBm(
   if (user.scope === "HO") return false;
   if (user.role !== "bm") return false;
 
-  const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
-  const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+  const [userBranch, reportBranch] = reportBranchKeys(user, report);
   return userBranch === reportBranch;
 }
 
@@ -172,8 +175,7 @@ export function canCreateEstimation(
 ): boolean {
   if (user.systemRole === "ADMIN") return true;
   if (user.role === "bms") {
-    const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
-    const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+    const [userBranch, reportBranch] = reportBranchKeys(user, report);
     return userBranch === reportBranch;
   }
   return false;
@@ -194,8 +196,7 @@ export function canCloseReport(
   if (user.systemRole === "ADMIN") return true;
   if ((user.role || "").toLowerCase() !== "bm") return false; // BnM Manager only
 
-  const userBranch = user.branch ? user.branch.trim().toLowerCase() : "";
-  const reportBranch = report.branch ? report.branch.trim().toLowerCase() : "";
+  const [userBranch, reportBranch] = reportBranchKeys(user, report);
   return userBranch === reportBranch;
 }
 

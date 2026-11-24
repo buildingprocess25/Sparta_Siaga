@@ -1,7 +1,7 @@
 import { getDbPool } from './db';
 import { sendEmergencyEmail, getBranchDutyOfficerEmail } from './email-service';
 import { DisasterNotificationType, NotificationChannel, NotificationLog, AffectedStoreSummary } from '@/types/notification';
-import { Store } from '@/types/store';
+import { Store, getStoreOwnership, getStoreOwnershipLabel } from '@/types/store';
 import { calculateHaversineDistance } from './haversine';
 
 export interface DispatchNotificationParams {
@@ -59,7 +59,7 @@ export function generateEmergencyEmailHtml(params: {
         </td>
         <td style="padding: 10px 8px; font-size: 13px; color: #f1f5f9;">
           ${s.nama_toko}
-          ${s.fr_type === 'F' ? '<span style="background: #581c87; color: #d8b4fe; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">FRANCHISE</span>' : '<span style="background: #1e3a8a; color: #93c5fd; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">REGULER</span>'}
+          ${getStoreOwnership(s.fr_type) === 'FRANCHISE' ? '<span style="background: #581c87; color: #d8b4fe; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">FRANCHISE</span>' : `<span style="background: #1e3a8a; color: #93c5fd; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${getStoreOwnershipLabel(s.fr_type).toUpperCase()}</span>`}
         </td>
         <td style="padding: 10px 8px; font-size: 12px; color: #cbd5e1;">${s.distance_km.toFixed(1)} km</td>
         <td style="padding: 10px 8px; font-size: 12px;">

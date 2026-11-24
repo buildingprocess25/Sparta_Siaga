@@ -296,6 +296,7 @@ export interface IncidentRecord {
   storeId: string;
   storeName: string;
   branch: string;
+  branchCode?: string | null;
   locationCity: string;
   locationKind?: "STORE" | "FACILITY";
   locationId?: string;

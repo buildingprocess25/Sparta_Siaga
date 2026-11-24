@@ -2,6 +2,7 @@ import type { IncidentRecord } from "@/types/incident";
 import type { UserContext } from "./report-permissions";
 import { canViewReport } from "./report-permissions";
 import { canViewReportAsync } from "./permission-service";
+import { branchMasterEnabled } from "./sparta-rollout";
 
 const HO_POST_APPROVAL_STATUSES = [
   "confirmed_affected",
@@ -29,7 +30,7 @@ export async function canAccessReportAsync(user: UserContext, report: IncidentRe
 }
 
 export function getReportAccessSql(
-  user: Pick<UserContext, "systemRole" | "scope" | "branch">,
+  user: Pick<UserContext, "systemRole" | "scope" | "branch" | "branchCode">,
   alias = "incidents",
   firstParameter = 1
 ): { clause: string; values: unknown[] } {
@@ -59,10 +60,11 @@ export function getReportAccessSql(
     };
   }
 
-  const branch = user.branch?.trim();
+  const useCode = branchMasterEnabled() && Boolean(user.branchCode);
+  const branch = (useCode ? user.branchCode : user.branch)?.trim();
   if (!branch) return { clause: "FALSE", values: [] };
   return {
-    clause: `LOWER(TRIM(${alias}.branch)) = LOWER(TRIM($${firstParameter}))`,
+    clause: useCode ? `${alias}.branch_code = $${firstParameter}` : `LOWER(TRIM(${alias}.branch)) = LOWER(TRIM($${firstParameter}))`,
     values: [branch],
   };
 }

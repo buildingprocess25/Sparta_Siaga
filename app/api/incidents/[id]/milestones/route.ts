@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { samePortalBranch } from "@/lib/sparta-master-sync";
 import { dbGetIncidentById } from "@/lib/incident-db";
 import { canAccessReportAsync } from "@/lib/report-access-policy";
 import {
@@ -122,8 +123,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     // Branch isolation
-    const clean = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-    if (!sessionUser.branch || clean(sessionUser.branch) !== clean(incident.branch)) {
+    if (!await samePortalBranch(sessionUser.branchCode || sessionUser.branch, incident.branchCode || incident.branch)) {
       return NextResponse.json(
         { error: `Aksi hanya berlaku untuk cabang sendiri (${sessionUser.branch || "N/A"}), bukan ${incident.branch}.` },
         { status: 403 }

@@ -1,6 +1,18 @@
 import { Earthquake } from "./disaster";
 
 export type SpatialRisk = "SAFE" | "MONITOR" | "PRIORITY_MONITOR" | "UNASSESSED";
+
+export function getStoreOwnership(value?: string | null): "REGULAR" | "FRANCHISE" | "UNKNOWN" {
+  const normalized = value?.trim().toUpperCase();
+  if (["F", "FRANCHISE"].includes(normalized || "")) return "FRANCHISE";
+  if (["R", "REGULAR", "REGULER"].includes(normalized || "")) return "REGULAR";
+  return "UNKNOWN";
+}
+
+export function getStoreOwnershipLabel(value?: string | null) {
+  const ownership = getStoreOwnership(value);
+  return ownership === "FRANCHISE" ? "Franchise" : ownership === "REGULAR" ? "Reguler" : "Belum diketahui";
+}
 export type StoreStatus = SpatialRisk; // Backward compatibility alias
 
 export type OperationalStatus =
@@ -25,6 +37,7 @@ export interface Store {
   kode_toko: string;
   nama_toko: string;
   cabang: string;
+  branch_code?: string | null;
   alamat: string;
   latitude: number;
   longitude: number;

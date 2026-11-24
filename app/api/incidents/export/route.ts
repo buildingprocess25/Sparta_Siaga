@@ -3,6 +3,8 @@ import { getDbPool } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { getReportAccessSql } from "@/lib/report-access-policy";
 import { HISTORY_STATUSES, isHistoryStatus } from "@/types/incident";
+import { canonicalBranchKey } from "@/lib/sparta-master-sync";
+import { branchSqlKey, branchSqlParameter } from "@/lib/sparta-rollout";
 
 export async function GET(request: Request) {
   try {
@@ -30,8 +32,8 @@ export async function GET(request: Request) {
     paramIndex += access.values.length;
 
     if ((sessionUser.systemRole === "ADMIN" || sessionUser.scope === "HO") && clientBranch && clientBranch !== "all") {
-      conditions.push(`branch = $${paramIndex++}`);
-      values.push(clientBranch);
+      conditions.push(`${branchSqlKey("branch")} = ${branchSqlParameter(`$${paramIndex++}`)}`);
+      values.push(await canonicalBranchKey(clientBranch));
     }
 
     if (startDate) {

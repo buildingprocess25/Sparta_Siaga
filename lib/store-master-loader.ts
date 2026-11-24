@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { Store } from "@/types/store";
 import { getDbPool } from "./db";
+import { portalStoresEnabled } from "./sparta-master-contract";
 
 export interface BranchCentroid {
   cabang: string;
@@ -13,6 +14,11 @@ export interface BranchCentroid {
 let cachedStores: Store[] | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export function invalidateMasterStoresCache() {
+  cachedStores = null;
+  lastCacheTime = 0;
+}
 
 function parseCSVLine(text: string): string[] {
   const result: string[] = [];
@@ -49,9 +55,11 @@ export async function getOrLoadMasterStores(forceRefresh: boolean = false): Prom
   try {
     const pool = getDbPool();
     const res = await pool.query(
-      `SELECT id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type, branch_emergency_contact 
+      `SELECT id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type, branch_emergency_contact
+       ${portalStoresEnabled() ? ", branch_code" : ""}
        FROM stores 
        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+       ${portalStoresEnabled() ? "AND is_active=TRUE AND master_source='SPARTA_PORTAL'" : ""}
        LIMIT 25000`
     );
     if (res.rows && res.rows.length > 0) {
@@ -60,6 +68,7 @@ export async function getOrLoadMasterStores(forceRefresh: boolean = false): Prom
         kode_toko: r.kode_toko,
         nama_toko: r.nama_toko,
         cabang: r.cabang,
+        branch_code: r.branch_code ?? null,
         alamat: r.alamat || `Alfamart ${r.nama_toko}, Cabang ${r.cabang}`,
         latitude: parseFloat(r.latitude),
         longitude: parseFloat(r.longitude),
@@ -71,7 +80,14 @@ export async function getOrLoadMasterStores(forceRefresh: boolean = false): Prom
       return cachedStores;
     }
   } catch (dbErr) {
-    console.warn("[Store Master Loader] DB stores query not available or empty, falling back to CSV master:", dbErr);
+    console.warn("[Store Master Loader] Database master toko tidak tersedia:", dbErr);
+    if (portalStoresEnabled()) throw dbErr;
+  }
+
+  if (portalStoresEnabled()) {
+    cachedStores = [];
+    lastCacheTime = now;
+    return [];
   }
 
   // 2. Read from canonical data/stores-master.csv

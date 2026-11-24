@@ -91,12 +91,13 @@ export async function listSharedQueue(user: {
   scope: string | null;
   role: string | null;
   branch: string | null;
+  branchCode?: string | null;
 }) {
   const values: unknown[] = [];
   const where = ["i.closed_at IS NULL", "i.status NOT IN ('closed', 'resolved', 'archived', 'confirmed_safe', 'rejected_invalid', 'expired_unhandled')"];
   if (user.systemRole !== "ADMIN" && user.scope !== "HO") {
-    values.push(user.branch);
-    where.push(`i.branch = $${values.length}`);
+    values.push(user.branchCode || user.branch);
+    where.push(user.branchCode ? `i.branch_code = $${values.length}` : `i.branch = $${values.length}`);
   }
   if (user.role === "bms") where.push("COALESCE(i.location_kind, 'STORE') = 'STORE'");
   if (user.role === "bes") where.push("i.location_kind = 'FACILITY'");

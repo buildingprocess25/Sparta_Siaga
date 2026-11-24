@@ -1,0 +1,5 @@
+database/migrations/016_session_concurrency_and_token_encryption.sql text eol=lf
+database/migrations/017_earthquake_shakemaps_and_facility_intensities.sql text eol=lf
+database/migrations/016_session_concurrency_and_token_encryption.sql text eol=lf
+database/migrations/017_earthquake_shakemaps_and_facility_intensities.sql text eol=lf
+database/migrations/020_sparta_user_provisioning_stage.sql text eol=lf

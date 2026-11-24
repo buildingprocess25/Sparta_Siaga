@@ -6,6 +6,7 @@ import { ReportDistributionService } from "@/lib/distribution-service";
 import { canAccessReport } from "@/lib/report-access-policy";
 import { isReportVisibleToHo } from "@/lib/report-permissions";
 import { checkUserPermission } from "@/lib/permission-service";
+import { samePortalBranch } from "@/lib/sparta-master-sync";
 
 export async function GET(request: Request) {
   try {
@@ -279,7 +280,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (body.branch.trim().toLowerCase() !== (sessionUser.branch || "").trim().toLowerCase()) {
+    if (!await samePortalBranch(body.branch, sessionUser.branchCode || sessionUser.branch)) {
       return NextResponse.json(
         { error: "Unauthorized: Tidak dapat membuat laporan untuk cabang lain" },
         { status: 403 }

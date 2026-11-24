@@ -1,6 +1,7 @@
 import { getDbPool } from "./db";
 import { UserContext, isReportVisibleToHo } from "./report-permissions";
 import { IncidentRecord } from "@/types/incident";
+import { canonicalBranchKey, samePortalBranch } from "./sparta-master-sync";
 
 export * from "@/types/permission";
 import {
@@ -444,8 +445,8 @@ export async function checkUserPermission(params: CheckPermissionParams): Promis
 
   // Branch normalization helper
   const cleanBranch = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-  const contextBranch = cleanBranch(targetBranch || report?.branch);
-  const userBranch = cleanBranch(user.branch);
+  const contextBranch = cleanBranch(await canonicalBranchKey(targetBranch || report?.branchCode || report?.branch));
+  const userBranch = cleanBranch(await canonicalBranchKey(user.branchCode || user.branch));
 
   // 0. HEAD OFFICE SCOPE ENFORCEMENT
   // HO users (HO Admin, GM HO, SM HO) have strictly read-only monitoring access across all branches.
@@ -511,7 +512,9 @@ export async function checkUserPermission(params: CheckPermissionParams): Promis
   }
 
   // Filter overrides for this specific permission
-  const matchingOverrides = activeOverrides.filter((ov) => ov.permissionKey === permission);
+  const matchingOverrides = await Promise.all(activeOverrides.filter((ov) => ov.permissionKey === permission).map(async ov => ({
+    ...ov, branchCode: ov.branchCode ? await canonicalBranchKey(ov.branchCode) : null,
+  })));
 
   // Helper to check if override applies to context branch
   const doesOverrideScopeMatch = (ov: UserPermissionOverrideRecord): boolean => {
@@ -823,7 +826,7 @@ export async function canSubmitInspectionAsync(
   }
 
   const clean = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-  if (!user.branch || clean(user.branch) !== clean(report.branch)) {
+  if (!await samePortalBranch(user.branchCode || user.branch, report.branchCode || report.branch)) {
     return {
       authorized: false,
       reason: `Aksi operasional hanya berlaku untuk cabang sendiri (${user.branch || "N/A"}), bukan ${report.branch}.`,
@@ -911,7 +914,7 @@ export async function canApproveAsBmAsync(
   }
 
   const clean = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-  if (!user.branch || clean(user.branch) !== clean(report.branch)) {
+  if (!await samePortalBranch(user.branchCode || user.branch, report.branchCode || report.branch)) {
     return {
       authorized: false,
       reason: `BnM Manajer hanya berwenang untuk cabangnya sendiri (${user.branch || "N/A"}), bukan ${report.branch}.`,

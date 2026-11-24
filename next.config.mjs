@@ -2,6 +2,9 @@ import { fileURLToPath } from 'node:url';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: [
+    'xt46b973-3004.asse.devtunnels.ms',
+  ],
   reactStrictMode: false, // Prevents double rendering on Leaflet map instances
   poweredByHeader: false,
   devIndicators: false,

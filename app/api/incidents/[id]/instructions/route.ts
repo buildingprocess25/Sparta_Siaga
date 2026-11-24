@@ -19,6 +19,7 @@ import { dbGetIncidentById, dbCreateInstruction, dbGetInstructionsByReport } fro
 import { canCreateManagementInstructionAsync } from "@/lib/permission-service";
 import { ManagementInstruction, SpartaRole } from "@/types/incident";
 import { getSessionUser } from "@/lib/auth";
+import { samePortalBranch } from "@/lib/sparta-master-sync";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -39,7 +40,7 @@ export async function GET(_: Request, { params }: RouteContext) {
     // Role-based visibility: System Admin and HO scope can view instructions for any branch
     const canViewAll = sessionUser.systemRole === "ADMIN" || sessionUser.scope === "HO";
     if (!canViewAll) {
-      if (report.branch.trim().toLowerCase() !== (sessionUser.branch || "").trim().toLowerCase()) {
+      if (!await samePortalBranch(report.branchCode || report.branch, sessionUser.branchCode || sessionUser.branch)) {
         return NextResponse.json({ error: "Unauthorized: Cabang tidak berhak mengakses laporan ini" }, { status: 403 });
       }
     }

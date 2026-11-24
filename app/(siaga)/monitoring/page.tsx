@@ -575,25 +575,6 @@ export default function MonitoringPage() {
             </>
           ) : (
             <>
-              {mapMode === "store" && (
-                <Button
-                  variant={activeLayer === "aho" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    const next = activeLayer === "aho" ? "stores" : "aho";
-                    setActiveLayer(next);
-                    if (next !== "aho") handleCloseDetail();
-                  }}
-                  className={`h-8 text-xs gap-1.5 ${
-                    activeLayer === "aho" ? "bg-amber-600 hover:bg-amber-700 text-white font-semibold" : ""
-                  }`}
-                  title="Tampilkan persebaran tiket AHO dari SPARTA Maintenance"
-                >
-                  <Wrench className={`w-3.5 h-3.5 ${activeLayer === "aho" ? "text-white" : "text-amber-500"}`} />
-                  <span className="hidden sm:inline">Tiket AHO</span>
-                </Button>
-              )}
-
               <Button
                 variant={facilityBranch || facilityStatus || facilityMapping ? "secondary" : "outline"}
                 size="sm"
@@ -615,6 +596,9 @@ export default function MonitoringPage() {
               </Button>
             </>
           )}
+
+          {/* Visual Divider between data actions and view/panel controls */}
+          <div className="h-4 w-px bg-border mx-0.5" />
 
           {/* Mobile Kontrol Peta button */}
           <Button
@@ -804,7 +788,8 @@ export default function MonitoringPage() {
             cluster={selectedCluster}
             onClose={handleCloseDetail}
             isMobile={false}
-            currentEarthquake={latestEq}
+            locationMode={mapMode}
+            currentEarthquake={mapMode === "event" ? latestEq : null}
             activeLayer={activeLayer}
             onFlyTo={(lat, lng, zoom) => {
               setFlyToTarget({ lat, lng, zoom });
@@ -823,7 +808,8 @@ export default function MonitoringPage() {
             cluster={selectedCluster}
             onClose={handleCloseDetail}
             isMobile={true}
-            currentEarthquake={latestEq}
+            locationMode={mapMode}
+            currentEarthquake={mapMode === "event" ? latestEq : null}
             activeLayer={activeLayer}
             onFlyTo={(lat, lng, zoom) => {
               setFlyToTarget({ lat, lng, zoom });

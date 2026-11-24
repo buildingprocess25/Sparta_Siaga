@@ -1,8 +1,13 @@
 import { getDbPool } from "./db";
+import type { Pool } from "pg";
 import { UserModel } from "./user-db";
 import { createDeviceSession, SessionCreationResult } from "./session-service";
+import { identityParameters, selectSpartaIdentity, SPARTA_IDENTITY_WHERE, SpartaIntegrationError } from "./sparta-identity";
 
 export interface SsoExchangeUser {
+  contractVersion?: number;
+  spartaUserId?: string | null;
+  branchCode?: string | null;
   email?: string | null;
   fullName?: string | null;
   branch?: string | null;
@@ -118,14 +123,17 @@ export async function exchangeSpartaLaunchToken(
     return {
       success: true,
       user: {
+        contractVersion: userData.contractVersion,
+        spartaUserId: typeof userData.spartaUserId === "string" ? userData.spartaUserId.trim() : null,
+        branchCode: typeof userData.branchCode === "string" ? userData.branchCode.trim() : null,
         email: userData.email ? String(userData.email).trim().toLowerCase() : null,
         fullName: userData.fullName || userData.name || null,
         branch: userData.branch || userData.branchName || null,
         access: Array.isArray(userData.access) ? userData.access : [],
         nik: userData.nik || userData.employeeId || null,
         employeeId: userData.employeeId || userData.nik || null,
-        id: userData.id || userData.externalUserId || null,
-        externalUserId: userData.externalUserId || userData.id || null,
+        id: userData.spartaUserId || userData.id || userData.externalUserId || null,
+        externalUserId: userData.spartaUserId || userData.externalUserId || userData.id || null,
       },
     };
   } catch (error: any) {
@@ -199,11 +207,12 @@ export function isApprovedRoleAndBranch(user: {
  * - Enforces strict rejection for BLOCKED, UNMATCHED_SSO, PENDING_REVIEW, and INACTIVE.
  */
 export async function matchSsoIdentityToSiagaUser(
-  ssoUser: SsoExchangeUser
+  ssoUser: SsoExchangeUser,
+  options: { pool?: Pick<Pool, "query"> } = {}
 ): Promise<SsoIdentityMatchResult> {
-  const pool = getDbPool();
+  const pool = options.pool || getDbPool();
 
-  const rawSsoId = (ssoUser.externalUserId || ssoUser.id || "").trim();
+  const rawSsoId = (ssoUser.spartaUserId || ssoUser.externalUserId || ssoUser.id || "").trim();
   const rawNik = (ssoUser.nik || ssoUser.employeeId || "").trim();
   const rawEmail = (ssoUser.email || "").trim().toLowerCase();
 
@@ -218,28 +227,9 @@ export async function matchSsoIdentityToSiagaUser(
     };
   }
 
-  // Find all candidate users in SIAGA DB matching any approved identifier
-  let hasSsoStatusColumn = false;
-  try {
-    const colCheck = await pool.query(
-      `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'sso_status' LIMIT 1`
-    );
-    hasSsoStatusColumn = colCheck.rows.length > 0;
-  } catch {
-    hasSsoStatusColumn = false;
-  }
-
-  const queryCols = hasSsoStatusColumn
-    ? `id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, sso_status, token_version`
-    : `id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, token_version`;
-
   const { rows } = await pool.query(
-    `SELECT ${queryCols}
-     FROM users
-     WHERE (LOWER(TRIM(email)) = LOWER(TRIM($1)) AND $1::text IS NOT NULL)
-        OR (LOWER(TRIM(nik)) = LOWER(TRIM($2)) AND $2::text IS NOT NULL)
-        OR (LOWER(TRIM(external_user_id)) = LOWER(TRIM($3)) AND $3::text IS NOT NULL)`,
-    [email, nik, ssoId]
+    `SELECT * FROM users WHERE ${SPARTA_IDENTITY_WHERE}`,
+    identityParameters({ spartaUserId: ssoId, employeeId: nik, email })
   );
 
   if (rows.length === 0) {
@@ -249,16 +239,14 @@ export async function matchSsoIdentityToSiagaUser(
     };
   }
 
-  // Ambiguity check: if multiple distinct user IDs are returned, reject the match
-  const distinctUserIds = Array.from(new Set(rows.map((r) => r.id)));
-  if (distinctUserIds.length > 1) {
-    return {
-      status: "AMBIGUOUS",
-      reason: `Konflik identitas terdeteksi: Identifier SSO merujuk ${distinctUserIds.length} akun pengguna berbeda di SIAGA. Penggabungan otomatis dilarang.`,
-    };
+  let row;
+  try {
+    row = selectSpartaIdentity(rows, { spartaUserId: ssoId, employeeId: nik, email });
+  } catch (error) {
+    if (error instanceof SpartaIntegrationError) return { status: "AMBIGUOUS", reason: error.message };
+    throw error;
   }
-
-  const row = rows[0];
+  if (!row) return { status: "NOT_FOUND", reason: "Identitas SSO tidak ditemukan." };
   const user: UserModel = {
     id: row.id,
     externalUserId: row.external_user_id,
@@ -269,6 +257,7 @@ export async function matchSsoIdentityToSiagaUser(
     businessRole: row.business_role,
     scope: row.scope,
     branch: row.branch,
+    branchCode: row.branch_code ?? null,
     status: row.status,
     source: row.source || "SSO",
     ssoStatus: row.sso_status !== undefined ? row.sso_status : null,
@@ -331,7 +320,7 @@ export async function matchSsoIdentityToSiagaUser(
       }
 
       // Step B: Verify approved local role and branch assignment in SIAGA
-      if (!isApprovedRoleAndBranch(user)) {
+      if (!isApprovedRoleAndBranch(user) || (user.source === "SPARTA" && !user.scope && user.systemRole !== "ADMIN")) {
         return {
           status: "PENDING_REVIEW",
           user,
@@ -344,13 +333,15 @@ export async function matchSsoIdentityToSiagaUser(
         `UPDATE users
          SET status = 'ACTIVE',
              sso_status = 'ACTIVE',
-             external_user_id = COALESCE(users.external_user_id, $2),
+             external_user_id = COALESCE(NULLIF(BTRIM(users.external_user_id), ''), $2),
              updated_at = NOW()
-         WHERE id = $1
+         WHERE id = $1 AND sso_status='PENDING_SSO_GRANT'
+           AND (NULLIF(BTRIM(external_user_id),'') IS NULL OR external_user_id=$2)
          RETURNING id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, sso_status, token_version`,
         [user.id, ssoId]
       );
 
+      if (!updateRes.rows.length) return { status: "INACTIVE", user, reason: "Status akun berubah saat aktivasi SSO." };
       if (updateRes.rows.length > 0) {
         const uRow = updateRes.rows[0];
         user.status = "ACTIVE";
@@ -383,6 +374,18 @@ export async function matchSsoIdentityToSiagaUser(
     };
   }
 
+  if (!isApprovedRoleAndBranch(user) || (user.source === "SPARTA" && !user.scope && user.systemRole !== "ADMIN")) {
+    return { status: "PENDING_REVIEW", user, reason: "Peran atau cakupan cabang akun belum valid untuk akses SIAGA." };
+  }
+
+  if (ssoId && !user.externalUserId) {
+    const linked = await pool.query(`UPDATE users SET external_user_id=$2,updated_at=NOW()
+      WHERE id=$1 AND status='ACTIVE' AND (sso_status IS NULL OR sso_status='ACTIVE')
+      AND (external_user_id IS NULL OR BTRIM(external_user_id)='' OR external_user_id=$2)
+      RETURNING external_user_id`, [user.id, ssoId]);
+    if (!linked.rows.length) return { status: "AMBIGUOUS", reason: "Identitas akun berubah saat pencocokan SSO." };
+    user.externalUserId = linked.rows[0].external_user_id;
+  }
   return {
     status: "MATCHED",
     user,

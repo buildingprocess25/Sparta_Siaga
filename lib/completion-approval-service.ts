@@ -267,7 +267,7 @@ export class CompletionApprovalService {
         resolvedRoute.picRole,
         resolvedRoute.coordinatorRole,
         resolvedRoute.managerRole,
-        report.branch || "N/A",
+        report.branchCode || report.branch || "N/A",
       ]
     );
 

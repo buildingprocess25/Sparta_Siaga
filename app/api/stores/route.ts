@@ -3,6 +3,9 @@ import { Store } from "@/types/store";
 import fs from "fs/promises";
 import path from "path";
 import { getLastStoreSyncHistory } from "@/lib/google-sheets-sync";
+import { portalStoresEnabled } from "@/lib/sparta-master-contract";
+import { getOrLoadMasterStores } from "@/lib/store-master-loader";
+import { canonicalBranchKey } from "@/lib/sparta-master-sync";
 
 let cachedStores: Store[] | null = null;
 let lastCacheTime = 0;
@@ -32,6 +35,18 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const forceRefresh = searchParams.get("refresh") === "true";
   const branchFilter = searchParams.get("branch");
+
+  if (portalStoresEnabled()) {
+    try {
+      const stores = await getOrLoadMasterStores(forceRefresh);
+      const branchCode = branchFilter && branchFilter !== "all" ? await canonicalBranchKey(branchFilter) : null;
+      const result = branchCode ? stores.filter(store => store.branch_code === branchCode) : stores;
+      return NextResponse.json({ data: result, count: result.length, totalLoaded: stores.length,
+        source: "SPARTA_PORTAL", lastSync: await getLastStoreSyncHistory() });
+    } catch {
+      return NextResponse.json({ error: "Master toko portal belum tersedia." }, { status: 503 });
+    }
+  }
 
   const now = Date.now();
   if (!forceRefresh && cachedStores && now - lastCacheTime < CACHE_TTL_MS) {

@@ -11,7 +11,8 @@
  * - Checksum integrity verification against database ledger
  * - Selective migration execution (--through=017)
  * - Preflight read-only compatibility check for report_approval_outbox (015)
- * - Strict deferral guard for migration 018 (DO NOT EXECUTE until authorized by IT)
+ * - Strict deferral guard for migrations 018/019/020/021 until reviewed and authorized
+ * - Offline rollout plan (--plan) and database read-only status (--status)
  * - Atomic per-migration transactions with rollback
  */
 
@@ -31,7 +32,11 @@ const FILENAME_REGEX = /^\d{3}_[\w-]+\.sql$/;
  */
 const DEFERRED_MIGRATIONS = new Set([
   "018_user_sync_metadata_and_sso_status.sql",
+  "019_sparta_portal_master_and_provisioning.sql",
+  "020_sparta_user_provisioning_stage.sql",
+  "021_sparta_master_conversion_stage.sql",
 ]);
+const LEGACY_COMBINED = "019_sparta_portal_master_and_provisioning.sql";
 
 function computeChecksum(content) {
   return crypto.createHash("sha256").update(content, "utf8").digest("hex");
@@ -68,6 +73,9 @@ async function loadMigrationFiles() {
 function parseCliArgs(argv) {
   let isValidateOnly = false;
   let isPreflightOnly = false;
+  let isStatusOnly = false;
+  let isPlanOnly = false;
+  let includeMaster = false;
   let throughTarget = null;
   let help = false;
 
@@ -78,6 +86,12 @@ function parseCliArgs(argv) {
       isValidateOnly = true;
     } else if (arg === "--preflight-only") {
       isPreflightOnly = true;
+    } else if (arg === "--status") {
+      isStatusOnly = true;
+    } else if (arg === "--plan") {
+      isPlanOnly = true;
+    } else if (arg === "--include-master-conversion") {
+      includeMaster = true;
     } else if (arg === "--help" || arg === "-h") {
       help = true;
     } else if (arg.startsWith("--through=")) {
@@ -101,7 +115,13 @@ function parseCliArgs(argv) {
     }
   }
 
-  return { isValidateOnly, isPreflightOnly, throughTarget, help };
+  if ([isValidateOnly, isPreflightOnly, isStatusOnly, isPlanOnly].filter(Boolean).length > 1) {
+    throw new Error("Choose only one inspection mode.");
+  }
+  return { isValidateOnly, isPreflightOnly, throughTarget, help,
+    ...(isStatusOnly ? { isStatusOnly } : {}),
+    ...(isPlanOnly ? { isPlanOnly } : {}),
+    ...(includeMaster ? { includeMaster } : {}) };
 }
 
 function printUsage() {
@@ -114,7 +134,10 @@ Usage:
 Options:
   --through=<target>   Apply migrations selectively up to and including <target>
                        (e.g. --through=017 or --through=017_earthquake_shakemaps_and_facility_intensities.sql)
-  --validate-only      Validate local migration files syntax and checksums without connecting to database
+  --validate-only      Validate local migration filenames, content and checksums without a database
+  --plan               Show eligible and deferred migrations without a database
+  --status             Read the database migration ledger without writing
+  --include-master-conversion  Reserved; execution remains blocked until authorized rollout
   --preflight-only     Run read-only preflight checks against target database without applying migrations
   --help, -h           Show this help message
 `);
@@ -383,8 +406,30 @@ function getPoolConfig() {
   };
 }
 
+export async function readMigrationStatus(client, migrations) {
+  await client.query("BEGIN READ ONLY");
+  try {
+    const ledger = await client.query("SELECT to_regclass('sparta_schema_migrations') IS NOT NULL AS ledger_exists");
+    const ledgerExists = Boolean(ledger.rows[0]?.ledger_exists);
+    const applied = ledgerExists ? (await client.query("SELECT name, checksum FROM sparta_schema_migrations ORDER BY name ASC")).rows : [];
+    const columns = await client.query(`SELECT table_name,column_name FROM information_schema.columns
+      WHERE table_schema=current_schema() AND table_name IN ('users','stores','incidents')
+      AND column_name IN ('branch_code','last_provisioned_at','pending_portal_branch','is_active','master_source')
+      ORDER BY table_name,column_name`);
+    const byName = new Map(applied.map(row => [row.name, row.checksum]));
+    return { readOnly: true, ledgerExists,
+      migrations: migrations.map(migration => ({ name: migration.name,
+        status: !byName.has(migration.name) ? "PENDING" : byName.get(migration.name) === migration.checksum ? "APPLIED" : "CHECKSUM_DRIFT",
+        deferred: DEFERRED_MIGRATIONS.has(migration.name),
+        localChecksum: migration.checksum, recordedChecksum: byName.get(migration.name) || null })),
+      recordedWithoutLocalFile: applied.filter(row => !migrations.some(migration => migration.name === row.name)).map(row => row.name),
+      integrationColumns: columns.rows };
+  } finally { await client.query("ROLLBACK"); }
+}
+
 async function run() {
-  const { isValidateOnly, isPreflightOnly, throughTarget, help } = parseCliArgs(process.argv.slice(2));
+  const { isValidateOnly, isPreflightOnly, throughTarget, help,
+    isStatusOnly, isPlanOnly, includeMaster } = parseCliArgs(process.argv.slice(2));
 
   if (help) {
     printUsage();
@@ -392,6 +437,36 @@ async function run() {
   }
 
   const allMigrations = await loadMigrationFiles();
+
+  if (includeMaster && !isPlanOnly && !isStatusOnly && !isValidateOnly) {
+    throw new Error("Master conversion remains deferred until IT authorization and coordinated rollout.");
+  }
+
+  if (isPlanOnly) {
+    const targetIndex = throughTarget ? findMigrationIndex(allMigrations, throughTarget) : allMigrations.length - 1;
+    if (targetIndex < 0) throw new Error(`Migration target '${throughTarget}' not found.`);
+    for (const m of allMigrations.slice(0, targetIndex + 1)) {
+      console.log(`${DEFERRED_MIGRATIONS.has(m.name) ? "DEFERRED" : "ELIGIBLE"} ${m.name}`);
+    }
+    console.log("Offline plan: pending status requires --status. Integration migrations remain deferred.");
+    return;
+  }
+
+  if (isStatusOnly) {
+    if (throughTarget) throw new Error("--status reports the entire ledger; omit --through.");
+    await tryLoadLocalEnv();
+    const pool = new Pool(getPoolConfig());
+    try {
+      const client = await pool.connect();
+      try {
+        const report = await readMigrationStatus(client, allMigrations);
+        console.log(JSON.stringify(report, null, 2));
+        if (report.migrations.some(m => m.status === "CHECKSUM_DRIFT") ||
+            report.recordedWithoutLocalFile.includes(LEGACY_COMBINED)) process.exitCode = 1;
+      } finally { client.release(); }
+    } finally { await pool.end(); }
+    return;
+  }
 
   // Resolve target migrations based on --through
   let targetMigrations = [];
@@ -430,8 +505,9 @@ async function run() {
 
   // Offline validation mode
   if (isValidateOnly) {
-    console.log(`[Migrations] Validation passed: ${targetMigrations.length} migration(s) verified.`);
-    for (const m of targetMigrations) {
+    const validationMigrations = throughTarget ? targetMigrations : allMigrations;
+    console.log(`[Migrations] Validation passed: ${validationMigrations.length} migration(s) verified.`);
+    for (const m of validationMigrations) {
       console.log(`  - ${m.name} (sha256: ${m.checksum.substring(0, 12)}...)`);
     }
     return;
@@ -440,7 +516,24 @@ async function run() {
   await tryLoadLocalEnv();
   const poolConfig = getPoolConfig();
   const pool = new Pool(poolConfig);
-  const client = await pool.connect();
+  const client = await pool.connect().catch(async error => {
+    await pool.end();
+    throw error;
+  });
+
+  if (isPreflightOnly) {
+    try {
+      await client.query("BEGIN READ ONLY");
+      try {
+        await verifyReportApprovalOutboxCompatibility(client);
+        console.log("[Migrations] Preflight verification completed successfully.");
+      } finally { await client.query("ROLLBACK"); }
+    } finally {
+      client.release();
+      await pool.end();
+    }
+    return;
+  }
 
   try {
     console.log("[Migrations] Acquiring migration advisory lock...");
@@ -455,17 +548,13 @@ async function run() {
       );
     `);
 
-    // Preflight-only mode: check outbox compatibility and exit
-    if (isPreflightOnly) {
-      await verifyReportApprovalOutboxCompatibility(client);
-      console.log("[Migrations] Preflight verification completed successfully.");
-      return;
-    }
-
     const { rows: appliedRows } = await client.query(
       "SELECT name, checksum FROM sparta_schema_migrations ORDER BY name ASC"
     );
     const appliedMap = new Map(appliedRows.map((r) => [r.name, r.checksum]));
+    if (appliedMap.has(LEGACY_COMBINED)) {
+      throw new Error("Legacy combined migration 019 is recorded. Review its schema before using staged rollout.");
+    }
 
     // Safety guard: ensure no migration beyond the requested target has already been applied
     if (throughTarget) {

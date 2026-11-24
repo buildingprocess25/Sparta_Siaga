@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { samePortalBranch } from "@/lib/sparta-master-sync";
 import { dbGetIncidentById } from "@/lib/incident-db";
 import { canAccessReportAsync } from "@/lib/report-access-policy";
 import { checkUserPermission } from "@/lib/permission-service";
@@ -179,7 +180,7 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     // 4c. Branch Scope Enforcement
     const cleanBranch = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-    if (sessionUser.systemRole !== "ADMIN" && cleanBranch(sessionUser.branch) !== cleanBranch(incident.branch)) {
+    if (sessionUser.systemRole !== "ADMIN" && !await samePortalBranch(sessionUser.branchCode || sessionUser.branch, incident.branchCode || incident.branch)) {
       return NextResponse.json(
         {
           error: `Aksi pembaruan progress hanya berlaku untuk cabang sendiri (${sessionUser.branch || "N/A"}), bukan cabang ${incident.branch}.`,

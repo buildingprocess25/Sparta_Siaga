@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import {
-  syncStoresFromGoogleSheets,
   getLastStoreSyncHistory,
 } from "@/lib/google-sheets-sync";
 import { getDbPool } from "@/lib/db";
+import { syncMasterStores } from "@/lib/store-sync";
 
 export async function GET(request: Request) {
   try {
@@ -38,7 +38,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const syncResult = await syncStoresFromGoogleSheets();
+    if (sessionUser.systemRole !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const syncResult = await syncMasterStores();
 
     const pool = getDbPool();
     const countRes = await pool.query("SELECT COUNT(*) as count FROM stores");
