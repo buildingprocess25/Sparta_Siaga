@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import type { Pool } from "pg";
 import { getDbPool } from "./db";
 import { Store } from "@/types/store";
 
@@ -266,14 +267,28 @@ export async function ensureStoreSyncTables(): Promise<void> {
   }
 }
 
-export async function getLastStoreSyncHistory(): Promise<StoreSyncHistoryRecord | null> {
+export async function getLastStoreSyncHistory(options?: {
+  onlyCompleted?: boolean;
+  source?: "SPARTA_PORTAL" | "LEGACY";
+  pool?: Pool;
+}): Promise<StoreSyncHistoryRecord | null> {
   try {
-    await ensureStoreSyncTables();
-    const pool = getDbPool();
+    const pool = options?.pool || getDbPool();
+    const conditions: string[] = [];
+    if (options?.onlyCompleted) {
+      conditions.push("status = 'COMPLETED'");
+    }
+    if (options?.source === "SPARTA_PORTAL") {
+      conditions.push("sync_source = 'SPARTA_PORTAL'");
+    } else if (options?.source === "LEGACY") {
+      conditions.push("sync_source <> 'SPARTA_PORTAL'");
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const res = await pool.query(
       `SELECT id, sync_source, status, started_at, completed_at, records_read, records_added, records_updated, records_skipped, records_failed, error_message, created_at
        FROM store_sync_history
-       ORDER BY started_at DESC
+       ${whereClause}
+       ORDER BY COALESCE(completed_at, started_at) DESC
        LIMIT 1`
     );
 
@@ -304,7 +319,10 @@ export async function getLastStoreSyncHistory(): Promise<StoreSyncHistoryRecord 
       error_message: row.error_message || null,
       created_at: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     };
-  } catch (err) {
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === "42P01") {
+      return null;
+    }
     console.error("[Store Sync] Failed to get last store sync history:", err);
     return null;
   }

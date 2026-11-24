@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import type { Pool } from "pg";
 import { Store } from "@/types/store";
 import { getDbPool } from "./db";
 import { portalStoresEnabled } from "./sparta-master-contract";
@@ -45,15 +46,18 @@ function parseCSVLine(text: string): string[] {
  * 2. PostgreSQL `stores` table (if rows > 0)
  * 3. Canonical `data/stores-master.csv` file (21,550 stores)
  */
-export async function getOrLoadMasterStores(forceRefresh: boolean = false): Promise<Store[]> {
+export async function getOrLoadMasterStores(
+  forceRefresh: boolean = false,
+  options?: { pool?: Pool }
+): Promise<Store[]> {
   const now = Date.now();
-  if (!forceRefresh && cachedStores && cachedStores.length > 0 && now - lastCacheTime < CACHE_TTL_MS) {
+  if (!options?.pool && !forceRefresh && cachedStores && cachedStores.length > 0 && now - lastCacheTime < CACHE_TTL_MS) {
     return cachedStores;
   }
 
   // 1. Try querying PostgreSQL stores table first
   try {
-    const pool = getDbPool();
+    const pool = options?.pool || getDbPool();
     const res = await pool.query(
       `SELECT id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type, branch_emergency_contact
        ${portalStoresEnabled() ? ", branch_code" : ""}
@@ -63,21 +67,24 @@ export async function getOrLoadMasterStores(forceRefresh: boolean = false): Prom
        LIMIT 25000`
     );
     if (res.rows && res.rows.length > 0) {
-      cachedStores = res.rows.map((r) => ({
+      const mappedStores: Store[] = res.rows.map((r) => ({
         id: r.id || `SAT-${r.kode_toko}`,
         kode_toko: r.kode_toko,
         nama_toko: r.nama_toko,
         cabang: r.cabang,
         branch_code: r.branch_code ?? null,
-        alamat: r.alamat || `Alfamart ${r.nama_toko}, Cabang ${r.cabang}`,
+        alamat: r.alamat?.trim() || `Alfamart ${r.nama_toko}, Cabang ${r.cabang}`,
         latitude: parseFloat(r.latitude),
         longitude: parseFloat(r.longitude),
-        fr_type: r.fr_type || "Reguler",
+        fr_type: r.fr_type || "UNKNOWN",
         branch_emergency_contact: r.branch_emergency_contact || `Duty Officer DC Cabang ${r.cabang}`,
         status: "SAFE",
       }));
-      lastCacheTime = now;
-      return cachedStores;
+      if (!options?.pool) {
+        cachedStores = mappedStores;
+        lastCacheTime = now;
+      }
+      return mappedStores;
     }
   } catch (dbErr) {
     console.warn("[Store Master Loader] Database master toko tidak tersedia:", dbErr);
@@ -85,8 +92,10 @@ export async function getOrLoadMasterStores(forceRefresh: boolean = false): Prom
   }
 
   if (portalStoresEnabled()) {
-    cachedStores = [];
-    lastCacheTime = now;
+    if (!options?.pool) {
+      cachedStores = [];
+      lastCacheTime = now;
+    }
     return [];
   }
 

@@ -1,8 +1,10 @@
 // Explicit global marker tracking whether this module has been evaluated in the current Node process
 (globalThis as Record<string, unknown>).__sparta_server_daemon_module_loaded = true;
 
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { getDbPool } from './db';
+import { portalStoresEnabled } from './sparta-master-contract';
+import { SpartaIntegrationError } from './sparta-identity';
 import { fetchDisasterFeed } from './disaster-service';
 import { dbUpsertEarthquakeEvent, dbGetPendingEarthquakeEvents } from './earthquake-db';
 import { executeEarthquakeV1MmiWorkflow } from './earthquake-v1-mmi-service';
@@ -29,6 +31,7 @@ export const MANUAL_EARTHQUAKE_MATCH_WINDOW_MINUTES = parseInt(process.env.MANUA
 export const STORE_SYNC_INTERVAL_HOURS = parseInt(process.env.STORE_SYNC_INTERVAL_HOURS || '24', 10);
 export const STORE_SYNC_INTERVAL_MS = STORE_SYNC_INTERVAL_HOURS * 60 * 60 * 1000;
 export const WORKER_DISASTER_ADVISORY_LOCK_ID = 7421840;
+export const WORKER_STORE_SYNC_ADVISORY_LOCK_ID = 7421842;
 
 export interface DisasterCycleHealth {
   lastCycleStart: string | null;
@@ -72,10 +75,22 @@ import { getOrLoadMasterStores, getBranchCentroidsFromStores, BranchCentroid } f
 // In-memory cache for branch centroids
 let cachedBranchCentroids: BranchCentroid[] | null = null;
 
+export function invalidateBranchCentroidsCache(): void {
+  cachedBranchCentroids = null;
+}
+
 async function getBranchCentroids(): Promise<BranchCentroid[]> {
   if (cachedBranchCentroids && cachedBranchCentroids.length > 0) {
     return cachedBranchCentroids;
   }
+
+  const isPortal = (() => {
+    try {
+      return portalStoresEnabled();
+    } catch {
+      return false;
+    }
+  })();
 
   try {
     const pool = getDbPool();
@@ -86,6 +101,7 @@ async function getBranchCentroids(): Promise<BranchCentroid[]> {
              COUNT(*)::int as store_count
       FROM stores
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+      ${isPortal ? "AND is_active = TRUE AND master_source = 'SPARTA_PORTAL'" : ""}
       GROUP BY cabang
       ORDER BY store_count DESC;
     `);
@@ -314,9 +330,22 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
 /**
  * Checks if a store sync is due based on STORE_SYNC_INTERVAL_HOURS
  */
-export async function isStoreSyncDue(): Promise<boolean> {
+export async function isStoreSyncDue(options?: { pool?: Pool }): Promise<boolean> {
   try {
-    const lastSync = await getLastStoreSyncHistory();
+    let usePortal = false;
+    try {
+      usePortal = portalStoresEnabled();
+    } catch (err) {
+      if (err instanceof SpartaIntegrationError) {
+        return false;
+      }
+      throw err;
+    }
+    const lastSync = await getLastStoreSyncHistory({
+      onlyCompleted: true,
+      source: usePortal ? "SPARTA_PORTAL" : "LEGACY",
+      pool: options?.pool,
+    });
     if (!lastSync || !lastSync.completed_at) return true;
     const elapsedMs = Date.now() - new Date(lastSync.completed_at).getTime();
     return elapsedMs >= STORE_SYNC_INTERVAL_MS;
@@ -328,7 +357,10 @@ export async function isStoreSyncDue(): Promise<boolean> {
 /**
  * Executes an autonomous background store sync cycle
  */
-export async function runAutonomousStoreSyncCycle(force: boolean = false): Promise<{
+export async function runAutonomousStoreSyncCycle(
+  force: boolean = false,
+  options?: { pool?: Pool; fetchFn?: typeof fetch }
+): Promise<{
   success: boolean;
   status: string;
   record?: StoreSyncHistoryRecord;
@@ -338,15 +370,58 @@ export async function runAutonomousStoreSyncCycle(force: boolean = false): Promi
     return { success: false, status: "ALREADY_RUNNING", error: "Store sync cycle already in progress or daemon stopped" };
   }
 
-  const due = force || (await isStoreSyncDue());
+  try {
+    portalStoresEnabled();
+  } catch (err) {
+    if (err instanceof SpartaIntegrationError) {
+      return { success: false, status: "CONVERSION_DISABLED", error: err.message };
+    }
+    throw err;
+  }
+
+  const due = force || (await isStoreSyncDue({ pool: options?.pool }));
   if (!due || isDaemonStopped) {
     return { success: true, status: isDaemonStopped ? "STOPPED" : "NOT_DUE" };
+  }
+
+  const pool = options?.pool || getDbPool();
+  let lockClient: PoolClient | null = null;
+  let lockAcquired = false;
+
+  try {
+    if (typeof pool.connect === "function") {
+      lockClient = await pool.connect();
+      const lockRes = await lockClient.query<{ acquired?: boolean }>(
+        "SELECT pg_try_advisory_lock($1) AS acquired",
+        [WORKER_STORE_SYNC_ADVISORY_LOCK_ID]
+      );
+      if (lockRes.rows.length > 0 && lockRes.rows[0]?.acquired === false) {
+        lockClient.release();
+        lockClient = null;
+        return {
+          success: false,
+          status: "ALREADY_RUNNING",
+          error: "Another worker holds the store sync advisory lock",
+        };
+      }
+      lockAcquired = Boolean(lockRes.rows[0]?.acquired);
+    }
+  } catch (lockErr) {
+    console.warn("[Autonomous Store Sync] Advisory lock check warning:", lockErr);
+    if (lockClient) {
+      lockClient.release();
+      lockClient = null;
+    }
   }
 
   isStoreSyncRunning = true;
   console.log("[Autonomous Store Sync] Starting periodic store sync cycle...");
   try {
-    const record = await syncMasterStores();
+    const record = await syncMasterStores({
+      pool: options?.pool,
+      fetchFn: options?.fetchFn,
+    });
+    invalidateBranchCentroidsCache();
     console.log(
       `[Autonomous Store Sync] Cycle completed with status: ${record.status} (${record.records_added} added, ${record.records_updated} updated)`
     );
@@ -356,6 +431,21 @@ export async function runAutonomousStoreSyncCycle(force: boolean = false): Promi
     return { success: false, status: "FAILED", error: err.message };
   } finally {
     isStoreSyncRunning = false;
+    if (lockClient) {
+      if (lockAcquired) {
+        try {
+          await lockClient.query("SELECT pg_advisory_unlock($1)", [WORKER_STORE_SYNC_ADVISORY_LOCK_ID]);
+        } catch (unlockErr) {
+          console.warn("[Autonomous Store Sync] Advisory unlock warning:", unlockErr);
+        }
+      }
+      try {
+        lockClient.release();
+      } catch {
+        // ignore client release error
+      }
+      lockClient = null;
+    }
   }
 }
 
@@ -368,7 +458,15 @@ export async function getStoreSyncStatus(): Promise<{
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
   sourceType: string | null;
+  activeSource: "SPARTA_PORTAL" | "LEGACY";
 }> {
+  const usePortal = (() => {
+    try {
+      return portalStoresEnabled();
+    } catch {
+      return false;
+    }
+  })();
   const lastSync = await getLastStoreSyncHistory();
   return {
     isRunning: isStoreSyncRunning,
@@ -376,6 +474,7 @@ export async function getStoreSyncStatus(): Promise<{
     lastSyncAt: lastSync?.completed_at || lastSync?.started_at || null,
     lastSyncStatus: lastSync?.status || null,
     sourceType: lastSync?.sourceType || null,
+    activeSource: usePortal ? "SPARTA_PORTAL" : "LEGACY",
   };
 }
 
@@ -393,10 +492,17 @@ export function startServerDaemon(): void {
 
   globalScope.__sparta_daemon_started = true;
   isDaemonStopped = false;
+  const storeSourceDesc = (() => {
+    try {
+      return portalStoresEnabled() ? "Portal SPARTA" : "Google Sheets / Master Toko";
+    } catch {
+      return "Master Toko (Portal terblokir sebelum konversi cabang)";
+    }
+  })();
   console.log("------------------------------------------------------------");
   console.log("🚀 [SPARTA SIAGA] 24/7 AUTONOMOUS SERVER DAEMON ACTIVATED");
   console.log("   Continuous monitoring: BMKG Quakes (60s), RainViewer & Open-Meteo");
-  console.log(`   Periodic store sync: Scheduled every ${STORE_SYNC_INTERVAL_HOURS}h (Google Sheets / Master Toko)`);
+  console.log(`   Periodic store sync: Scheduled every ${STORE_SYNC_INTERVAL_HOURS}h (${storeSourceDesc})`);
   console.log("   Auto-dispatching: Email to DC Cabang + PWA Push Notifications");
   console.log("------------------------------------------------------------");
 

@@ -1,5 +1,6 @@
 import { getDbPool } from "./db";
 import { IncidentRecord, ManagementInstruction } from "@/types/incident";
+import { branchSqlKey, branchSqlParameter } from "./sparta-rollout";
 
 export function rowToIncident(row: Record<string, unknown>): IncidentRecord {
   return {
@@ -128,7 +129,7 @@ export async function dbFindAutoEarthquakeReport(
   const branchRes = await pool.query(
     `SELECT * FROM incidents
      WHERE earthquake_event_id = $1 
-       AND branch = $2 
+       AND ${branchSqlKey("branch")} = ${branchSqlParameter("$2")}
        AND (store_id = $2 OR store_id IS NULL OR store_id = '')
        AND report_origin = 'automatic_earthquake'
      LIMIT 1`,
@@ -161,7 +162,7 @@ export async function dbFindManualEarthquakeReportByEvent(
     const branchRes = await pool.query(
       `SELECT * FROM incidents
        WHERE earthquake_event_id = $1
-         AND branch = $2 
+         AND ${branchSqlKey("branch")} = ${branchSqlParameter("$2")}
          AND (store_id = $2 OR store_id IS NULL OR store_id = '')
          AND report_origin = 'manual'
        ORDER BY created_at DESC

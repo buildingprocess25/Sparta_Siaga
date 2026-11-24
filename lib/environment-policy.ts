@@ -188,8 +188,8 @@ export function getSsoModuleLauncherUrl(): string {
 
 /**
  * Resolves the appropriate post-logout redirect URL based on environment.
- * In Local Development: redirect to /login (Quick Login page).
- * In UAT and Production: redirect to Portal SSO module launcher page (#/modules).
+ * In isolated Development and UAT: redirect to /login (Quick Login / Gate page).
+ * In Production: redirect to Portal SSO module launcher page (#/modules).
  */
 export function getLogoutRedirectUrl(): string {
   if (isTestBrowserEnvironment()) {

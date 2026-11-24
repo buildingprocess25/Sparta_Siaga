@@ -3,6 +3,8 @@ import { sendEmergencyEmail, getBranchDutyOfficerEmail } from './email-service';
 import { DisasterNotificationType, NotificationChannel, NotificationLog, AffectedStoreSummary } from '@/types/notification';
 import { Store, getStoreOwnership, getStoreOwnershipLabel } from '@/types/store';
 import { calculateHaversineDistance } from './haversine';
+import { branchSqlParameter, branchValueSqlKey } from './sparta-rollout';
+import type { Pool } from 'pg';
 
 export interface DispatchNotificationParams {
   disasterId: string;
@@ -184,7 +186,7 @@ export async function hasEventAlreadyBeenProcessed(disasterId: string, disasterT
     const pool = getDbPool();
     const result = await pool.query(
       `SELECT id FROM notification_logs 
-       WHERE disaster_id = $1 AND disaster_type = $2 AND branch = $3
+       WHERE disaster_id = $1 AND disaster_type = $2 AND ${branchValueSqlKey('branch')} = ${branchSqlParameter('$3')}
        LIMIT 1`,
       [disasterId, disasterType, branch]
     );
@@ -203,7 +205,7 @@ export async function isNotificationCooldownActive(disasterType: DisasterNotific
     const pool = getDbPool();
     const result = await pool.query(
       `SELECT id FROM notification_logs 
-       WHERE branch = $1 AND disaster_type = $2 AND sent_at > NOW() - INTERVAL '15 minutes'
+       WHERE ${branchValueSqlKey('branch')} = ${branchSqlParameter('$1')} AND disaster_type = $2 AND sent_at > NOW() - INTERVAL '15 minutes'
        LIMIT 1`,
       [branch, disasterType]
     );
@@ -345,9 +347,13 @@ export async function recordNotificationLog(params: DispatchNotificationParams):
 /**
  * Fetch recent notification logs with optional filters
  */
-export async function getRecentNotificationLogs(limit: number = 50, branch?: string): Promise<NotificationLog[]> {
+export async function getRecentNotificationLogs(
+  limit: number = 50,
+  branch?: string,
+  options?: { pool?: Pool }
+): Promise<NotificationLog[]> {
   try {
-    const pool = getDbPool();
+    const pool = options?.pool || getDbPool();
     let query = `
       SELECT id, disaster_id, disaster_type, channel, branch, 
              recipient_role, recipient_contact, title, message, 
@@ -360,7 +366,7 @@ export async function getRecentNotificationLogs(limit: number = 50, branch?: str
     const params: (string | number)[] = [];
 
     if (branch && branch !== 'all') {
-      query += ` WHERE branch = $1`;
+      query += ` WHERE ${branchValueSqlKey('branch')} = ${branchSqlParameter('$1')}`;
       params.push(branch);
       query += ` ORDER BY sent_at DESC LIMIT $2`;
       params.push(limit);
@@ -422,7 +428,7 @@ export async function updateNotificationLogForEvent(
           message = COALESCE($2, message),
           affected_stores_count = COALESCE($3, affected_stores_count),
           affected_stores_sample = COALESCE($4, affected_stores_sample)
-      WHERE disaster_id = $5 AND branch = $6;
+      WHERE disaster_id = $5 AND ${branchValueSqlKey('branch')} = ${branchSqlParameter('$6')};
     `;
     const res = await pool.query(query, [
       updates.title || null,

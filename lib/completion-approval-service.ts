@@ -27,6 +27,8 @@ import { EstimationIntegrationService } from "./estimation-service";
 import { ProgressService } from "./progress-service";
 import { checkUserPermission } from "./permission-service";
 import { formatServerTimestampWib } from "./watermark";
+import { samePortalBranch } from "./sparta-master-sync";
+import { effectiveBranchValue } from "./sparta-rollout";
 
 export type ApprovalFlowType = "BMS" | "BES" | "BUILDING";
 
@@ -216,8 +218,6 @@ export function resolveApprovalRoute(
   return { flowType: "BMS", picRole: "bms", coordinatorRole: "bmc", managerRole: "bm" };
 }
 
-const cleanBranch = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-
 export class CompletionApprovalService {
   /**
    * Mengambil atau menginisialisasi record completion approval untuk sebuah laporan.
@@ -267,7 +267,7 @@ export class CompletionApprovalService {
         resolvedRoute.picRole,
         resolvedRoute.coordinatorRole,
         resolvedRoute.managerRole,
-        report.branchCode || report.branch || "N/A",
+        effectiveBranchValue(report) || report.branch || "N/A",
       ]
     );
 
@@ -386,6 +386,7 @@ export class CompletionApprovalService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     notes?: string;
     attachments?: Array<{ url: string; originalName: string; type: string; size: number }>;
@@ -434,9 +435,7 @@ export class CompletionApprovalService {
     }
 
     // 4. Branch Scope Validation
-    const userBranch = cleanBranch(params.actor.branch);
-    const reportBranch = cleanBranch(report.branch);
-    if (!userBranch || userBranch !== reportBranch) {
+    if (!await samePortalBranch(effectiveBranchValue(params.actor), effectiveBranchValue(report))) {
       const err: any = new Error(
         `Aksi pengajuan penyelesaian hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
       );
@@ -533,6 +532,7 @@ export class CompletionApprovalService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     notes?: string;
   }): Promise<CompletionApprovalRecord> {
@@ -560,17 +560,13 @@ export class CompletionApprovalService {
     }
 
     // 3. Branch Scope Check (Admin is not restricted to single branch)
-    {
-      const userBranch = cleanBranch(params.actor.branch);
-      const reportBranch = cleanBranch(report.branch);
-      if (!userBranch || userBranch !== reportBranch) {
-        const err: any = new Error(
-          `Aksi persetujuan koordinator hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
-        );
-        err.status = 403;
-        err.code = "BRANCH_SCOPE_VIOLATION";
-        throw err;
-      }
+    if (!await samePortalBranch(effectiveBranchValue(params.actor), effectiveBranchValue(report))) {
+      const err: any = new Error(
+        `Aksi persetujuan koordinator hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
+      );
+      err.status = 403;
+      err.code = "BRANCH_SCOPE_VIOLATION";
+      throw err;
     }
 
     // 4. Central Permission Resolver check (COMPLETION_APPROVE_COORDINATOR)
@@ -662,6 +658,7 @@ export class CompletionApprovalService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     reason: string;
   }): Promise<CompletionApprovalRecord> {
@@ -700,16 +697,12 @@ export class CompletionApprovalService {
     }
 
     // 3. Branch Scope Check (Admin is not restricted to single branch)
-    {
-      const userBranch = cleanBranch(params.actor.branch);
-      const reportBranch = cleanBranch(report.branch);
-      if (!userBranch || userBranch !== reportBranch) {
-        const err: any = new Error(
-          `Aksi revisi koordinator hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}).`
-        );
-        err.status = 403;
-        throw err;
-      }
+    if (!await samePortalBranch(effectiveBranchValue(params.actor), effectiveBranchValue(report))) {
+      const err: any = new Error(
+        `Aksi revisi koordinator hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}).`
+      );
+      err.status = 403;
+      throw err;
     }
 
     // 4. State Check
@@ -799,6 +792,7 @@ export class CompletionApprovalService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     notes?: string;
   }): Promise<IncidentRecord> {
@@ -829,17 +823,13 @@ export class CompletionApprovalService {
     }
 
     // 3. Branch Scope Isolation
-    {
-      const userBranch = cleanBranch(params.actor.branch);
-      const reportBranch = cleanBranch(report.branch);
-      if (!userBranch || userBranch !== reportBranch) {
-        const err: any = new Error(
-          `Aksi persetujuan final BnM Manajer hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
-        );
-        err.status = 403;
-        err.code = "BRANCH_SCOPE_VIOLATION";
-        throw err;
-      }
+    if (!await samePortalBranch(effectiveBranchValue(params.actor), effectiveBranchValue(report))) {
+      const err: any = new Error(
+        `Aksi persetujuan final BnM Manajer hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
+      );
+      err.status = 403;
+      err.code = "BRANCH_SCOPE_VIOLATION";
+      throw err;
     }
 
     // 4. Central Permission Resolver check (REPORT_CLOSE / REPORT_BM_APPROVAL)
@@ -999,7 +989,7 @@ export class CompletionApprovalService {
           "REPORT_CLOSE",
           "ALLOW",
           "BRANCH",
-          lockedIncident.branch || null,
+          effectiveBranchValue(lockedIncident) || lockedIncident.branch || null,
           `Final Approval disetujui oleh ${actorLabel}. Menunggu Case Close. Catatan: ${managerNotes}`,
         ]
       );
@@ -1031,6 +1021,7 @@ export class CompletionApprovalService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     notes?: string;
   }): Promise<IncidentRecord> {
@@ -1069,17 +1060,13 @@ export class CompletionApprovalService {
     }
 
     // 3. Branch Scope Isolation
-    {
-      const userBranch = cleanBranch(params.actor.branch);
-      const reportBranch = cleanBranch(report.branch);
-      if (!userBranch || userBranch !== reportBranch) {
-        const err: any = new Error(
-          `Aksi Case Close BnM Manajer hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
-        );
-        err.status = 403;
-        err.code = "BRANCH_SCOPE_VIOLATION";
-        throw err;
-      }
+    if (!await samePortalBranch(effectiveBranchValue(params.actor), effectiveBranchValue(report))) {
+      const err: any = new Error(
+        `Aksi Case Close BnM Manajer hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}), bukan cabang ${report.branch?.toUpperCase() || "N/A"}.`
+      );
+      err.status = 403;
+      err.code = "BRANCH_SCOPE_VIOLATION";
+      throw err;
     }
 
     // 4. Central Permission Resolver check (REPORT_CLOSE)
@@ -1237,7 +1224,7 @@ export class CompletionApprovalService {
           "REPORT_CLOSE",
           "ALLOW",
           "BRANCH",
-          lockedIncident.branch || null,
+          effectiveBranchValue(lockedIncident) || lockedIncident.branch || null,
           `Case Closed oleh ${actorLabel}. Catatan: ${closingNotes}`,
         ]
       );
@@ -1264,6 +1251,7 @@ export class CompletionApprovalService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     reason: string;
   }): Promise<CompletionApprovalRecord> {
@@ -1298,16 +1286,12 @@ export class CompletionApprovalService {
     }
 
     // 3. Branch Scope (Admin is not restricted to single branch)
-    {
-      const userBranch = cleanBranch(params.actor.branch);
-      const reportBranch = cleanBranch(report.branch);
-      if (!userBranch || userBranch !== reportBranch) {
-        const err: any = new Error(
-          `Aksi penolakan BnM Manajer hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}).`
-        );
-        err.status = 403;
-        throw err;
-      }
+    if (!await samePortalBranch(effectiveBranchValue(params.actor), effectiveBranchValue(report))) {
+      const err: any = new Error(
+        `Aksi penolakan BnM Manajer hanya berlaku untuk cabang sendiri (${params.actor.branch || "N/A"}).`
+      );
+      err.status = 403;
+      throw err;
     }
 
     // 4. State Check

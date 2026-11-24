@@ -2,6 +2,13 @@ import webpush from 'web-push';
 import crypto from 'crypto';
 import { getDbPool, isTestingModeActiveSync } from './db';
 import { ensureWebPushConfigured } from './web-push-config';
+import { branchMasterEnabled, branchSqlParameter } from './sparta-rollout';
+
+export function buildPushSubscriptionBranchClause(targetParam: string): string {
+  return branchMasterEnabled()
+    ? `sparta_branch_key(COALESCE(u.branch_code, s.branch)) = ${branchSqlParameter(targetParam)}`
+    : `LOWER(TRIM(s.branch)) = ${branchSqlParameter(targetParam)}`;
+}
 
 export type DeviceType = 'android' | 'ios' | 'desktop' | 'unknown';
 
@@ -365,7 +372,7 @@ export async function dispatchEarthquakePushNotifications(params: {
        LEFT JOIN users u ON s.user_id = u.id
        WHERE (u.id IS NULL OR (u.status = 'ACTIVE' AND LOWER(COALESCE(u.business_role, '')) NOT IN ('tim_toko', 'rekanan')))
          AND ($1::boolean = true
-          OR UPPER(s.branch) = $2 
+          OR ${buildPushSubscriptionBranchClause('$2')}
           OR s.branch IS NULL 
           OR UPPER(s.branch) = 'NASIONAL'
           OR s.branch = '')`,

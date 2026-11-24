@@ -1,7 +1,7 @@
 import { syncStoresFromGoogleSheets } from "./google-sheets-sync";
-import { syncStoresFromPortal } from "./sparta-master-sync";
+import { syncStoresFromPortal, type MasterSyncOptions } from "./sparta-master-sync";
 import { portalStoresEnabled } from "./sparta-master-contract";
 
-export function syncMasterStores() {
-  return portalStoresEnabled() ? syncStoresFromPortal() : syncStoresFromGoogleSheets();
+export function syncMasterStores(options?: MasterSyncOptions) {
+  return portalStoresEnabled() ? syncStoresFromPortal(options) : syncStoresFromGoogleSheets();
 }

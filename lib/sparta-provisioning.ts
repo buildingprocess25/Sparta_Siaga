@@ -88,10 +88,24 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
     const branchCode = event.user.branchCode.trim() || null;
     const convertBranch = branchMasterEnabled();
     const systemAdmin = user?.system_role === "ADMIN";
-    const role = disable || systemAdmin ? user?.business_role ?? null : initialProvisioningRole(event.access.role);
-    const scope = systemAdmin ? null : disable ? user?.scope ?? null : deriveScopeFromBusinessRole(role);
-    let assignedBranch = systemAdmin || scope === "HO" ? null : user?.branch || null;
-    if (!disable && scope === "BRANCH" && (!event.user.branch.trim() || event.user.branch.trim() === "-")) {
+    const existingRole = user?.business_role ?? null;
+    // user.updated from Portal only updates identity/status, never overwriting an established local SIAGA role or scope.
+    const preserveLocalRole = !disable && !systemAdmin && event.type === "user.updated" && Boolean(existingRole);
+    const role = disable || systemAdmin
+      ? existingRole
+      : preserveLocalRole
+        ? existingRole
+        : initialProvisioningRole(event.access.role);
+    const scope = systemAdmin
+      ? null
+      : disable
+        ? user?.scope ?? null
+        : preserveLocalRole && (user?.scope === "HO" || user?.scope === "BRANCH")
+          ? user.scope
+          : deriveScopeFromBusinessRole(role);
+    const existingBranch = user?.branch?.trim() && user.branch.trim() !== "-" ? user.branch.trim() : null;
+    let assignedBranch = systemAdmin || scope === "HO" ? null : existingBranch;
+    if (!disable && scope === "BRANCH" && (convertBranch || !existingBranch) && (!event.user.branch.trim() || event.user.branch.trim() === "-")) {
       throw new SpartaIntegrationError("BRANCH_ASSIGNMENT_REQUIRED", "User cabang harus memiliki cabang dari portal.", 422);
     }
     if (convertBranch && !disable && scope === "BRANCH") {
@@ -99,7 +113,7 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
       const branch = await client.query("SELECT code FROM sparta_master_branches WHERE code=$1 AND is_active=TRUE", [branchCode]);
       if (!branch.rows.length) throw new SpartaIntegrationError("UNKNOWN_PORTAL_BRANCH", "Sinkronkan master cabang sebelum provisioning user.", 503);
       assignedBranch = event.user.branch.trim();
-    } else if (!disable && scope === "BRANCH") {
+    } else if (!disable && scope === "BRANCH" && !existingBranch) {
       const local = await client.query(`SELECT DISTINCT branch AS name FROM users WHERE NULLIF(BTRIM(branch),'') IS NOT NULL
         UNION SELECT DISTINCT cabang AS name FROM stores WHERE NULLIF(BTRIM(cabang),'') IS NOT NULL`);
       const names = [...new Set(local.rows.map(row => String(row.name).trim()))];

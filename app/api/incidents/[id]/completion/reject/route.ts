@@ -43,6 +43,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       systemRole: sessionUser.systemRole,
       scope: sessionUser.scope,
       branch: sessionUser.branch,
+      branchCode: sessionUser.branchCode,
     };
 
     const role = (sessionUser.role || "").toLowerCase();

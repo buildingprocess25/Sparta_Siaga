@@ -5,6 +5,7 @@ import {
   evaluateWorkReadiness,
   resolveWorkReadinessCategory,
 } from "./work-readiness";
+import { effectiveBranchValue } from "./sparta-rollout";
 
 export type HandlerType = "BMS" | "BES" | "BUILDING" | "REKANAN";
 export type TargetSystem = "SPARTA_MAINTENANCE" | "BNM_MANTRA";
@@ -231,7 +232,7 @@ export class EstimationIntegrationService {
 
     const rep = params.report || (await dbGetIncidentById(params.reportId));
     const storeCode = rep?.storeId || (rep as any)?.facilityId || null;
-    const branchCode = rep?.branch || null;
+    const branchCode = rep ? (effectiveBranchValue(rep) || rep.branch || null) : null;
     const initialStatus: RoutingStatus = "WAITING_ESTIMATION";
     const initialWorkStatus: WorkStatus = "NOT_READY";
     const initialDataSource: DataSource = params.dataSource || "MANUAL";

@@ -151,7 +151,12 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
           <h2 className={`text-base font-bold truncate ${isDark ? "text-white" : "text-slate-900"}`}>{store.nama_toko}</h2>
           <p className={`text-xs flex items-center gap-1 mt-0.5 ${isDark ? "text-slate-400" : "text-slate-600"}`}>
             <Building className={`w-3 h-3 shrink-0 ${isDark ? "text-slate-500" : "text-slate-400"}`} />
-            <span>Cabang {store.cabang}</span>
+            <span>
+              Cabang {store.cabang}
+              {store.branch_code && store.branch_code.toUpperCase() !== store.cabang.toUpperCase()
+                ? ` (${store.branch_code})`
+                : ""}
+            </span>
           </p>
         </div>
 

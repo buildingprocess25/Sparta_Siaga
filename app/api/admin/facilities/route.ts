@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { listFacilities, updateFacilityAdmin } from "@/lib/facility-service";
+import { SpartaIntegrationError } from "@/lib/sparta-identity";
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
@@ -29,6 +30,9 @@ export async function PATCH(request: Request) {
     const data = await updateFacilityAdmin({ ...body, actorUserId: user.id });
     return NextResponse.json({ data });
   } catch (error) {
+    if (error instanceof SpartaIntegrationError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : "Gagal memperbarui fasilitas";
     return NextResponse.json({ error: message }, { status: message === "FACILITY_NOT_FOUND" ? 404 : 400 });
   }

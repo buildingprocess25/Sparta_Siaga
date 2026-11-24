@@ -4,6 +4,14 @@ import { getSessionUser } from "@/lib/auth";
 import { getOrLoadMasterStores } from "@/lib/store-master-loader";
 import { portalStoresEnabled } from "@/lib/sparta-master-contract";
 import { canonicalBranchKey } from "@/lib/sparta-master-sync";
+import { SpartaIntegrationError } from "@/lib/sparta-identity";
+import {
+  branchMasterEnabled,
+  branchSqlKey,
+  branchSqlParameter,
+  branchValueSqlKey,
+  effectiveBranchValue,
+} from "@/lib/sparta-rollout";
 
 // Known canonical branch alias mappings (e.g. testing codes / historical prefixes)
 const BRANCH_CANONICAL_MAP: Record<string, string> = {
@@ -80,25 +88,36 @@ export async function GET(request: Request) {
 
       // Role and Branch scoping for facilities
       if (!canSearchAllFacilities) {
-        // Operational branch roles (BES, BMM) can only search facilities mapped to their branch or matching branch name
-        const aliases = resolveBranchAliases(sessionUser.branch);
-        const branchClauses: string[] = [];
-        if (aliases.length > 0) {
-          branchClauses.push(`UPPER(COALESCE(branch_id, '')) = ANY($${paramIndex}::text[])`);
-          values.push(aliases.map((a) => a.toUpperCase()));
-          paramIndex++;
-
-          for (const alias of aliases) {
-            branchClauses.push(`name ILIKE $${paramIndex}`);
-            values.push(`%${alias}%`);
+        if (branchMasterEnabled()) {
+          const actorBranch = effectiveBranchValue(sessionUser);
+          if (!actorBranch) {
+            conditions.push("FALSE");
+          } else {
+            conditions.push(`${branchValueSqlKey("branch_id")} = ${branchSqlParameter(`$${paramIndex}`)}`);
+            values.push(actorBranch);
             paramIndex++;
           }
         } else {
-          branchClauses.push(`branch_id = $${paramIndex}`);
-          values.push(sessionUser.branch || "");
-          paramIndex++;
+          // Operational branch roles (BES, BMM) can only search facilities mapped to their branch or matching branch name
+          const aliases = resolveBranchAliases(sessionUser.branch);
+          const branchClauses: string[] = [];
+          if (aliases.length > 0) {
+            branchClauses.push(`UPPER(COALESCE(branch_id, '')) = ANY($${paramIndex}::text[])`);
+            values.push(aliases.map((a) => a.toUpperCase()));
+            paramIndex++;
+
+            for (const alias of aliases) {
+              branchClauses.push(`name ILIKE $${paramIndex}`);
+              values.push(`%${alias}%`);
+              paramIndex++;
+            }
+          } else {
+            branchClauses.push(`branch_id = $${paramIndex}`);
+            values.push(sessionUser.branch || "");
+            paramIndex++;
+          }
+          conditions.push(`(${branchClauses.join(" OR ")})`);
         }
-        conditions.push(`(${branchClauses.join(" OR ")})`);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -200,15 +219,26 @@ export async function GET(request: Request) {
 
       // Server-side enforcement of branch scope with canonical aliases & case-insensitivity
       if (!canSearchAllStores) {
-        const aliases = resolveBranchAliases(sessionUser.branch);
-        if (aliases.length > 0) {
-          conditions.push(`UPPER(cabang) = ANY($${paramIndex}::text[])`);
-          values.push(aliases);
-          paramIndex++;
+        if (branchMasterEnabled()) {
+          const actorBranch = effectiveBranchValue(sessionUser);
+          if (!actorBranch) {
+            conditions.push("FALSE");
+          } else {
+            conditions.push(`${branchSqlKey("cabang")} = ${branchSqlParameter(`$${paramIndex}`)}`);
+            values.push(actorBranch);
+            paramIndex++;
+          }
         } else {
-          conditions.push(`cabang = $${paramIndex}`);
-          values.push(sessionUser.branch || "");
-          paramIndex++;
+          const aliases = resolveBranchAliases(sessionUser.branch);
+          if (aliases.length > 0) {
+            conditions.push(`UPPER(cabang) = ANY($${paramIndex}::text[])`);
+            values.push(aliases);
+            paramIndex++;
+          } else {
+            conditions.push(`cabang = $${paramIndex}`);
+            values.push(sessionUser.branch || "");
+            paramIndex++;
+          }
         }
       }
 
@@ -284,6 +314,9 @@ export async function GET(request: Request) {
       source: "aiven-postgresql-with-master-fallback",
     });
   } catch (error: unknown) {
+    if (error instanceof SpartaIntegrationError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     console.error("[Search API] Error searching locations:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(

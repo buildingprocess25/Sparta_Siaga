@@ -169,7 +169,7 @@ export default function LoginPage() {
         setIsDevMode(false);
         setInitLoading(false);
       });
-  }, [ssoPortalUrl]);
+  }, []);
 
   const handleQuickLogin = async (e: React.FormEvent) => {
     e.preventDefault();

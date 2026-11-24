@@ -5,6 +5,8 @@ import {
 } from "@/lib/integration-auth";
 import { getDbPool } from "@/lib/db";
 import { rowToIncident } from "@/lib/incident-db";
+import { canonicalBranchKey } from "@/lib/sparta-master-sync";
+import { branchSqlKey, branchSqlParameter } from "@/lib/sparta-rollout";
 
 export async function GET(request: Request) {
   const auth = await authenticateIntegrationRequest(request);
@@ -40,8 +42,8 @@ export async function GET(request: Request) {
     // Branch restriction from API Key or Query Param
     const effectiveBranch = client.branchRestriction || branchParam;
     if (effectiveBranch) {
-      params.push(effectiveBranch.toUpperCase());
-      query += ` AND UPPER(branch) = $${params.length}`;
+      params.push(await canonicalBranchKey(effectiveBranch));
+      query += ` AND ${branchSqlKey("branch")} = ${branchSqlParameter(`$${params.length}`)}`;
     }
 
     // Count total matching
@@ -64,6 +66,7 @@ export async function GET(request: Request) {
       storeId: inc.storeId,
       storeName: inc.storeName,
       branch: inc.branch,
+      branchCode: inc.branchCode ?? null,
       locationCity: inc.locationCity,
       disasterType: inc.disasterType,
       reportOrigin: inc.reportOrigin,

@@ -48,3 +48,58 @@ export function identityParameters(identity: SpartaIdentity) {
 export function canUseLocalPassword(source: string, restrictedEnvironment: boolean, transitionEnabled: boolean) {
   return source === "LOCAL" && (!restrictedEnvironment || transitionEnabled);
 }
+
+const PORTAL_MANAGED_SOURCES = new Set(["SPARTA", "SPARTA_SSO", "SSO"]);
+
+export function isPortalManagedUser(user: { source?: string | null; externalUserId?: string | null }): boolean {
+  if (user.externalUserId && user.externalUserId.trim().length > 0) return true;
+  return PORTAL_MANAGED_SOURCES.has((user.source || "").trim().toUpperCase());
+}
+
+export function detectPortalIdentityFieldChanges(
+  existing: { name?: string | null; nik?: string | null; email?: string | null },
+  incoming: { name?: unknown; nik?: unknown; email?: unknown }
+): string[] {
+  const changed: string[] = [];
+  if (incoming.name !== undefined) {
+    const nextName = typeof incoming.name === "string" ? incoming.name.trim() : "";
+    if (nextName !== (existing.name || "").trim()) changed.push("name");
+  }
+  if (incoming.nik !== undefined) {
+    const nextNik = typeof incoming.nik === "string" ? incoming.nik.trim() || null : null;
+    const prevNik = existing.nik?.trim() || null;
+    if (nextNik !== prevNik) changed.push("nik");
+  }
+  if (incoming.email !== undefined) {
+    const nextEmail = typeof incoming.email === "string" ? incoming.email.trim().toLowerCase() || null : null;
+    const prevEmail = existing.email?.trim().toLowerCase() || null;
+    if (nextEmail !== prevEmail) changed.push("email");
+  }
+  return changed;
+}
+
+export function shouldRevokeUserSessionsOnUpdate(
+  existing: {
+    systemRole?: string | null;
+    businessRole?: string | null;
+    scope?: string | null;
+    branch?: string | null;
+    status?: string | null;
+  },
+  next: {
+    systemRole?: string | null;
+    businessRole?: string | null;
+    scope?: string | null;
+    branch?: string | null;
+    status?: string | null;
+    passwordChanged?: boolean;
+  }
+): boolean {
+  if (next.passwordChanged) return true;
+  if ((next.systemRole ?? null) !== (existing.systemRole ?? null)) return true;
+  if ((next.businessRole ?? null) !== (existing.businessRole ?? null)) return true;
+  if ((next.scope ?? null) !== (existing.scope ?? null)) return true;
+  if ((next.branch?.trim() || null) !== (existing.branch?.trim() || null)) return true;
+  if ((next.status ?? null) !== (existing.status ?? null)) return true;
+  return false;
+}

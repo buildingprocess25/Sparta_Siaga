@@ -287,6 +287,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         incidentId: id,
         userId: sessionUser.id,
         branch: sessionUser.branch,
+        branchCode: sessionUser.branchCode,
         role: sessionUser.role,
         action: "READINESS_UPDATED",
       });

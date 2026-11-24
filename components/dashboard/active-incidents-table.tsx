@@ -62,11 +62,19 @@ export function ActiveIncidentsTable({
   const [claimingId, setClaimingId] = useState<string | null>(null);
 
   const availableBranches = useMemo(() => {
-    const set = new Set<string>();
+    const map = new Map<string, { value: string; label: string }>();
     incidents.forEach((i) => {
-      if (i.branch) set.add(i.branch);
+      const code = i.branchCode?.trim() || "";
+      const name = i.branch?.trim() || "";
+      const value = code || name;
+      if (!value) return;
+      const key = value.toUpperCase();
+      if (!map.has(key)) {
+        const label = code && name && code.toUpperCase() !== name.toUpperCase() ? `${name} (${code})` : name || code;
+        map.set(key, { value, label });
+      }
     });
-    return Array.from(set).sort();
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [incidents]);
 
   const isHO = currentUser?.scope === "HO" && currentUser?.systemRole !== "ADMIN";
@@ -124,7 +132,10 @@ export function ActiveIncidentsTable({
         }
       }
 
-      const matchBranch = filterBranch === "all" || inc.branch?.toLowerCase() === filterBranch.toLowerCase();
+      const matchBranch =
+        filterBranch === "all" ||
+        (Boolean(inc.branchCode) && inc.branchCode!.toLowerCase() === filterBranch.toLowerCase()) ||
+        inc.branch?.toLowerCase() === filterBranch.toLowerCase();
 
       return matchType && matchStatus && matchDate && matchBranch;
     });
@@ -317,8 +328,8 @@ export function ActiveIncidentsTable({
                     <SelectContent>
                       <SelectItem value="all">Semua Cabang</SelectItem>
                       {availableBranches.map((b) => (
-                        <SelectItem key={b} value={b}>
-                          {b}
+                        <SelectItem key={b.value} value={b.value}>
+                          {b.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

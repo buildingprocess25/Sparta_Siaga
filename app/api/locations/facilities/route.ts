@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { getDbPool } from "@/lib/db";
+import { branchSqlParameter, branchValueSqlKey } from "@/lib/sparta-rollout";
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   const status = url.searchParams.get("status");
   const mapping = url.searchParams.get("mapping");
   if (type) where.push(`facility_type = ${add(type)}`);
-  if (branch) where.push(`branch_id = ${add(branch)}`);
+  if (branch) where.push(`${branchValueSqlKey("branch_id")} = ${branchSqlParameter(add(branch))}`);
   if (status) where.push(`operational_status = ${add(status)}`);
   if (mapping === "mapped") where.push("branch_id IS NOT NULL AND mapping_verified_at IS NOT NULL");
   if (mapping === "unmapped") where.push("(branch_id IS NULL OR mapping_verified_at IS NULL)");

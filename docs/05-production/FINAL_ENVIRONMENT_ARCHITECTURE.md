@@ -11,7 +11,7 @@ Dokumen ini mendefinisikan arsitektur final 3 tingkat environment untuk SPARTA S
 | **Tujuan Utama** | Pengembangan lokal & visual testing HP via Dev Tunnel | Pengujian fitur, RBAC, workflow, & scope wilayah oleh evaluator | Operasional resmi SPARTA SIAGA |
 | **Metode Autentikasi** | **Quick Login & Role Simulator** (9 Role Resmi) | **Quick Login & Role Simulator** (9 Role Resmi) | **Portal SPARTA SSO Production Existing** |
 | **Akses Localhost** | Langsung terbuka (loopback-safe) | Terproteksi Gate Passcode | Dilarang (Wajib SSO) |
-| **Akses Dev Tunnel / HP** | Wajib verifikasi Gate Passcode (`?gate=...` atau form passcode) | Wajib verifikasi Gate Passcode (`?gate=...` atau form passcode) | Nonaktif (Akses via domain resmi) |
+| **Akses Dev Tunnel / HP** | Wajib verifikasi Gate Passcode (form `/login` atau header `x-gate-passcode`) | Wajib verifikasi Gate Passcode (form `/login` atau header `x-gate-passcode`) | Nonaktif (Akses via domain resmi) |
 | **Redirect SPARTA SSO** | **TIDAK** (Tetap di SPARTA SIAGA) | **TIDAK** (Tetap di SPARTA SIAGA) | **YA** (Wajib ke Portal SPARTA SSO) |
 | **Redirect Logout** | `/login` (Kembali ke Role Simulator) | `/login` (Kembali ke Role Simulator) | Portal SPARTA SSO Launcher (`/#/modules`) |
 | **Database Target** | `sparta_siaga_isolated` (Aiven Cloud Staging) | `sparta_siaga_isolated` (Aiven Cloud Staging) | `siaga` Production (Dokploy PostgreSQL) |
@@ -28,13 +28,16 @@ Dokumen ini mendefinisikan arsitektur final 3 tingkat environment untuk SPARTA S
    - Pengembang dapat langsung menggunakan 9 role Quick Login tanpa memasukkan passcode.
 2. **Perilaku di Dev Tunnel / Perangkat Mobile (HP)**:
    - Akses melalui hostname tunnel publik (`*.devtunnels.ms`, `*.loca.lt`, `*.ngrok*`, dll.) wajib melalui verifikasi gate passcode pengembang.
-   - Passcode dapat diberikan melalui:
-     - Query Parameter: `?gate=<UAT_GATE_PASSCODE>`
-     - Form Verifikasi: Mengisi passcode pada dialog login.
-     - Header: `x-gate-passcode` atau `x-dev-access-key`.
-   - Setelah terverifikasi, server menetapkan cookie `siaga_gate_token` sehingga perangkat HP dapat berpindah-pindah halaman dan mencoba 9 role secara leluasa.
+   - Passcode diverifikasi melalui:
+     - Form Verifikasi pada halaman `/login` (`POST /api/auth/gate-verify`).
+     - Header: `x-gate-passcode` atau `x-dev-access-key` (HTTPS atau loopback, tanpa query parameter URL agar passcode tidak tercatat pada log).
+   - Setelah terverifikasi, server menetapkan cookie `siaga_gate_token` (`HttpOnly`, `SameSite=Strict`) sehingga perangkat HP dapat berpindah-pindah halaman dan mencoba 9 role secara leluasa.
    - Tunnel publik tanpa passcode yang valid akan menerima `HTTP 403 (GATE_VERIFICATION_REQUIRED)`.
-3. **Keterpisahan SSO**:
+3. **Konfigurasi Environment Terisolasi (Dev & UAT)**:
+   - Wajib mengarahkan `DATABASE_URL` / `SPARTA_ISOLATED_TEST_DATABASE_URL` ke database Aiven `sparta_siaga_isolated` (SSL `require`).
+   - Wajib menyetel `APP_ENV` dan `SPARTA_ENVIRONMENT` ke nilai yang sama (`development` atau `uat`), `SPARTA_TEST_GATE_ENABLED=true`, serta `DEV_GATE_PASSCODE` / `UAT_GATE_PASSCODE` minimal 12 karakter.
+   - Worker otonom (`SPARTA_AUTONOMOUS_WORKER_ENABLED=false`), alert cuaca otonom, email (`EMAIL_NOTIFICATIONS_ENABLED=false`), serta integrasi eksternal production wajib dinonaktifkan selama pengujian Development/UAT.
+4. **Keterpisahan SSO**:
    - Mode Development tidak pernah melakukan redirect ke SPARTA SSO.
 
 ---

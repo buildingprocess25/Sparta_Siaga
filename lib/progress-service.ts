@@ -4,6 +4,7 @@ import { dbGetIncidentById, dbUpdateIncident } from "./incident-db";
 import { checkUserPermission } from "./permission-service";
 import { formatServerTimestampWib } from "./watermark";
 import { IncidentRecord } from "@/types/incident";
+import { effectiveBranchValue } from "./sparta-rollout";
 
 export type WorkStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 export type PhotoType = "PROGRESS" | "FINAL" | "HANDOVER";
@@ -437,7 +438,7 @@ export class ProgressService {
           "REPORT_UPDATE_PROGRESS",
           "ALLOW",
           "BRANCH",
-          report.branch || null,
+          effectiveBranchValue(report) || report.branch || null,
           `Progress diupdate menjadi ${percentage}%. Deskripsi: ${params.description}`,
         ]
       );
@@ -499,6 +500,7 @@ export class ProgressService {
       systemRole?: string;
       scope?: string | null;
       branch?: string | null;
+      branchCode?: string | null;
     };
     reason?: string;
   }): Promise<IncidentRecord> {

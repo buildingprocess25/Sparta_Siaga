@@ -1,4 +1,13 @@
+import type { Pool } from "pg";
 import { getDbPool } from "./db";
+import {
+  branchMasterEnabled,
+  branchSqlKey,
+  branchSqlParameter,
+  branchValueSqlKey,
+  effectiveBranchValue,
+} from "./sparta-rollout";
+import { resolveActivePortalBranch } from "./branch-master-query";
 
 export interface FacilityFilters {
   type?: string;
@@ -15,7 +24,9 @@ export async function listFacilities(filters: FacilityFilters = {}) {
     return `$${values.length}`;
   };
   if (filters.type) where.push(`facility_type = ${add(filters.type)}`);
-  if (filters.branch) where.push(`branch_id = ${add(filters.branch)}`);
+  if (filters.branch) {
+    where.push(`${branchValueSqlKey("branch_id")} = ${branchSqlParameter(add(filters.branch))}`);
+  }
   if (filters.mapping === "mapped") where.push("branch_id IS NOT NULL AND mapping_verified_at IS NOT NULL");
   if (filters.mapping === "unmapped") where.push("(branch_id IS NULL OR mapping_verified_at IS NULL)");
   if (filters.query) {
@@ -42,16 +53,27 @@ export async function updateFacilityAdmin(input: {
   operationalStatus?: "ACTIVE" | "INACTIVE";
   autoReportEnabled?: boolean;
   actorUserId: string;
-}) {
-  const client = await getDbPool().connect();
+}, options?: { pool?: Pool }) {
+  const pool = options?.pool || getDbPool();
+  const client = await pool.connect();
   try {
     await client.query("BEGIN");
     const current = await client.query(`SELECT * FROM facilities WHERE id = $1 FOR UPDATE`, [input.id]);
     if (!current.rows[0]) throw new Error("FACILITY_NOT_FOUND");
-    const nextBranch = input.branchId === undefined ? current.rows[0].branch_id : input.branchId;
-    const nextMappingAt = input.branchId === undefined
+
+    let resolvedBranchId = input.branchId;
+    if (typeof input.branchId === "string" && input.branchId.trim() && branchMasterEnabled()) {
+      const resolved = await resolveActivePortalBranch(input.branchId.trim(), { pool });
+      if (!resolved) {
+        throw new Error("UNKNOWN_PORTAL_BRANCH: Cabang tidak ditemukan pada master cabang Portal SPARTA.");
+      }
+      resolvedBranchId = resolved.code;
+    }
+
+    const nextBranch = resolvedBranchId === undefined ? current.rows[0].branch_id : (resolvedBranchId?.trim() || null);
+    const nextMappingAt = resolvedBranchId === undefined
       ? current.rows[0].mapping_verified_at
-      : input.branchId
+      : nextBranch
         ? new Date()
         : null;
     const nextAuto = input.autoReportEnabled ?? current.rows[0].auto_report_enabled;
@@ -96,8 +118,13 @@ export async function listSharedQueue(user: {
   const values: unknown[] = [];
   const where = ["i.closed_at IS NULL", "i.status NOT IN ('closed', 'resolved', 'archived', 'confirmed_safe', 'rejected_invalid', 'expired_unhandled')"];
   if (user.systemRole !== "ADMIN" && user.scope !== "HO") {
-    values.push(user.branchCode || user.branch);
-    where.push(user.branchCode ? `i.branch_code = $${values.length}` : `i.branch = $${values.length}`);
+    const actorBranch = effectiveBranchValue(user);
+    if (!actorBranch) {
+      where.push("FALSE");
+    } else {
+      values.push(actorBranch);
+      where.push(`${branchSqlKey("i.branch")} = ${branchSqlParameter(`$${values.length}`)}`);
+    }
   }
   if (user.role === "bms") where.push("COALESCE(i.location_kind, 'STORE') = 'STORE'");
   if (user.role === "bes") where.push("i.location_kind = 'FACILITY'");

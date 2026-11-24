@@ -4,11 +4,17 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { createHmac } from "node:crypto";
 import type { Pool } from "pg";
-import { canUseLocalPassword, selectSpartaIdentity } from "../lib/sparta-identity";
+import {
+  canUseLocalPassword,
+  detectPortalIdentityFieldChanges,
+  isPortalManagedUser,
+  selectSpartaIdentity,
+  shouldRevokeUserSessionsOnUpdate,
+} from "../lib/sparta-identity";
 import { parsePortalBranches, parsePortalStores, resolvePortalBranch, portalStoresEnabled, type PortalBranch } from "../lib/sparta-master-contract";
 import { applyProvisioningEvent, initialProvisioningRole, parseProvisioningEvent, verifyProvisioningRequest, type ProvisioningEvent } from "../lib/sparta-provisioning";
 import { backfillPortalBranches, fetchPortalMaster, previewPortalStores, syncStoresFromPortal } from "../lib/sparta-master-sync";
-import { exchangeSpartaLaunchToken, matchSsoIdentityToSiagaUser } from "../lib/sso-service";
+import { exchangeSpartaLaunchToken, matchSsoIdentityToSiagaUser, querySpartaBatchModuleGrants } from "../lib/sso-service";
 import { compareFacilityMasters } from "../lib/sparta-facility-comparison";
 import { getStoreOwnership, getStoreOwnershipLabel } from "../types/store";
 import { canActOnReport, type UserContext } from "../lib/report-permissions";
@@ -16,6 +22,11 @@ import { getReportAccessSql } from "../lib/report-access-policy";
 import type { IncidentRecord } from "../types/incident";
 import { POST as provisionPost } from "../app/internal/sparta/provision/route";
 
+import {
+  evaluatePortalRoleSyncEligibility,
+  reportSiagaRoleChangeToPortal,
+} from "../lib/sparta-role-sync";
+import type { UserModel } from "../lib/user-db";
 import { branchSqlKey, branchSqlParameter } from "../lib/sparta-rollout";
 import { assignIncidentPicForPersistedAction } from "../lib/incident-assignment";
 
@@ -226,14 +237,25 @@ test("oversized provisioning bodies are rejected before signature and database w
   const response = await provisionPost(new Request("http://localhost/internal/sparta/provision", { method: "POST", body: "x".repeat(65537) }));
   assert.equal(response.status, 413);
 });
-test("user.updated applies the portal role and revokes old sessions without changing permission tables", async () => {
+test("access.granted applies the portal role and revokes old sessions without changing permission tables", async () => {
   const db = database(sql => sql.startsWith("SELECT * FROM users") ? [existingUser()] : sql.startsWith("SELECT code") ? [{ code: "KZ01" }] : []);
-  await applyProvisioningEvent(event({ type: "user.updated" }), { pool: db.pool });
+  await applyProvisioningEvent(event({ type: "access.granted" }), { pool: db.pool });
   const update = db.calls.find(call => call.sql.startsWith("UPDATE users"))!;
   assert.equal(update.values[11], "bms");
   assert.equal(update.values[12], "BRANCH");
   assert.equal(update.values[10], 1);
   assert.ok(db.calls.some(call => call.sql.startsWith("UPDATE user_sessions")));
+  assert.ok(!db.calls.some(call => /(?:UPDATE|INSERT INTO|DELETE FROM) (?:role_permissions|user_permission_overrides)/.test(call.sql)));
+});
+test("user.updated preserves local business_role, scope, and legacy branch without overwriting permission tables", async () => {
+  const db = database(sql => sql.startsWith("SELECT * FROM users") ? [existingUser({ business_role: "bmc", scope: "BRANCH", branch: "CABANG LAMA" })] : []);
+  await applyProvisioningEvent(event({ type: "user.updated", access: { isActive: true, role: "ADMIN" } }), { pool: db.pool });
+  const update = db.calls.find(call => call.sql.startsWith("UPDATE users"))!;
+  assert.equal(update.values[11], "bmc");
+  assert.equal(update.values[12], "BRANCH");
+  assert.equal(update.values[13], "CABANG LAMA");
+  assert.equal(update.values[10], 0);
+  assert.ok(!db.calls.some(call => call.sql.startsWith("UPDATE user_sessions")));
   assert.ok(!db.calls.some(call => /(?:UPDATE|INSERT INTO|DELETE FROM) (?:role_permissions|user_permission_overrides)/.test(call.sql)));
 });
 test("deactivation and revoke both invalidate active device sessions", async () => {
@@ -445,15 +467,203 @@ test("early incident assignment uses legacy SQL without master functions or new 
   assert.equal(branchSqlParameter("$2"), "LOWER(TRIM($2::text))");
   assert.match(getReportAccessSql({ systemRole: "USER", scope: "BRANCH", branch: "BALARAJA", branchCode: "KZ01" }).clause, /LOWER\(TRIM\(incidents.branch\)\)/);
 });
-test("default migration plan defers conversion and excludes the deprecated combined migration", () => {
+test("default migration plan defers 018, 020, and 021 and excludes the deprecated combined migration", () => {
   const output = execFileSync(process.execPath, ["scripts/migrate-production.mjs", "--plan"], { encoding: "utf8" });
-  assert.match(output, /ELIGIBLE 020_sparta_user_provisioning_stage.sql/);
-  assert.match(output, /DEFERRED 021_sparta_master_conversion_stage.sql/);
+  assert.match(output, /DEFERRED 018_user_sync_metadata_and_sso_status\.sql/);
+  assert.match(output, /DEFERRED 020_sparta_user_provisioning_stage\.sql/);
+  assert.match(output, /DEFERRED 021_sparta_master_conversion_stage\.sql/);
   assert.ok(!output.includes("019_sparta_portal_master_and_provisioning.sql"));
   assert.equal(existsSync("database/migrations/019_sparta_portal_master_and_provisioning.sql"), false);
   const early = readFileSync("database/migrations/020_sparta_user_provisioning_stage.sql", "utf8");
   assert.ok(!/ALTER TABLE (?:stores|incidents)|TRIGGER|UPDATE |\bbranch_code\b/.test(early));
   assert.match(readFileSync("database/migrations/021_sparta_master_conversion_stage.sql", "utf8"), /WHERE b.is_active AND CASE tier/);
+});
+test("HO user granted BRANCH role resolves legacy branch and revokes sessions when branch master is off", async () => {
+  const db = database(
+    sql => sql.startsWith("SELECT * FROM users")
+      ? [existingUser({ scope: "HO", business_role: "admin", branch: null, branch_code: undefined })]
+      : [],
+    ["G001"]
+  );
+  await applyProvisioningEvent(event({ type: "access.granted", access: { isActive: true, role: "BMS" } }), { pool: db.pool, fetchFn: masterFetch() });
+  const update = db.calls.find(call => call.sql.startsWith("UPDATE users"))!;
+  assert.equal(update.values[10], 1);
+  assert.equal(update.values[11], "bms");
+  assert.equal(update.values[12], "BRANCH");
+  assert.equal(update.values[13], "G001");
+  assert.ok(db.calls.some(call => call.sql.startsWith("UPDATE user_sessions SET is_revoked=TRUE")));
+});
+test("BRANCH user granted HO role clears branch and revokes sessions", async () => {
+  const db = database(sql => sql.startsWith("SELECT * FROM users")
+    ? [existingUser({ scope: "BRANCH", business_role: "bms", branch: "BALARAJA", branch_code: undefined })]
+    : []);
+  const e = event({ type: "access.granted", access: { isActive: true, role: "ADMIN" } });
+  e.user.branch = "";
+  await applyProvisioningEvent(e, { pool: db.pool });
+  const update = db.calls.find(call => call.sql.startsWith("UPDATE users"))!;
+  assert.equal(update.values[10], 1);
+  assert.equal(update.values[11], "admin");
+  assert.equal(update.values[12], "HO");
+  assert.equal(update.values[13], null);
+  assert.ok(db.calls.some(call => call.sql.startsWith("UPDATE user_sessions SET is_revoked=TRUE")));
+});
+test("reportSiagaRoleChangeToPortal reports active role change without reactivating revoked or inactive accounts", async () => {
+  const baseUser: UserModel = {
+    id: "siaga-1",
+    externalUserId: "portal-1",
+    nik: "123",
+    name: "User Pengujian",
+    email: "user@example.test",
+    systemRole: "USER",
+    businessRole: "bms",
+    scope: "BRANCH",
+    branch: "BALARAJA",
+    branchCode: null,
+    pendingPortalBranch: { branch: "BALARAJA", branchCode: "G001" },
+    status: "ACTIVE",
+    source: "SPARTA",
+    ssoStatus: "ACTIVE",
+    createdAt: new Date(now).toISOString(),
+    updatedAt: new Date(now).toISOString(),
+  };
+
+  let capturedRequest: { headers: Headers; payload: Record<string, unknown> } | null = null;
+  const okFetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedRequest = {
+      headers: new Headers(init?.headers),
+      payload: JSON.parse(String(init?.body)) as Record<string, unknown>,
+    };
+    return Response.json({ data: { spartaUserId: "portal-1" } });
+  }) as typeof fetch;
+
+  const synced = await reportSiagaRoleChangeToPortal(
+    baseUser,
+    { ...baseUser, businessRole: "bmc" },
+    { fetchFn: okFetch }
+  );
+  assert.deepEqual(synced, { status: "SYNCED", role: "BMC" });
+  const branchRequest = capturedRequest as { headers: Headers; payload: Record<string, unknown> } | null;
+  assert.equal(branchRequest?.headers.get("x-sparta-internal-key"), "test-master-key");
+  assert.deepEqual(branchRequest?.payload, {
+    email: "user@example.test",
+    employeeId: "123",
+    fullName: "User Pengujian",
+    branchCode: "G001",
+    branchName: "BALARAJA",
+    role: "BMC",
+    moduleId: "siaga",
+  });
+
+  // HO user falls back to pendingPortalBranch when local branch is null
+  const hoSynced = await reportSiagaRoleChangeToPortal(
+    baseUser,
+    {
+      ...baseUser,
+      businessRole: "admin",
+      scope: "HO",
+      branch: null,
+      pendingPortalBranch: { branch: "HEAD OFFICE", branchCode: "KZ01" },
+    },
+    { fetchFn: okFetch }
+  );
+  assert.deepEqual(hoSynced, { status: "SYNCED", role: "ADMIN" });
+  const hoRequest = capturedRequest as { headers: Headers; payload: Record<string, unknown> } | null;
+  assert.equal(hoRequest?.payload.branchCode, "KZ01");
+  assert.equal(hoRequest?.payload.branchName, "HEAD OFFICE");
+
+  // Anti-reactivation guards: NEVER call Portal /sync when inactive, deactivating, or ssoStatus !== ACTIVE
+  let antiReactivationCalls = 0;
+  const blockedFetch = (async () => {
+    antiReactivationCalls += 1;
+    return Response.json({});
+  }) as typeof fetch;
+
+  const inactivePrev = await reportSiagaRoleChangeToPortal(
+    { ...baseUser, status: "INACTIVE" },
+    { ...baseUser, status: "ACTIVE", businessRole: "bmc" },
+    { fetchFn: blockedFetch }
+  );
+  assert.deepEqual(inactivePrev, { status: "SKIPPED", reason: "user_not_active" });
+
+  const deactivatingNext = await reportSiagaRoleChangeToPortal(
+    baseUser,
+    { ...baseUser, status: "INACTIVE", businessRole: "bmc" },
+    { fetchFn: blockedFetch }
+  );
+  assert.deepEqual(deactivatingNext, { status: "SKIPPED", reason: "user_not_active" });
+
+  const revokedAccess = await reportSiagaRoleChangeToPortal(
+    baseUser,
+    { ...baseUser, ssoStatus: "BLOCKED", businessRole: "bmc" },
+    { fetchFn: blockedFetch }
+  );
+  assert.deepEqual(revokedAccess, { status: "SKIPPED", reason: "portal_access_not_active" });
+
+  const unchanged = await reportSiagaRoleChangeToPortal(baseUser, { ...baseUser }, { fetchFn: blockedFetch });
+  assert.deepEqual(unchanged, { status: "SKIPPED", reason: "role_unchanged" });
+
+  const localOnly = await reportSiagaRoleChangeToPortal(
+    baseUser,
+    { ...baseUser, source: "LOCAL", externalUserId: null, businessRole: "bmc" },
+    { fetchFn: blockedFetch }
+  );
+  assert.deepEqual(localOnly, { status: "SKIPPED", reason: "local_user" });
+
+  assert.equal(antiReactivationCalls, 0);
+
+  const failed = await reportSiagaRoleChangeToPortal(
+    baseUser,
+    { ...baseUser, businessRole: "bmc" },
+    { fetchFn: (async () => Response.json({ error: { message: "Portal maintenance" } }, { status: 503 })) as typeof fetch }
+  );
+  assert.deepEqual(failed, { status: "FAILED", statusCode: 503, message: "Portal maintenance" });
+
+  const missingBranchEligibility = evaluatePortalRoleSyncEligibility(baseUser, {
+    ...baseUser,
+    businessRole: "bmc",
+    branchCode: null,
+    pendingPortalBranch: null,
+  });
+  assert.deepEqual(missingBranchEligibility, { eligible: false, reason: "missing_portal_branch" });
+});
+test("querySpartaBatchModuleGrants returns UNVERIFIED without calling unavailable portal batch endpoint", async () => {
+  let called = false;
+  const fetchFn = (async () => { called = true; return new Response(null, { status: 404 }); }) as typeof fetch;
+  const results = await querySpartaBatchModuleGrants(["portal-1", "portal-2"], { fetchFn, skipCache: true });
+  assert.equal(called, false);
+  assert.equal(results.get("portal-1")?.status, "UNVERIFIED");
+  assert.equal(results.get("portal-1")?.verifiedAt, null);
+  assert.equal(results.get("portal-2")?.status, "UNVERIFIED");
+});
+test("portal identity ownership policy rejects mutating name, nik, or email while allowing local accounts", () => {
+  assert.equal(isPortalManagedUser({ source: "SPARTA", externalUserId: null }), true);
+  assert.equal(isPortalManagedUser({ source: "SPARTA_SSO", externalUserId: null }), true);
+  assert.equal(isPortalManagedUser({ source: "LOCAL", externalUserId: "portal-1" }), true);
+  assert.equal(isPortalManagedUser({ source: "LOCAL", externalUserId: null }), false);
+  assert.deepEqual(
+    detectPortalIdentityFieldChanges(
+      { name: "Andi", nik: "1001", email: "andi@sparta.local" },
+      { name: " Andi ", nik: "1001", email: "ANDI@SPARTA.LOCAL" }
+    ),
+    []
+  );
+  assert.deepEqual(
+    detectPortalIdentityFieldChanges(
+      { name: "Andi", nik: "1001", email: "andi@sparta.local" },
+      { name: "Budi", nik: "1002", email: "budi@sparta.local" }
+    ),
+    ["name", "nik", "email"]
+  );
+});
+test("session revocation triggers on status, role, scope, branch, systemRole, or password change", () => {
+  const base = { systemRole: "USER", businessRole: "bms", scope: "BRANCH", branch: "BANDUNG", status: "ACTIVE" };
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base }), false);
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base, status: "INACTIVE" }), true);
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base, businessRole: "bmc" }), true);
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base, scope: "HO", branch: null }), true);
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base, branch: "CIKOKOL" }), true);
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base, systemRole: "ADMIN" }), true);
+  assert.equal(shouldRevokeUserSessionsOnUpdate(base, { ...base, passwordChanged: true }), true);
 });
 test("a missing portal export is reported before any database connection", () => {
   assert.throws(() => execFileSync(process.execPath,

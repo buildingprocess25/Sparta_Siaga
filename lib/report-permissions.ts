@@ -202,8 +202,12 @@ export function canCloseReport(
 
 export function isBranchAffected(
   userBranch: string,
-  report: IncidentRecord
+  report: IncidentRecord,
+  userBranchCode?: string | null
 ): boolean {
+  if (userBranchCode?.trim() && report.branchCode?.trim()) {
+    return report.branchCode.trim().toLowerCase() === userBranchCode.trim().toLowerCase();
+  }
   return (
     report.branch.trim().toLowerCase() === userBranch.trim().toLowerCase()
   );

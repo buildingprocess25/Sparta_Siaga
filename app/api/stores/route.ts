@@ -6,6 +6,7 @@ import { getLastStoreSyncHistory } from "@/lib/google-sheets-sync";
 import { portalStoresEnabled } from "@/lib/sparta-master-contract";
 import { getOrLoadMasterStores } from "@/lib/store-master-loader";
 import { canonicalBranchKey } from "@/lib/sparta-master-sync";
+import { SpartaIntegrationError } from "@/lib/sparta-identity";
 
 let cachedStores: Store[] | null = null;
 let lastCacheTime = 0;
@@ -36,7 +37,17 @@ export async function GET(request: Request) {
   const forceRefresh = searchParams.get("refresh") === "true";
   const branchFilter = searchParams.get("branch");
 
-  if (portalStoresEnabled()) {
+  let usePortalStores = false;
+  try {
+    usePortalStores = portalStoresEnabled();
+  } catch (err) {
+    if (err instanceof SpartaIntegrationError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+    }
+    throw err;
+  }
+
+  if (usePortalStores) {
     try {
       const stores = await getOrLoadMasterStores(forceRefresh);
       const branchCode = branchFilter && branchFilter !== "all" ? await canonicalBranchKey(branchFilter) : null;

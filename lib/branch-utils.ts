@@ -8,6 +8,7 @@ export interface CanonicalBranchRecord {
   name: string;
   aliases: string[];
   storeCount?: number;
+  source?: "SPARTA_PORTAL" | "LEGACY";
 }
 
 /**

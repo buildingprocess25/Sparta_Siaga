@@ -1,5 +1,5 @@
 import { getDbPool } from "./db";
-import { branchSqlKey, branchSqlParameter } from "./sparta-rollout";
+import { branchSqlKey, branchSqlParameter, effectiveBranchValue } from "./sparta-rollout";
 
 export async function assignIncidentPicForPersistedAction(
   client: { query: (text: string, values?: unknown[]) => Promise<{ rows: any[]; rowCount?: number }> },
@@ -7,6 +7,7 @@ export async function assignIncidentPicForPersistedAction(
     incidentId: string;
     userId: string;
     branch: string | null;
+    branchCode?: string | null;
     role?: string | null;
     action: string;
   }
@@ -25,11 +26,15 @@ export async function assignIncidentPicForPersistedAction(
   }
 
   // Check branch
-  if (input.branch && row.branch) {
-    const match = await client.query(`SELECT ${branchSqlParameter("$1")}=${branchSqlParameter("$2")} AS same_branch`, [input.branch, row.branch_code || row.branch]);
+  const actorBranch = effectiveBranchValue(input);
+  const incidentBranch = effectiveBranchValue({ branch: row.branch, branchCode: row.branch_code });
+  if (actorBranch && incidentBranch) {
+    const match = await client.query(`SELECT ${branchSqlParameter("$1")}=${branchSqlParameter("$2")} AS same_branch`, [actorBranch, incidentBranch]);
     if (!match.rows[0]?.same_branch) {
       return { assigned: false, currentPicUserId: null, reason: "BRANCH_MISMATCH" };
     }
+  } else if (actorBranch && !incidentBranch) {
+    return { assigned: false, currentPicUserId: null, reason: "BRANCH_MISMATCH" };
   }
 
   // Check role eligibility: BMS for store/non-facility, BES for DC/facility
@@ -71,6 +76,7 @@ export async function claimIncidentPic(input: {
   incidentId: string;
   userId: string;
   branch: string | null;
+  branchCode?: string | null;
   systemRole: string;
   role?: string | null;
 }): Promise<{ claimed: boolean; currentPicUserId: string | null; status?: string; claimedAt?: string; error?: string }> {
@@ -80,7 +86,7 @@ export async function claimIncidentPic(input: {
     const values: unknown[] = [input.incidentId];
     let branchClause = "";
     if (input.systemRole !== "ADMIN") {
-      values.push(input.branch);
+      values.push(effectiveBranchValue(input));
       branchClause = ` AND ${branchSqlKey("branch")} = ${branchSqlParameter(`$${values.length}`)}`;
     }
 
@@ -164,6 +170,7 @@ export async function changeIncidentPic(input: {
   actorUserId: string;
   nextUserId: string | null;
   branch: string | null;
+  branchCode?: string | null;
   systemRole: string;
   reason?: string;
 }) {
@@ -173,7 +180,7 @@ export async function changeIncidentPic(input: {
     const values: unknown[] = [input.incidentId];
     let scope = "";
     if (input.systemRole !== "ADMIN") {
-      values.push(input.branch);
+      values.push(effectiveBranchValue(input));
       scope = ` AND ${branchSqlKey("branch")} = ${branchSqlParameter(`$${values.length}`)}`;
     }
     const locked = await client.query<{ primary_pic_user_id: string | null; location_kind: string | null }>(
@@ -238,7 +245,7 @@ export async function getIncidentPicDetails(incidentId: string, branch?: string 
       `SELECT id, name, business_role FROM users
         WHERE ${branchSqlKey("branch")} = ${branchSqlParameter("$1")} AND status = 'ACTIVE'
           AND business_role = CASE WHEN $2 = 'FACILITY' THEN 'bes' ELSE 'bms' END
-        ORDER BY name`, [incident.rows[0].branch_code || incident.rows[0].branch, incident.rows[0].location_kind]
+        ORDER BY name`, [effectiveBranchValue({ branch: incident.rows[0].branch, branchCode: incident.rows[0].branch_code }), incident.rows[0].location_kind]
     ),
   ]);
   return { ...incident.rows[0], history: history.rows, eligibleUsers: eligible.rows };

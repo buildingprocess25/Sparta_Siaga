@@ -10,6 +10,7 @@ import {
 import { ProgressService } from "@/lib/progress-service";
 import { deriveWorkflowActions } from "@/lib/workflow-actions";
 import { samePortalBranch } from "@/lib/sparta-master-sync";
+import { effectiveBranchValue } from "@/lib/sparta-rollout";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -56,7 +57,7 @@ export async function GET(_: Request, { params }: RouteContext) {
       checkUserPermission({ user: sessionUser, permission: "COMPLETION_APPROVE_COORDINATOR", report: incident }),
     ]);
 
-    const sameBranch = await samePortalBranch(sessionUser.branchCode || sessionUser.branch, incident.branchCode || incident.branch);
+    const sameBranch = await samePortalBranch(effectiveBranchValue(sessionUser), effectiveBranchValue(incident));
     const actorRole = (sessionUser.role || "").toLowerCase();
     const operationalActor = sessionUser.systemRole !== "ADMIN" && sessionUser.scope !== "HO" && sameBranch;
 

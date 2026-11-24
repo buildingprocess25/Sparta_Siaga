@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { getDbPool } from "@/lib/db";
+import { branchSqlKey, branchSqlParameter, effectiveBranchValue } from "@/lib/sparta-rollout";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser(request);
@@ -10,8 +11,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const values: unknown[] = [id];
   let scope = "";
   if (user.systemRole !== "ADMIN" && user.scope !== "HO") {
-    values.push(user.branchCode || user.branch);
-    scope = user.branchCode ? ` AND i.branch_code = $${values.length}` : ` AND i.branch = $${values.length}`;
+    const actorBranch = effectiveBranchValue(user);
+    if (!actorBranch) {
+      scope = " AND FALSE";
+    } else {
+      values.push(actorBranch);
+      scope = ` AND ${branchSqlKey("i.branch")} = ${branchSqlParameter(`$${values.length}`)}`;
+    }
   }
   const { rows } = await getDbPool().query(
     `SELECT l.repair_reference_id, l.verified_by, l.verification_notes, l.created_at
@@ -41,8 +47,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const values: unknown[] = [id, body.repairReferenceId, user.id, body.notes || null];
   let scope = "";
   if (user.systemRole !== "ADMIN") {
-    values.push(user.branchCode || user.branch);
-    scope = user.branchCode ? ` AND branch_code = $${values.length}` : ` AND branch = $${values.length}`;
+    const actorBranch = effectiveBranchValue(user);
+    if (!actorBranch) {
+      scope = " AND FALSE";
+    } else {
+      values.push(actorBranch);
+      scope = ` AND ${branchSqlKey("branch")} = ${branchSqlParameter(`$${values.length}`)}`;
+    }
   }
   const client = await getDbPool().connect();
   try {
@@ -80,7 +91,15 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     await client.query("BEGIN");
     const values: unknown[] = [id, body.repairReferenceId];
     let scope = "";
-    if (user.systemRole !== "ADMIN") { values.push(user.branchCode || user.branch); scope = user.branchCode ? ` AND i.branch_code = $${values.length}` : ` AND i.branch = $${values.length}`; }
+    if (user.systemRole !== "ADMIN") {
+      const actorBranch = effectiveBranchValue(user);
+      if (!actorBranch) {
+        scope = " AND FALSE";
+      } else {
+        values.push(actorBranch);
+        scope = ` AND ${branchSqlKey("i.branch")} = ${branchSqlParameter(`$${values.length}`)}`;
+      }
+    }
     const removed = await client.query(
       `DELETE FROM incident_repair_links l USING incidents i
         WHERE l.incident_id = i.id AND l.incident_id = $1 AND l.repair_reference_id = $2${scope}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { isIP } from "node:net";
 import { getVapidPublicKey } from "@/lib/web-push-config";
+import { effectiveBranchValue } from "@/lib/sparta-rollout";
 import { 
   savePushSubscription, 
   deletePushSubscription,
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
     const userAgent = request.headers.get("user-agent") || null;
     const subId = await savePushSubscription({
       userId: sessionUser.id,
-      branch: sessionUser.branch || null,
+      branch: effectiveBranchValue(sessionUser),
       endpoint,
       p256dh: keys.p256dh,
       auth: keys.auth,

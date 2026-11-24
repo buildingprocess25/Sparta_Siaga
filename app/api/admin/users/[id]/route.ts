@@ -8,6 +8,14 @@ import {
   dbDeleteUser,
 } from "@/lib/user-db";
 import { isValidHumanBusinessRole, deriveScopeFromBusinessRole } from "@/lib/role-catalog";
+import {
+  detectPortalIdentityFieldChanges,
+  isPortalManagedUser,
+  shouldRevokeUserSessionsOnUpdate,
+} from "@/lib/sparta-identity";
+import { reportSiagaRoleChangeToPortal } from "@/lib/sparta-role-sync";
+import { branchMasterEnabled } from "@/lib/sparta-rollout";
+import { resolveActivePortalBranch } from "@/lib/branch-service";
 import bcrypt from "bcryptjs";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -78,6 +86,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       body.businessRole = null;
       body.scope = null;
       body.branch = null;
+      if (branchMasterEnabled()) body.branchCode = null;
     } else {
       // 4. ATURAN PENGGUNA NORMAL (USER)
       if (body.systemRole === "ADMIN") {
@@ -97,39 +106,64 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
         if (derivedScope === "HO") {
           body.branch = null;
+          if (branchMasterEnabled()) body.branchCode = null;
         } else {
-          const branchToCheck = body.branch !== undefined ? body.branch : existingUser.branch;
+          const branchToCheck = body.branch !== undefined ? body.branch : (existingUser.branchCode || existingUser.branch);
           if (!branchToCheck || typeof branchToCheck !== "string" || !branchToCheck.trim()) {
             return NextResponse.json({ error: "Cabang wajib diisi untuk role dengan cakupan BRANCH." }, { status: 400 });
           }
-          body.branch = branchToCheck.trim();
+          if (branchMasterEnabled()) {
+            const resolved = await resolveActivePortalBranch(branchToCheck.trim());
+            if (!resolved) {
+              return NextResponse.json({ error: "Cabang tidak ditemukan pada master cabang Portal SPARTA." }, { status: 400 });
+            }
+            body.branch = resolved.name;
+            body.branchCode = resolved.code;
+          } else {
+            body.branch = branchToCheck.trim();
+          }
         }
       } else if (body.branch !== undefined) {
         if (existingUser.scope === "HO") {
           body.branch = null;
+          if (branchMasterEnabled()) body.branchCode = null;
         } else {
           if (!body.branch || typeof body.branch !== "string" || !body.branch.trim()) {
             return NextResponse.json({ error: "Cabang wajib diisi untuk role dengan cakupan BRANCH." }, { status: 400 });
           }
-          body.branch = body.branch.trim();
+          if (branchMasterEnabled()) {
+            const resolved = await resolveActivePortalBranch(body.branch.trim());
+            if (!resolved) {
+              return NextResponse.json({ error: "Cabang tidak ditemukan pada master cabang Portal SPARTA." }, { status: 400 });
+            }
+            body.branch = resolved.name;
+            body.branchCode = resolved.code;
+          } else {
+            body.branch = body.branch.trim();
+          }
         }
       }
     }
 
-    // 5. Validasi keunikan NIK jika dikirimkan
-    if (body.nik !== undefined) {
-      if (typeof body.nik !== "string" || !body.nik.trim()) {
-        return NextResponse.json({ error: "NIK tidak boleh kosong." }, { status: 400 });
+    // 4. Proteksi kepemilikan identitas Portal SPARTA (name, nik, email tidak boleh diubah sepihak)
+    const portalManaged = isPortalManagedUser(existingUser);
+    if (portalManaged) {
+      const changedIdentityFields = detectPortalIdentityFieldChanges(existingUser, body);
+      if (changedIdentityFields.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Action Denied: Field identitas (${changedIdentityFields.join(", ")}) dimiliki oleh Portal SPARTA dan tidak dapat diubah melalui SIAGA.`,
+            code: "PORTAL_IDENTITY_READ_ONLY",
+          },
+          { status: 400 }
+        );
       }
-      const trimmedNik = body.nik.trim();
-      const existingUserWithNik = await dbGetUserByNik(trimmedNik);
-      if (existingUserWithNik && existingUserWithNik.id !== id) {
-        return NextResponse.json({ error: "NIK sudah terdaftar pada pengguna lain." }, { status: 400 });
-      }
-      body.nik = trimmedNik;
+      delete body.name;
+      delete body.nik;
+      delete body.email;
     }
 
-    // 6. Reset Password jika dikirimkan (Hanya untuk pengguna LOCAL)
+    // 5. Reset Password jika dikirimkan (Hanya untuk pengguna LOCAL)
     if (body.password !== undefined && body.password !== null && body.password !== "") {
       if (existingUser.source !== "LOCAL") {
         return NextResponse.json(
@@ -153,14 +187,25 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     delete body.password;
     delete body.confirmPassword;
 
-    const updatedUser = await dbAdminUpdateUser(id, body);
+    const revokeSessions = shouldRevokeUserSessionsOnUpdate(existingUser, {
+      systemRole: body.systemRole ?? existingUser.systemRole,
+      businessRole: body.businessRole !== undefined ? body.businessRole : existingUser.businessRole,
+      scope: body.scope !== undefined ? body.scope : existingUser.scope,
+      branch: body.branch !== undefined ? body.branch : existingUser.branch,
+      status: body.status ?? existingUser.status,
+      passwordChanged: Boolean(body.passwordHash),
+    });
+
+    const updatedUser = await dbAdminUpdateUser(id, body, { revokeSessions });
     if (!updatedUser) {
       return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });
     }
 
+    const portalRoleSync = await reportSiagaRoleChangeToPortal(existingUser, updatedUser);
+
     // Never expose passwordHash in response
     const { passwordHash: _, ...safeUser } = updatedUser;
-    return NextResponse.json({ data: safeUser });
+    return NextResponse.json({ data: safeUser, portalRoleSync });
   } catch (error) {
     console.error("[PATCH /api/admin/users/:id]", error);
     return NextResponse.json({ error: "Gagal memperbarui data user" }, { status: 500 });

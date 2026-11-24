@@ -41,8 +41,16 @@ export function checkClientPermission(params: ClientPermissionCheckParams): Clie
   }
 
   const cleanBranch = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-  const contextBranch = cleanBranch(targetBranch || report?.branch);
-  const userBranch = cleanBranch(identity.branch);
+  const explicitTarget = cleanBranch(targetBranch);
+  const useReportCodes = Boolean(!explicitTarget && identity.branchCode && report?.branchCode);
+  const contextBranch = explicitTarget || cleanBranch(useReportCodes ? report?.branchCode : report?.branch);
+  const userBranch = cleanBranch(useReportCodes ? identity.branchCode : identity.branch);
+  const matchesTargetBranch = (candidate?: string | null) => {
+    const cleanCandidate = cleanBranch(candidate);
+    if (!cleanCandidate || !explicitTarget) return cleanCandidate === contextBranch;
+    if (cleanCandidate === explicitTarget) return true;
+    return false;
+  };
 
   // 1. SYSTEM ADMIN CLASSIFICATION
   // Admin SPARTA SIAGA is the super administrator with full application access across all branches.
@@ -74,11 +82,18 @@ export function checkClientPermission(params: ClientPermissionCheckParams): Clie
       if (ov.scopeType === "ALL_BRANCHES") return true;
       if (ov.scopeType === "SPECIFIC_BRANCH") {
         if (!contextBranch) return true;
-        return cleanBranch(ov.branchCode) === contextBranch;
+        if (matchesTargetBranch(ov.branchCode)) return true;
+        return Boolean(report?.branchCode && cleanBranch(ov.branchCode) === cleanBranch(report.branchCode));
       }
       if (ov.scopeType === "OWN_SCOPE") {
         if (identity.scope === "HO") return true;
         if (!contextBranch) return true;
+        if (explicitTarget) {
+          return (
+            explicitTarget === cleanBranch(identity.branch) ||
+            Boolean(identity.branchCode && explicitTarget === cleanBranch(identity.branchCode))
+          );
+        }
         return userBranch === contextBranch;
       }
       return false;

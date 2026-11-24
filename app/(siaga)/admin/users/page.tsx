@@ -63,6 +63,7 @@ interface User {
   businessRole: string | null;
   scope: "HO" | "BRANCH" | null;
   branch: string | null;
+  branchCode?: string | null;
   status: "ACTIVE" | "INACTIVE";
   source: string;
   ssoStatus?: string | null;
@@ -74,6 +75,8 @@ interface User {
   ssoGrantStatusLabel?: string;
   lastVerifiedAt?: string | null;
   ssoGrantError?: string | null;
+  localProvisioningStatus?: string | null;
+  lastProvisionedAt?: string | null;
   activeOverrides?: Array<{ key: string; effect: string; reason: string }>;
   tokenVersion?: number;
   createdAt?: string;
@@ -456,11 +459,16 @@ export default function UserManagementPage() {
     setIsModalOpen(true);
   };
 
+  const isPortalManagedAccount = (u: Partial<User>) =>
+    Boolean(u.externalUserId) ||
+    (Boolean(u.source) && u.source !== "LOCAL" && u.source !== "DEVELOPMENT");
+
   const handleOpenEdit = async (user: User) => {
     setFormMode("EDIT");
     const derived = deriveScopeFromBusinessRole(user.businessRole) || user.scope;
     const initialState = {
       id: user.id,
+      externalUserId: user.externalUserId ?? null,
       name: user.name,
       nik: user.nik || "",
       email: user.email || "",
@@ -480,8 +488,8 @@ export default function UserManagementPage() {
     setShowConfirmPassword(false);
     setIsResetPasswordOpen(false);
 
-    if (derived === "BRANCH" && user.branch) {
-      const canonical = normalizeBranchCode(user.branch) || user.branch;
+    if (derived === "BRANCH" && (user.branchCode || user.branch)) {
+      const canonical = user.branchCode || normalizeBranchCode(user.branch) || user.branch || "";
       initialState.branch = canonical;
       setEditForm(initialState as any);
       setBranchQuery(canonical);
@@ -650,6 +658,11 @@ export default function UserManagementPage() {
       const method = isCreate ? "POST" : "PATCH";
 
       const payload: any = { ...editForm };
+      if (!isCreate && isPortalManagedAccount(editForm)) {
+        delete payload.name;
+        delete payload.nik;
+        delete payload.email;
+      }
       if (!isCreate && (!isLocalUser || !isResetPasswordOpen || !editForm.password)) {
         delete payload.password;
         delete payload.confirmPassword;
@@ -661,16 +674,25 @@ export default function UserManagementPage() {
         body: JSON.stringify(payload),
       });
 
+      const json = await res.json();
       if (!res.ok) {
-        const json = await res.json();
         throw new Error(json.error || "Gagal menyimpan data");
       }
 
       await fetchUsers();
       setIsModalOpen(false);
       toast.success(isCreate ? "User berhasil ditambahkan" : "Perubahan berhasil disimpan", {
-        description: isCreate ? "Akun pengguna baru berhasil disimpan." : "Data pengguna berhasil diperbarui.",
+        description: isCreate
+          ? "Akun pengguna baru berhasil disimpan."
+          : json.portalRoleSync?.status === "SYNCED"
+            ? "Data SIAGA diperbarui dan perubahan role dilaporkan ke Portal SPARTA."
+            : "Data pengguna berhasil diperbarui.",
       });
+      if (!isCreate && json.portalRoleSync?.status === "FAILED") {
+        toast.warning("Sinkronisasi role ke Portal SPARTA tertunda", {
+          description: json.portalRoleSync.message || "Perubahan tersimpan di SIAGA, namun gagal dilaporkan ke Portal SPARTA.",
+        });
+      }
     } catch (err: any) {
       setFormError(err.message);
       toast.error("Gagal menyimpan perubahan", {
@@ -1483,6 +1505,24 @@ export default function UserManagementPage() {
                     {selectedUserForDetail.ssoGrantError}
                   </div>
                 )}
+                {isPortalManagedAccount(selectedUserForDetail) && (
+                  <div className="pt-2 mt-2 border-t border-slate-200/70 dark:border-slate-700/70 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-500">Status Provisioning Lokal (Bukan Verifikasi Live Portal):</span>
+                      <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                        {selectedUserForDetail.localProvisioningStatus || "BELUM TERCATAT"}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Event Provisioning Terakhir:</span>
+                      <div className="font-mono text-slate-700 dark:text-slate-300">
+                        {selectedUserForDetail.lastProvisionedAt
+                          ? new Date(selectedUserForDetail.lastProvisionedAt).toLocaleString("id-ID")
+                          : "Belum ada"}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Status Hak Instruksi Manajemen */}
@@ -1638,7 +1678,7 @@ export default function UserManagementPage() {
                 <span>Prinsip Otoritas Tunggal (Single Source of Truth)</span>
               </div>
               <p className="text-blue-800 dark:text-blue-300/80 text-[11px]">
-                Portal Login Sparta adalah sumber identitas terpusat, autentikasi kredensial, dan grant modul ekosistem. Database SPARTA SIAGA adalah sumber tunggal penetapan role kanonikal, cakupan cabang, status akun SIAGA, dan hak perizinan internal.
+                Portal Login Sparta adalah pusat identitas user dan akses modul. SIAGA mengelola role operasional, cakupan cabang, status lokal, dan hak perizinan; perubahan role di SIAGA dilaporkan kembali ke Portal untuk akun dengan akses aktif.
               </p>
             </div>
 
@@ -1756,11 +1796,11 @@ export default function UserManagementPage() {
             )}
 
             {/* SSO Account Notice */}
-            {formMode === "EDIT" && editForm.source !== "LOCAL" && (
+            {formMode === "EDIT" && isPortalManagedAccount(editForm) && (
               <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-900 dark:text-blue-300 text-xs flex items-center gap-2.5">
                 <Globe className="w-4 h-4 text-blue-600 shrink-0" />
                 <div>
-                  <span className="font-bold">Akun Terhubung Portal Sparta SSO:</span> Kredensial dan kata sandi dikelola secara terpusat melalui Portal Login Sparta. SPARTA SIAGA mengelola peran bisnis, cabang, dan status akun internal.
+                  <span className="font-bold">Akun Terhubung Portal Sparta SSO:</span> Identitas utama (Nama, NIK, Email) dan kata sandi dimiliki Portal SPARTA sehingga bersifat read-only di SIAGA. Perubahan role operasional pada akun aktif otomatis dilaporkan kembali ke Portal.
                 </div>
               </div>
             )}
@@ -1781,9 +1821,12 @@ export default function UserManagementPage() {
                         </label>
                         <input
                           required
+                          disabled={formMode === "EDIT" && isPortalManagedAccount(editForm)}
                           value={editForm.name || ""}
                           onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
+                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
+                            formMode === "EDIT" && isPortalManagedAccount(editForm) ? "opacity-70 cursor-not-allowed bg-slate-100 dark:bg-slate-800/70" : ""
+                          }`}
                           placeholder="Mis. Ahmad Fauzi"
                         />
                       </div>
@@ -1793,9 +1836,12 @@ export default function UserManagementPage() {
                         </label>
                         <input
                           required={formMode === "CREATE"}
+                          disabled={formMode === "EDIT" && isPortalManagedAccount(editForm)}
                           value={editForm.nik || ""}
                           onChange={(e) => setEditForm({ ...editForm, nik: e.target.value })}
-                          className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
+                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
+                            formMode === "EDIT" && isPortalManagedAccount(editForm) ? "opacity-70 cursor-not-allowed bg-slate-100 dark:bg-slate-800/70" : ""
+                          }`}
                           placeholder="Mis. 24001234"
                         />
                       </div>
@@ -1803,11 +1849,19 @@ export default function UserManagementPage() {
                         <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Email</label>
                         <input
                           type="email"
+                          disabled={formMode === "EDIT" && isPortalManagedAccount(editForm)}
                           value={editForm.email || ""}
                           onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                          className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
+                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
+                            formMode === "EDIT" && isPortalManagedAccount(editForm) ? "opacity-70 cursor-not-allowed bg-slate-100 dark:bg-slate-800/70" : ""
+                          }`}
                           placeholder="user@sparta.com"
                         />
+                        {formMode === "EDIT" && isPortalManagedAccount(editForm) && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Perubahan Nama, NIK, atau Email dilakukan melalui Portal SPARTA.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -54,7 +54,7 @@ interface MapControlsProps {
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   lastStoreUpdate?: string | null;
-  storeSyncSource?: "GOOGLE_SHEETS" | "LOCAL_MASTER" | string | null;
+  storeSyncSource?: "SPARTA_PORTAL" | "GOOGLE_SHEETS" | "LOCAL_MASTER" | string | null;
   storeSyncLabel?: string | null;
   isMobileSheetOpen?: boolean;
   onCloseMobileSheet?: () => void;
@@ -218,12 +218,14 @@ export function MapControls({
             </div>
             <div className="flex items-center gap-1.5 pl-4.5">
               <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                storeSyncSource === "GOOGLE_SHEETS" ? "bg-emerald-500" : "bg-primary"
+                storeSyncSource === "SPARTA_PORTAL" || storeSyncSource === "GOOGLE_SHEETS" ? "bg-emerald-500" : "bg-primary"
               }`} />
               <span className="text-[10px] truncate">
-                {storeSyncSource === "GOOGLE_SHEETS"
-                  ? "Google Sheets (Terjadwal)"
-                  : "Master Toko Lokal"}
+                {storeSyncSource === "SPARTA_PORTAL"
+                  ? "Portal SPARTA (Terjadwal)"
+                  : storeSyncSource === "GOOGLE_SHEETS"
+                    ? "Google Sheets (Terjadwal)"
+                    : "Master Toko Lokal"}
               </span>
             </div>
           </div>
@@ -419,12 +421,14 @@ export function MapControls({
             </div>
             <div className="flex items-center gap-1.5 pl-4.5">
               <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                storeSyncSource === "GOOGLE_SHEETS" ? "bg-emerald-500" : "bg-primary"
+                storeSyncSource === "SPARTA_PORTAL" || storeSyncSource === "GOOGLE_SHEETS" ? "bg-emerald-500" : "bg-primary"
               }`} />
               <span className="text-[10px] truncate">
-                {storeSyncSource === "GOOGLE_SHEETS"
-                  ? "Google Sheets (Sinkron)"
-                  : "Master Toko Lokal"}
+                {storeSyncSource === "SPARTA_PORTAL"
+                  ? "Portal SPARTA (Sinkron)"
+                  : storeSyncSource === "GOOGLE_SHEETS"
+                    ? "Google Sheets (Sinkron)"
+                    : "Master Toko Lokal"}
               </span>
             </div>
           </div>

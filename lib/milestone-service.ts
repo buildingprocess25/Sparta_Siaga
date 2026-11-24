@@ -11,6 +11,8 @@ import {
 import { UserContext } from "./report-permissions";
 import { saveMilestoneDocument, validateMilestoneDocumentMagicBytes } from "./milestone-storage";
 import { EstimationIntegrationService } from "./estimation-service";
+import { samePortalBranch } from "./sparta-master-sync";
+import { effectiveBranchValue } from "./sparta-rollout";
 
 let tablesEnsured = false;
 
@@ -324,8 +326,7 @@ export async function submitMilestoneDocument(params: SubmitMilestoneParams): Pr
 
   // 4. Branch & Role isolation (Admin is not restricted to single branch or single tkp type)
   if (!isSystemAdmin) {
-    const clean = (b?: string | null) => (b ? b.trim().toLowerCase() : "");
-    if (!actor.branch || clean(actor.branch) !== clean(incident.branch)) {
+    if (!await samePortalBranch(effectiveBranchValue(actor), effectiveBranchValue(incident))) {
       throw new Error(`Aksi hanya berlaku untuk cabang sendiri (${actor.branch || "N/A"}), bukan ${incident.branch}.`);
     }
 

@@ -38,6 +38,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         systemRole: sessionUser.systemRole,
         scope: sessionUser.scope,
         branch: sessionUser.branch,
+        branchCode: sessionUser.branchCode,
       },
       notes,
       attachments: body.attachments,

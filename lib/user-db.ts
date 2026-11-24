@@ -1,5 +1,6 @@
 import { getDbPool } from "./db";
 import { SpartaRole, SystemRole, Scope } from "@/types/incident";
+import { branchMasterEnabled } from "./sparta-rollout";
 
 export interface UserModel {
   id: string;
@@ -17,6 +18,8 @@ export interface UserModel {
   passwordHash?: string | null;
   avatarUrl?: string | null;
   ssoStatus?: string | null;
+  lastProvisionedAt?: string | null;
+  pendingPortalBranch?: { branch?: string | null; branchCode?: string | null } | null;
   tokenVersion?: number;
   createdAt: string;
   updatedAt: string;
@@ -39,6 +42,18 @@ function rowToUser(row: any): UserModel {
     passwordHash: row.password_hash,
     avatarUrl: row.avatar_url,
     ssoStatus: row.sso_status !== undefined ? row.sso_status : null,
+    lastProvisionedAt: row.last_provisioned_at
+      ? row.last_provisioned_at instanceof Date
+        ? row.last_provisioned_at.toISOString()
+        : String(row.last_provisioned_at)
+      : null,
+    pendingPortalBranch:
+      row.pending_portal_branch && typeof row.pending_portal_branch === "object"
+        ? {
+            branch: row.pending_portal_branch.branch ?? null,
+            branchCode: row.pending_portal_branch.branchCode ?? null,
+          }
+        : null,
     tokenVersion: row.token_version !== undefined && row.token_version !== null ? Number(row.token_version) : 1,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
@@ -162,6 +177,31 @@ export async function dbCreateUser(user: Partial<UserModel> & { id: string, name
     }
   }
 
+  if (branchMasterEnabled()) {
+    const branchCode = isSystemAdmin || scope === "HO" ? null : (user.branchCode || null);
+    const { rows } = await pool.query(
+      `INSERT INTO users (id, external_user_id, nik, name, email, system_role, business_role, scope, branch, branch_code, status, source, password_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING *`,
+      [
+        user.id,
+        user.externalUserId || null,
+        trimmedNik,
+        user.name,
+        user.email || null,
+        user.systemRole || "USER",
+        businessRole,
+        scope,
+        branch,
+        branchCode,
+        user.status || "ACTIVE",
+        user.source || "LOCAL",
+        user.passwordHash || null
+      ]
+    );
+    return rowToUser(rows[0]);
+  }
+
   const { rows } = await pool.query(
     `INSERT INTO users (id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, source, password_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -184,7 +224,11 @@ export async function dbCreateUser(user: Partial<UserModel> & { id: string, name
   return rowToUser(rows[0]);
 }
 
-export async function dbAdminUpdateUser(id: string, updates: Partial<UserModel>): Promise<UserModel | null> {
+export async function dbAdminUpdateUser(
+  id: string,
+  updates: Partial<UserModel>,
+  options: { revokeSessions?: boolean } = {}
+): Promise<UserModel | null> {
   const pool = getDbPool();
   const setClauses: string[] = [];
   const values: any[] = [];
@@ -205,6 +249,10 @@ export async function dbAdminUpdateUser(id: string, updates: Partial<UserModel>)
   if (updates.branch !== undefined) {
     setClauses.push(`branch = $${idx++}`);
     values.push(updates.branch);
+  }
+  if (branchMasterEnabled() && updates.branchCode !== undefined) {
+    setClauses.push(`branch_code = $${idx++}`);
+    values.push(updates.branchCode);
   }
   if (updates.status !== undefined) {
     setClauses.push(`status = $${idx++}`);
@@ -238,20 +286,50 @@ export async function dbAdminUpdateUser(id: string, updates: Partial<UserModel>)
     values.push(updates.passwordHash);
   }
 
-  if (setClauses.length === 0) {
+  if (setClauses.length === 0 && !options.revokeSessions) {
     return dbGetUserById(id);
+  }
+
+  if (options.revokeSessions) {
+    setClauses.push(`token_version = COALESCE(token_version, 1) + 1`);
   }
 
   setClauses.push(`updated_at = NOW()`);
   values.push(id);
 
-  const { rows } = await pool.query(
-    `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
-    values
-  );
+  if (!options.revokeSessions) {
+    const { rows } = await pool.query(
+      `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+      values
+    );
 
-  if (rows.length === 0) return null;
-  return rowToUser(rows[0]);
+    if (rows.length === 0) return null;
+    return rowToUser(rows[0]);
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    if (rows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    await client.query(
+      `UPDATE user_sessions SET is_revoked = TRUE, expires_at = NOW() WHERE user_id = $1`,
+      [id]
+    );
+    await client.query("COMMIT");
+    return rowToUser(rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function dbCheckUserDependencies(id: string): Promise<{ hasDependencies: boolean; reasons: string[] }> {

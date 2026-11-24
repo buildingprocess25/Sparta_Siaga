@@ -8,6 +8,7 @@ import {
 
 import { executeEarthquakeV1MmiWorkflow } from "@/lib/earthquake-v1-mmi-service";
 import type { Store } from "@/types/store";
+import { portalStoresEnabled } from "@/lib/sparta-master-contract";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -71,8 +72,11 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "ShakeMap event mismatch" }, { status: 400 });
     }
     await dbSaveShakeMapRecord(grid, pool);
+    const usePortalStores = portalStoresEnabled();
     const storeRes = await pool.query<Store>(
-      "SELECT kode_toko AS id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type FROM stores WHERE latitude IS NOT NULL AND longitude IS NOT NULL"
+      usePortalStores
+        ? "SELECT id, kode_toko, nama_toko, cabang, branch_code, alamat, latitude, longitude, fr_type FROM stores WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND is_active = TRUE AND master_source = 'SPARTA_PORTAL'"
+        : "SELECT kode_toko AS id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type FROM stores WHERE latitude IS NOT NULL AND longitude IS NOT NULL"
     );
     const result = await executeEarthquakeV1MmiWorkflow({
       earthquake: {

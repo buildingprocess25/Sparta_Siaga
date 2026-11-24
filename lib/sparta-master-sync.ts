@@ -6,11 +6,16 @@ import { SpartaIntegrationError } from "./sparta-identity";
 import { parsePortalBranches, parsePortalStores, resolvePortalBranch, type PortalBranch } from "./sparta-master-contract";
 import type { StoreSyncHistoryRecord } from "./google-sheets-sync";
 import { invalidateMasterStoresCache } from "./store-master-loader";
+import { invalidateBranchMasterCache } from "./branch-master-query";
 
 type Queryable = Pick<PoolClient, "query">;
 export type MasterSyncOptions = { pool?: Pool; fetchFn?: typeof fetch; full?: boolean; confirmFull?: boolean };
 
 const branchKeyCache = new Map<string, { code: string; until: number }>();
+
+export function clearBranchKeyCache() {
+  branchKeyCache.clear();
+}
 
 export function requirePortalMasterConfig() {
   const base = process.env.SPARTA_API_URL?.trim();
@@ -142,6 +147,37 @@ export async function backfillPortalBranches(options: MasterSyncOptions & { appl
   } finally { client.release(); }
 }
 
+export async function syncBranchesFromPortal(options: Pick<MasterSyncOptions, "pool" | "fetchFn"> = {}) {
+  requireMasterConversion();
+  requirePortalMasterConfig();
+  const pool = options.pool || getDbPool();
+  await requireMasterSchema(pool);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(7421840)");
+    const response = await fetchPortalMaster("branches", options);
+    const branches = parsePortalBranches(response.data);
+    await savePortalBranches(client, branches);
+    await client.query(
+      `INSERT INTO sparta_master_sync_state(resource,synced_at) VALUES('branches',$1)
+       ON CONFLICT(resource) DO UPDATE SET synced_at=EXCLUDED.synced_at`,
+      [response.syncedAt]
+    );
+    await client.query("COMMIT");
+    branchKeyCache.clear();
+    return {
+      syncedAt: response.syncedAt,
+      count: branches.length,
+      activeCount: branches.filter(b => b.isActive).length,
+      inactiveCount: branches.filter(b => !b.isActive).length,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+}
+
 export async function syncStoresFromPortal(options: MasterSyncOptions = {}): Promise<StoreSyncHistoryRecord> {
   requireMasterConversion();
   requirePortalMasterConfig();
@@ -172,7 +208,7 @@ export async function syncStoresFromPortal(options: MasterSyncOptions = {}): Pro
     for (let offset = 0; offset < stores.length; offset += 500) {
       const batch = stores.slice(offset, offset + 500).map(store => ({
         code: store.code, name: store.name, branch_code: store.branchCode,
-        branch_name: branchNames.get(store.branchCode), address: store.address ?? null,
+        branch_name: branchNames.get(store.branchCode), address: store.address?.trim() || null,
         latitude: store.latitude, longitude: store.longitude,
         ownership_type: store.ownershipType || "UNKNOWN", is_active: store.isActive,
       }));
@@ -193,12 +229,15 @@ export async function syncStoresFromPortal(options: MasterSyncOptions = {}): Pro
     if (!updatedSince) {
       await client.query(`UPDATE stores SET is_active=FALSE WHERE NOT (kode_toko=ANY($1::text[]))`, [stores.map(s => s.code)]);
     }
+    await client.query(`INSERT INTO sparta_master_sync_state(resource,synced_at) VALUES('branches',$1)
+      ON CONFLICT(resource) DO UPDATE SET synced_at=EXCLUDED.synced_at`, [branchResponse.syncedAt]);
     await client.query(`INSERT INTO sparta_master_sync_state(resource,synced_at) VALUES('stores',$1)
       ON CONFLICT(resource) DO UPDATE SET synced_at=EXCLUDED.synced_at`, [response.syncedAt]);
     await client.query(`UPDATE store_sync_history SET status='COMPLETED',completed_at=NOW(),records_read=$2,
       records_added=$3,records_updated=$4 WHERE id=$1`, [id, recordsRead, added, updated]);
     await client.query("COMMIT");
     branchKeyCache.clear();
+    invalidateBranchMasterCache();
     invalidateMasterStoresCache();
     return { id, sync_source: "SPARTA_PORTAL", sourceType: "SPARTA_PORTAL", sourceLabel: "Portal SPARTA",
       status: "COMPLETED", started_at: startedAt, completed_at: new Date().toISOString(), records_read: recordsRead,

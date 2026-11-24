@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/auth";
 import { changeIncidentPic, claimIncidentPic, getIncidentPicDetails } from "@/lib/incident-assignment";
+import { effectiveBranchValue } from "@/lib/sparta-rollout";
 
 function canManage(user: Awaited<ReturnType<typeof getSessionUser>>) {
   return user?.systemRole === "ADMIN" || user?.role === "bm" || (user as { businessRole?: string })?.businessRole === "bm";
@@ -11,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const user = await getSessionUser(request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await context.params;
-  const data = await getIncidentPicDetails(id, user.systemRole === "ADMIN" || user.scope === "HO" ? undefined : user.branch);
+  const data = await getIncidentPicDetails(id, user.systemRole === "ADMIN" || user.scope === "HO" ? undefined : effectiveBranchValue(user));
   if (!data) return NextResponse.json({ error: "Laporan tidak ditemukan" }, { status: 404 });
   return NextResponse.json({ data });
 }

@@ -183,7 +183,14 @@ export default function MonitoringPage() {
       .then((res) => {
         if (res?.lastSync) {
           setLastStoreUpdate(res.lastSync.completed_at || res.lastSync.started_at || null);
-          setStoreSyncSource(res.lastSync.sourceType || (res.lastSync.sync_source?.includes("GOOGLE") ? "GOOGLE_SHEETS" : "LOCAL_MASTER"));
+          setStoreSyncSource(
+            res.lastSync.sourceType ||
+              (res.source === "SPARTA_PORTAL"
+                ? "SPARTA_PORTAL"
+                : res.lastSync.sync_source?.includes("GOOGLE")
+                  ? "GOOGLE_SHEETS"
+                  : "LOCAL_MASTER")
+          );
         }
       })
       .catch((e) => console.error("[MonitoringPage] Gagal memuat status sinkronisasi toko:", e));
