@@ -107,6 +107,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [initLoading, setInitLoading] = useState(true);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [testEnvironment, setTestEnvironment] = useState(false);
+  const [gateEnabled, setGateEnabled] = useState(false);
+  const [passcode, setPasscode] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("sysadmin");
   const [selectedBranch, setSelectedBranch] = useState("BANDUNG");
   const [error, setError] = useState("");
@@ -151,26 +154,15 @@ export default function LoginPage() {
           setSsoPortalUrl(data.ssoPortalUrl);
         }
 
-        if (data.isDevelopment) {
-          if (data.isQuickLoginAllowed) {
-            setIsDevMode(true);
-            setInitLoading(false);
-          } else {
-            setIsDevMode(false);
-            setError(
-              data.quickLoginReason ||
-                "Quick Login hanya dapat diakses melalui loopback lokal (localhost/127.0.0.1)."
-            );
-            setInitLoading(false);
-          }
+        setTestEnvironment(data.isTestEnvironment === true);
+        setGateEnabled(data.gateEnabled === true);
+        if (data.isTestEnvironment) {
+          setIsDevMode(data.isQuickLoginAllowed === true);
+          setInitLoading(false);
         } else {
           setIsDevMode(false);
-          // If in UAT or Production and there's NO error query parameter, redirect to Portal SSO immediately
-          if (!err) {
-            window.location.href = data.ssoPortalUrl || ssoPortalUrl;
-          } else {
-            setInitLoading(false);
-          }
+          if (data.environment === "production" && !err && data.ssoPortalUrl) window.location.href = data.ssoPortalUrl;
+          else setInitLoading(false);
         }
       })
       .catch(() => {
@@ -210,6 +202,15 @@ export default function LoginPage() {
     }
   };
 
+  const handleGate = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/auth/gate-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode }) });
+      if (res.ok) window.location.replace("/login");
+      else setError(res.status === 429 ? "Terlalu banyak percobaan. Coba lagi nanti." : "Gate gagal diverifikasi.");
+    } catch { setError("Gate tidak dapat dihubungi."); }
+    finally { setPasscode(""); setLoading(false); }
+  };
   const selectedRole = DEV_ROLES.find((r) => r.id === selectedRoleId) || DEV_ROLES[0];
 
   // Initial redirecting state for UAT / Production when visiting /login without error
@@ -218,14 +219,28 @@ export default function LoginPage() {
       <div className="min-h-screen bg-[#f5f7f9] flex flex-col justify-center items-center p-4">
         <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 text-center flex flex-col items-center">
           <Loader2 className="w-8 h-8 text-[#123B6D] animate-spin mb-4" />
-          <p className="text-sm font-bold text-slate-800">Menghubungkan ke Portal SPARTA SSO...</p>
-          <p className="text-xs text-slate-500 mt-1">Autentikasi UAT & Production wajib melalui SSO.</p>
+          <p className="text-sm font-bold text-slate-800">Memeriksa environment...</p>
+          <p className="text-xs text-slate-500 mt-1">Memeriksa kebijakan autentikasi.</p>
         </div>
       </div>
     );
   }
 
-  // UAT or Production Error Screen (No Direct Form, only SSO Portal Re-entry)
+  if (testEnvironment && !isDevMode) return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <form onSubmit={handleGate} className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-4">
+        <h1 className="text-xl font-bold text-slate-900">SPARTA SIAGA — Gate Access</h1>
+        <p className="text-sm text-slate-600">Development/UAT terisolasi. Hanya evaluator berwenang.</p>
+        {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+        {!gateEnabled && <p className="text-sm text-amber-800">Gate belum diaktifkan oleh administrator.</p>}
+        <label className="block text-sm font-medium text-slate-800">Gate passcode
+          <input type="password" autoComplete="off" required maxLength={1024} value={passcode} onChange={e => setPasscode(e.target.value)} className="mt-2 w-full rounded-lg border p-3" />
+        </label>
+        <button disabled={loading || !gateEnabled} className="w-full rounded-lg bg-[#123B6D] text-white p-3 disabled:opacity-50">Verifikasi</button>
+      </form>
+    </div>
+  );
+  // Production Error Screen (SSO Portal Re-entry)
   if (!isDevMode) {
     return (
       <div className="min-h-screen bg-[#f5f7f9] flex flex-col justify-center items-center p-4">
@@ -279,7 +294,7 @@ export default function LoginPage() {
     );
   }
 
-  // LOCAL DEVELOPMENT ONLY — Quick Login with 9 Role Selection
+  // DEVELOPMENT / UAT — Quick Login with 9 Role Selection
   return (
     <div className="min-h-screen bg-[#0f172a] flex flex-col justify-center items-center p-4 py-8">
       <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800">
@@ -294,7 +309,7 @@ export default function LoginPage() {
                 <h1 className="text-lg font-black tracking-wide">SPARTA SIAGA</h1>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-slate-950 tracking-wider">
                   <Terminal className="w-3 h-3" />
-                  LOCAL DEVELOPMENT ONLY
+                  DEVELOPMENT / UAT
                 </span>
               </div>
               <p className="text-blue-200 text-xs mt-0.5">Development Login &amp; Role Simulator</p>
@@ -303,7 +318,7 @@ export default function LoginPage() {
 
           <div className="hidden sm:block text-right">
             <span className="text-[11px] font-semibold text-blue-200 bg-white/10 px-3 py-1.5 rounded-lg border border-white/15">
-              Port 3004 • Loopback Safe
+              Isolated Environment
             </span>
           </div>
         </div>
@@ -424,7 +439,7 @@ export default function LoginPage() {
 
           {/* Footer Warning */}
           <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-[11px] text-slate-500 dark:text-slate-400">
-            Quick Login hanya aktif pada local loopback development. UAT dan Production wajib menggunakan autentikasi SSO terpusat.
+            Quick Login hanya aktif pada Development/UAT terisolasi. Production wajib menggunakan autentikasi SSO terpusat.
           </div>
         </div>
       </div>

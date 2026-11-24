@@ -3,6 +3,7 @@ import { UserContext } from "./report-permissions";
 import { SpartaRole } from "@/types/incident";
 import { dbGetUserById, dbUpsertUser, UserModel } from "./user-db";
 import { verifySession } from "./jwt";
+import { canUseSessionIdentity } from "./session-environment";
 import { 
   rotateDeviceSession 
 } from "./session-service";
@@ -17,6 +18,7 @@ import {
  * Transforms a database UserModel into authenticated UserContext.
  */
 function buildUserContext(dbUser: UserModel): UserContext | null {
+  if (!canUseSessionIdentity(dbUser)) return null;
   if (dbUser.status === "INACTIVE") {
     console.warn("[Auth] User is inactive in Siaga DB:", dbUser.id);
     return null;

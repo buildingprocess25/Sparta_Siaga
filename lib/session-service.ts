@@ -5,6 +5,7 @@ import { dbGetUserById } from "./user-db";
 import { detectDeviceType } from "./web-push-service";
 import { UserModel } from "./user-db";
 import { getJwtSecret } from "./runtime-config";
+import { currentSessionEnvironment, hasCurrentRefreshEnvironment, canUseSessionIdentity } from "./session-environment";
 
 export interface DeviceSessionRecord {
   id: string;
@@ -80,13 +81,8 @@ export async function ensureUserSessionsTable(): Promise<void> {
  * Derives a 256-bit symmetric key from JWT secret for AES-256-GCM.
  */
 function getEncryptionKey(): Buffer {
-  let secret: string;
-  try {
-    secret = getJwtSecret();
-  } catch {
-    secret = process.env.JWT_SECRET || "development-fallback-secret-at-least-32-chars-long";
-  }
-  return crypto.createHash("sha256").update(`session_token_enc:${secret}`).digest();
+  const secret = getJwtSecret();
+  return crypto.createHash("sha256").update(`session_token_enc:${currentSessionEnvironment()}:${secret}`).digest();
 }
 
 /**
@@ -135,7 +131,7 @@ export function hashToken(token: string): string {
  * Generates a cryptographically strong 256-bit base64url refresh token.
  */
 export function generateRefreshToken(): string {
-  return crypto.randomBytes(32).toString("base64url");
+  return `${currentSessionEnvironment()}.${crypto.randomBytes(32).toString("base64url")}`;
 }
 
 /**
@@ -150,7 +146,7 @@ export async function createDeviceSession(params: {
   const pool = getDbPool();
 
   const user = await dbGetUserById(params.userId);
-  if (!user || user.status !== "ACTIVE") {
+  if (!user || user.status !== "ACTIVE" || !canUseSessionIdentity(user)) {
     console.warn(`[Session Service] Cannot create session for missing/inactive user: ${params.userId}`);
     return null;
   }
@@ -212,7 +208,7 @@ export async function rotateDeviceSession(
     allowGracePeriod?: boolean;
   } = {}
 ): Promise<SessionRefreshResult | null> {
-  if (!rawRefreshToken || typeof rawRefreshToken !== "string") {
+  if (!hasCurrentRefreshEnvironment(rawRefreshToken)) {
     return null;
   }
 
@@ -272,7 +268,7 @@ export async function rotateDeviceSession(
 
     // Verify user status and token version in database (using existing client to prevent pool starvation)
     const user = await dbGetUserById(session.user_id, client);
-    if (!user || user.status !== "ACTIVE") {
+    if (!user || user.status !== "ACTIVE" || !canUseSessionIdentity(user)) {
       await client.query(`UPDATE user_sessions SET is_revoked = TRUE WHERE id = $1`, [session.id]);
       await client.query("COMMIT");
       return null;
@@ -290,6 +286,7 @@ export async function rotateDeviceSession(
     if (isGraceMatch) {
       // Decrypt the active refresh token so we return the NEWEST token, NOT the stale one!
       const activeRefreshToken = decryptToken(session.current_token_encrypted);
+      if (!hasCurrentRefreshEnvironment(activeRefreshToken)) { await client.query("ROLLBACK"); return null; }
 
       await client.query(
         `UPDATE user_sessions SET last_used_at = NOW() WHERE id = $1`,
@@ -308,7 +305,7 @@ export async function rotateDeviceSession(
       return {
         sessionId: session.id,
         accessToken: newAccessToken,
-        refreshToken: activeRefreshToken || rawRefreshToken,
+        refreshToken: activeRefreshToken,
         expiresAt: new Date(session.expires_at),
         user,
       };
@@ -370,7 +367,7 @@ export async function rotateDeviceSession(
  * Revokes a single device session by its active refresh token.
  */
 export async function revokeSessionByRefreshToken(rawRefreshToken: string): Promise<boolean> {
-  if (!rawRefreshToken) return false;
+  if (!hasCurrentRefreshEnvironment(rawRefreshToken)) return false;
   const pool = getDbPool();
   const tokenHash = hashToken(rawRefreshToken);
 

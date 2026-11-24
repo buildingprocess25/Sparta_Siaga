@@ -1,0 +1,778 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("SIAGA_DATABASE_URL")
+}
+
+model earthquake_events {
+  id                              String                            @id @db.VarChar(128)
+  provider_event_id               String?                           @db.VarChar(128)
+  source_primary                  String                            @db.VarChar(32)
+  magnitude                       Decimal                           @db.Decimal(3, 1)
+  depth_km                        Int
+  latitude                        Decimal                           @db.Decimal(8, 5)
+  longitude                       Decimal                           @db.Decimal(8, 5)
+  occurred_at                     DateTime                          @db.Timestamptz(6)
+  title                           String
+  potensi_tsunami                 Boolean                           @default(false)
+  potensi_text                    String?
+  felt_area                       String?
+  shakemap_url                    String?
+  priority_radius_km              Int
+  monitoring_radius_km            Int
+  first_seen_at                   DateTime                          @default(now()) @db.Timestamptz(6)
+  last_seen_at                    DateTime                          @default(now()) @db.Timestamptz(6)
+  raw_metadata                    Json?                             @default("{}")
+  earthquake_reconciliation_cases earthquake_reconciliation_cases[]
+  earthquake_source_events        earthquake_source_events[]
+
+  @@index([latitude, longitude], map: "idx_eq_events_coords")
+  @@index([occurred_at(sort: Desc)], map: "idx_eq_events_occurred_at")
+  @@index([source_primary], map: "idx_eq_events_source")
+}
+
+model earthquake_facility_intensities {
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shakemap_id           String               @db.Uuid
+  canonical_event_id    String               @db.VarChar(128)
+  facility_kind         String               @db.VarChar(16)
+  facility_id           String               @db.VarChar(64)
+  facility_code         String               @db.VarChar(32)
+  facility_name         String?              @db.VarChar(255)
+  branch                String               @db.VarChar(64)
+  latitude              Float
+  longitude             Float
+  distance_km           Float
+  mmi_raw               Float?
+  mmi_rounded           Decimal?             @db.Decimal(4, 2)
+  mmi_roman             String               @db.VarChar(8)
+  decision_policy       String               @db.VarChar(32)
+  discrepancy_vs_radius String               @db.VarChar(32)
+  shakemap_version      Int                  @default(1)
+  incident_id           String?              @db.VarChar(64)
+  notes                 String?
+  evaluated_at          DateTime             @default(now()) @db.Timestamptz(6)
+  incidents             incidents?           @relation(fields: [incident_id], references: [id], onUpdate: NoAction)
+  earthquake_shakemaps  earthquake_shakemaps @relation(fields: [shakemap_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([shakemap_id, facility_kind, facility_id, shakemap_version], map: "uq_shakemap_facility_version")
+  @@index([decision_policy], map: "idx_facility_intensities_decision")
+  @@index([canonical_event_id, branch], map: "idx_facility_intensities_event_branch")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model earthquake_reconciliation_audit {
+  id                              String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id                         String                          @db.Uuid
+  incident_id                     String
+  action                          String                          @db.VarChar(16)
+  previous_identity               Json
+  resulting_identity              Json
+  actor_user_id                   String                          @db.VarChar(64)
+  notes                           String?
+  created_at                      DateTime                        @default(now()) @db.Timestamptz(6)
+  earthquake_reconciliation_cases earthquake_reconciliation_cases @relation(fields: [case_id], references: [id], onUpdate: NoAction)
+  incidents                       incidents                       @relation(fields: [incident_id], references: [id], onUpdate: NoAction)
+
+  @@index([case_id, created_at(sort: Desc)], map: "idx_reconciliation_audit_case")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model earthquake_reconciliation_cases {
+  id                              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id                     String
+  candidate_canonical_event_id    String?                           @db.VarChar(128)
+  candidate_location_kind         String?                           @db.VarChar(16)
+  candidate_location_id           String?                           @db.VarChar(128)
+  reason                          String                            @db.VarChar(64)
+  details                         Json                              @default("{}")
+  status                          String                            @default("OPEN") @db.VarChar(16)
+  resolved_by                     String?                           @db.VarChar(64)
+  resolved_at                     DateTime?                         @db.Timestamptz(6)
+  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  earthquake_reconciliation_audit earthquake_reconciliation_audit[]
+  earthquake_events               earthquake_events?                @relation(fields: [candidate_canonical_event_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "earthquake_reconciliation_cas_candidate_canonical_event_id_fkey")
+  incidents                       incidents                         @relation(fields: [incident_id], references: [id], onUpdate: NoAction)
+}
+
+model earthquake_shakemaps {
+  id                              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  canonical_event_id              String                            @db.VarChar(128)
+  source_provider                 String                            @db.VarChar(32)
+  version_number                  Int                               @default(1)
+  product_type                    String                            @default("covjson") @db.VarChar(32)
+  grid_bounds_x_min               Float
+  grid_bounds_x_max               Float
+  grid_bounds_y_min               Float
+  grid_bounds_y_max               Float
+  grid_num_x                      Int
+  grid_num_y                      Int
+  max_mmi                         Float
+  checksum_sha256                 String                            @db.VarChar(64)
+  storage_path                    String?                           @db.VarChar(255)
+  raw_payload                     Json?
+  evaluation_status               String                            @default("PENDING") @db.VarChar(32)
+  received_at                     DateTime                          @default(now()) @db.Timestamptz(6)
+  evaluated_at                    DateTime?                         @db.Timestamptz(6)
+  error_message                   String?
+  earthquake_facility_intensities earthquake_facility_intensities[]
+
+  @@unique([canonical_event_id, source_provider, version_number], map: "uq_earthquake_shakemaps_version")
+  @@index([canonical_event_id], map: "idx_shakemaps_canonical_event")
+  @@index([evaluation_status], map: "idx_shakemaps_evaluation_status")
+}
+
+model earthquake_source_events {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  canonical_event_id String            @db.VarChar(128)
+  provider           String            @db.VarChar(32)
+  provider_event_id  String            @db.VarChar(128)
+  occurred_at        DateTime          @db.Timestamptz(6)
+  latitude           Float
+  longitude          Float
+  magnitude          Decimal           @db.Decimal(3, 1)
+  depth_km           Decimal?          @db.Decimal(7, 2)
+  raw_payload        Json              @default("{}")
+  first_seen_at      DateTime          @default(now()) @db.Timestamptz(6)
+  last_seen_at       DateTime          @default(now()) @db.Timestamptz(6)
+  earthquake_events  earthquake_events @relation(fields: [canonical_event_id], references: [id], onUpdate: NoAction)
+
+  @@unique([provider, provider_event_id])
+  @@index([canonical_event_id], map: "idx_eq_source_canonical")
+}
+
+model estimations {
+  id              String    @id @db.VarChar(50)
+  report_id       String    @db.VarChar(50)
+  reporter_nik    String    @db.VarChar(50)
+  reporter_name   String    @db.VarChar(100)
+  tkp_type        String    @db.VarChar(20)
+  estimation_type String    @db.VarChar(30)
+  status          String    @default("submitted") @db.VarChar(30)
+  approval_notes  String?
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+  incidents       incidents @relation(fields: [report_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([report_id], map: "idx_estimations_report")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model facilities {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                String                @unique @db.VarChar(32)
+  name                String                @db.VarChar(255)
+  initials            String?               @db.VarChar(32)
+  facility_type       String                @db.VarChar(32)
+  latitude            Float
+  longitude           Float
+  branch_id           String?               @db.VarChar(64)
+  mapping_verified_at DateTime?             @db.Timestamptz(6)
+  mapping_verified_by String?               @db.VarChar(64)
+  operational_status  String                @default("ACTIVE") @db.VarChar(24)
+  auto_report_enabled Boolean               @default(false)
+  source_name         String                @db.VarChar(128)
+  source_synced_at    DateTime              @default(now()) @db.Timestamptz(6)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(6)
+  facility_audit_logs facility_audit_logs[]
+
+  @@index([branch_id], map: "idx_facilities_branch")
+  @@index([facility_type], map: "idx_facilities_type")
+}
+
+model facility_audit_logs {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String                @db.Uuid
+  import_run_id        String?               @db.Uuid
+  action               String                @db.VarChar(32)
+  changed_fields       Json                  @default("{}")
+  actor_user_id        String?               @db.VarChar(64)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  facilities           facilities            @relation(fields: [facility_id], references: [id], onUpdate: NoAction)
+  facility_import_runs facility_import_runs? @relation(fields: [import_run_id], references: [id], onUpdate: NoAction)
+
+  @@index([facility_id, created_at(sort: Desc)], map: "idx_facility_audit_facility")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model facility_import_runs {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source_name         String                @db.VarChar(128)
+  mode                String                @db.VarChar(16)
+  total_count         Int
+  new_count           Int
+  changed_count       Int
+  unchanged_count     Int
+  invalid_count       Int
+  invalid_rows        Json                  @default("[]")
+  executed_by         String?               @db.VarChar(64)
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  facility_audit_logs facility_audit_logs[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model incident_pic_history {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id   String
+  action        String    @db.VarChar(16)
+  from_user_id  String?   @db.VarChar(64)
+  to_user_id    String?   @db.VarChar(64)
+  actor_user_id String    @db.VarChar(64)
+  reason        String?
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  incidents     incidents @relation(fields: [incident_id], references: [id], onUpdate: NoAction)
+
+  @@index([incident_id, created_at(sort: Desc)], map: "idx_pic_history_incident")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model incident_repair_link_history {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id         String
+  repair_reference_id String    @db.VarChar(128)
+  action              String    @db.VarChar(16)
+  actor_user_id       String    @db.VarChar(64)
+  notes               String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  incidents           incidents @relation(fields: [incident_id], references: [id], onUpdate: NoAction)
+
+  @@index([incident_id, created_at(sort: Desc)], map: "idx_repair_link_history_incident")
+}
+
+model incident_repair_links {
+  incident_id         String
+  repair_reference_id String    @db.VarChar(128)
+  verified_by         String    @db.VarChar(64)
+  verification_notes  String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  incidents           incidents @relation(fields: [incident_id], references: [id], onUpdate: NoAction)
+
+  @@id([incident_id, repair_reference_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model incidents {
+  id                              String                            @id
+  date                            String
+  disaster_type                   String
+  report_origin                   String                            @default("manual")
+  earthquake_event_id             String?
+  earthquake_source               String?
+  earthquake_provenance           String?
+  tkp_type                        String?
+  store_id                        String?
+  store_name                      String?
+  branch                          String
+  location_city                   String?
+  status                          String                            @default("verifying")
+  progress                        Int                               @default(0)
+  disaster_metadata               Json?
+  affected_stores                 Json?
+  affected_store_count            Int?                              @default(0)
+  danger_store_count              Int?                              @default(0)
+  field_photos                    Json?                             @default("[]")
+  verification                    Json?
+  maintenance_ticket              Json?
+  timeline                        Json                              @default("[]")
+  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  closed_at                       DateTime?                         @db.Timestamptz(6)
+  external_work_id                String?                           @db.VarChar(128)
+  external_system                 String?                           @db.VarChar(64)
+  external_work_status            String?                           @db.VarChar(64)
+  external_synced_at              DateTime?                         @db.Timestamptz(6)
+  canonical_event_id              String?                           @db.VarChar(128)
+  location_kind                   String?                           @db.VarChar(16)
+  location_id                     String?                           @db.VarChar(128)
+  location_code_snapshot          String?                           @db.VarChar(64)
+  location_name_snapshot          String?                           @db.VarChar(255)
+  location_type_snapshot          String?                           @db.VarChar(32)
+  latitude_snapshot               Float?
+  longitude_snapshot              Float?
+  branch_snapshot                 String?                           @db.VarChar(64)
+  primary_pic_user_id             String?                           @db.VarChar(64)
+  primary_pic_claimed_at          DateTime?                         @db.Timestamptz(6)
+  reminder_24h_sent_at            DateTime?                         @db.Timestamptz(6)
+  expired_at                      DateTime?                         @db.Timestamptz(6)
+  reporter                        Json?
+  earthquake_facility_intensities earthquake_facility_intensities[]
+  earthquake_reconciliation_audit earthquake_reconciliation_audit[]
+  earthquake_reconciliation_cases earthquake_reconciliation_cases[]
+  estimations                     estimations[]
+  incident_pic_history            incident_pic_history[]
+  incident_repair_link_history    incident_repair_link_history[]
+  incident_repair_links           incident_repair_links[]
+  users                           users?                            @relation(fields: [primary_pic_user_id], references: [id], onUpdate: NoAction)
+  report_instructions             report_instructions[]
+
+  @@index([branch], map: "idx_incidents_branch")
+  @@index([created_at(sort: Desc)], map: "idx_incidents_created_at")
+  @@index([external_work_id], map: "idx_incidents_external_work_id")
+  @@index([report_origin], map: "idx_incidents_report_origin")
+  @@index([status], map: "idx_incidents_status")
+  @@index([store_id], map: "idx_incidents_store_id")
+}
+
+model integration_api_keys {
+  id                    String   @id @db.VarChar(64)
+  app_name              String   @db.VarChar(64)
+  api_key               String   @unique @db.VarChar(128)
+  secret_hash           String   @db.VarChar(255)
+  scope                 String   @default("ALL") @db.VarChar(64)
+  branch_restriction    String?  @db.VarChar(64)
+  status                String   @default("ACTIVE") @db.VarChar(32)
+  rate_limit_per_minute Int      @default(120)
+  description           String?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([api_key, status], map: "idx_integration_api_keys_lookup")
+}
+
+model integration_sync_logs {
+  id               String   @id @db.VarChar(64)
+  incident_id      String   @db.VarChar(64)
+  external_system  String   @db.VarChar(64)
+  external_work_id String?  @db.VarChar(128)
+  action           String   @db.VarChar(64)
+  payload          Json?
+  response_status  Int      @default(200)
+  ip_address       String?  @db.VarChar(64)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([incident_id], map: "idx_integration_sync_logs_inc")
+}
+
+model notification_logs {
+  id                     String    @id @db.VarChar(64)
+  disaster_id            String    @db.VarChar(64)
+  disaster_type          String    @db.VarChar(32)
+  channel                String    @db.VarChar(32)
+  branch                 String    @db.VarChar(100)
+  recipient_role         String    @default("Duty Officer DC Cabang") @db.VarChar(100)
+  recipient_contact      String    @db.VarChar(255)
+  title                  String    @db.VarChar(255)
+  message                String
+  affected_stores_count  Int       @default(0)
+  affected_stores_sample Json?
+  ticket_number          String    @db.VarChar(64)
+  status                 String    @default("sent") @db.VarChar(32)
+  delivery_status        String    @default("not_configured")
+  delivery_channel       String?
+  delivery_attempted_at  DateTime? @db.Timestamptz(6)
+  delivery_error         String?
+  sent_at                DateTime? @default(now()) @db.Timestamptz(6)
+  canonical_event_id     String?   @db.VarChar(128)
+  recipient_group        String?   @db.VarChar(32)
+  notification_category  String?   @db.VarChar(32)
+  acknowledged_at        DateTime? @db.Timestamptz(6)
+  acknowledged_by        String?   @db.VarChar(100)
+  acknowledgment_notes   String?
+  resolved_at            DateTime? @db.Timestamptz(6)
+  resolved_by            String?   @db.VarChar(100)
+  resolution_notes       String?
+  store_verifications    Json?     @default("{}")
+
+  @@index([branch], map: "idx_notif_branch")
+  @@index([disaster_id, disaster_type], map: "idx_notif_disaster")
+  @@index([sent_at(sort: Desc)], map: "idx_notif_sent_at")
+}
+
+model permission_audit_logs {
+  id             String    @id @db.VarChar(64)
+  actor_user_id  String?   @db.VarChar(64)
+  actor_name     String?   @db.VarChar(128)
+  action         String    @db.VarChar(64)
+  target_role    String?   @db.VarChar(64)
+  target_user_id String?   @db.VarChar(64)
+  permission_key String    @db.VarChar(64)
+  effect         String    @db.VarChar(16)
+  scope_type     String?   @db.VarChar(32)
+  branch_code    String?   @db.VarChar(64)
+  reason         String?
+  expires_at     DateTime? @db.Timestamptz(6)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)], map: "idx_perm_audit_created")
+  @@index([target_role], map: "idx_perm_audit_role")
+  @@index([target_user_id], map: "idx_perm_audit_user")
+}
+
+model push_event_deliveries {
+  id            String    @id @db.VarChar(128)
+  event_id      String    @db.VarChar(64)
+  endpoint      String
+  user_id       String    @db.VarChar(64)
+  branch        String?   @db.VarChar(64)
+  device_type   String?   @db.VarChar(32)
+  status        String    @db.VarChar(32)
+  status_code   Int?
+  error_message String?
+  dispatched_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@unique([event_id, endpoint], map: "uq_push_event_endpoint")
+  @@index([event_id], map: "idx_push_event_del_event")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model report_approval_outbox {
+  id                 String    @id @db.VarChar(128)
+  report_id          String    @unique(map: "uq_report_approval_outbox_report")
+  decision           String    @db.VarChar(32)
+  outcome_status     String    @db.VarChar(64)
+  disaster_type      String    @db.VarChar(64)
+  report_origin      String?   @db.VarChar(64)
+  branch             String    @db.VarChar(64)
+  store_id           String?   @db.VarChar(64)
+  store_name         String?   @db.VarChar(255)
+  location_city      String?   @db.VarChar(128)
+  decided_by_user_id String    @db.VarChar(64)
+  decided_by_name    String    @db.VarChar(255)
+  decided_by_role    String    @db.VarChar(64)
+  decided_at         String    @db.VarChar(64)
+  decision_notes     String?
+  condition          String    @db.VarChar(32)
+  evidence_count     Int       @default(0)
+  published_to_ho    Boolean   @default(true)
+  payload            Json      @default("{}")
+  processed_at       DateTime? @db.Timestamptz(6)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+}
+
+model report_completion_approval_history {
+  id            String   @id @db.VarChar(64)
+  report_id     String   @db.VarChar(64)
+  stage         String   @db.VarChar(64)
+  action        String   @db.VarChar(64)
+  actor_user_id String   @db.VarChar(64)
+  actor_name    String   @db.VarChar(255)
+  actor_role    String   @db.VarChar(32)
+  branch        String   @db.VarChar(64)
+  notes         String?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at], map: "idx_comp_appr_hist_created")
+  @@index([report_id], map: "idx_comp_appr_hist_report")
+}
+
+model report_completion_approvals {
+  id                      String    @id @db.VarChar(64)
+  report_id               String    @unique @db.VarChar(64)
+  flow_type               String    @db.VarChar(32)
+  status                  String    @db.VarChar(64)
+  pic_role                String    @db.VarChar(32)
+  pic_user_id             String?   @db.VarChar(64)
+  pic_user_name           String?   @db.VarChar(255)
+  submitted_at            DateTime? @db.Timestamptz(6)
+  submission_notes        String?
+  coordinator_role        String    @db.VarChar(32)
+  coordinator_user_id     String?   @db.VarChar(64)
+  coordinator_user_name   String?   @db.VarChar(255)
+  coordinator_approved_at DateTime? @db.Timestamptz(6)
+  coordinator_notes       String?
+  manager_role            String    @default("bm") @db.VarChar(32)
+  manager_user_id         String?   @db.VarChar(64)
+  manager_user_name       String?   @db.VarChar(255)
+  manager_approved_at     DateTime? @db.Timestamptz(6)
+  manager_notes           String?
+  rejection_reason        String?
+  rejected_by_role        String?   @db.VarChar(32)
+  rejected_by_user_id     String?   @db.VarChar(64)
+  rejected_by_user_name   String?   @db.VarChar(255)
+  rejected_at             DateTime? @db.Timestamptz(6)
+  branch_code             String    @db.VarChar(64)
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime  @default(now()) @db.Timestamptz(6)
+  attachments             Json?     @default("[]")
+  closed_at               DateTime? @db.Timestamptz(6)
+  closed_by_user_id       String?   @db.VarChar(64)
+  closed_by_user_name     String?   @db.VarChar(255)
+  closing_notes           String?
+
+  @@index([branch_code], map: "idx_comp_appr_branch")
+  @@index([report_id], map: "idx_comp_appr_report")
+  @@index([status], map: "idx_comp_appr_status")
+}
+
+model report_distributions {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id           String    @db.VarChar(50)
+  channel             String    @db.VarChar(20)
+  recipient           String    @db.VarChar(100)
+  status              String    @db.VarChar(30)
+  provider_message_id String?   @db.VarChar(100)
+  attempted_at        DateTime  @db.Timestamptz(6)
+  sent_at             DateTime? @db.Timestamptz(6)
+  error_message       String?
+
+  @@index([report_id], map: "idx_report_dist_report")
+}
+
+model report_estimation_routes {
+  id                    String    @id @db.VarChar(64)
+  report_id             String    @unique @db.VarChar(64)
+  handler_type          String    @db.VarChar(32)
+  target_system         String    @db.VarChar(64)
+  routing_status        String    @db.VarChar(64)
+  status                String    @db.VarChar(64)
+  store_code            String?   @db.VarChar(64)
+  branch_code           String?   @db.VarChar(64)
+  external_reference_id String?   @db.VarChar(128)
+  notes                 String?
+  work_status           String?   @default("NOT_READY") @db.VarChar(32)
+  data_source           String?   @default("MANUAL") @db.VarChar(64)
+  estimation_number     String?   @db.VarChar(128)
+  estimated_value       Decimal?  @db.Decimal
+  completed_at          DateTime? @db.Timestamptz(6)
+  external_reference    String?   @db.VarChar(128)
+  estimation_summary    String?
+  readiness_data        Json?
+  created_by            String    @db.VarChar(64)
+  created_by_name       String    @db.VarChar(255)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @default(now()) @db.Timestamptz(6)
+  last_synced_at        DateTime? @db.Timestamptz(6)
+
+  @@index([handler_type], map: "idx_estimation_routes_handler")
+  @@index([report_id], map: "idx_estimation_routes_report")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model report_instructions {
+  instruction_id   String    @id
+  report_id        String
+  instruction_text String
+  author_id        String
+  author_name      String
+  author_role      String
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  delivery_status  String    @default("not_configured")
+  target_roles     Json      @default("[]")
+  delivery_channel String    @default("wa")
+  delivery_log     String?
+  incidents        incidents @relation(fields: [report_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_instructions_created_at")
+  @@index([report_id], map: "idx_instructions_report_id")
+}
+
+model report_milestones {
+  id                     String    @id @db.VarChar(64)
+  report_id              String    @db.VarChar(64)
+  stage_order            Int
+  stage_key              String    @db.VarChar(32)
+  stage_name             String    @db.VarChar(64)
+  target_progress        Int
+  status                 String    @default("NOT_STARTED") @db.VarChar(32)
+  document_url           String?
+  document_storage_key   String?
+  document_original_name String?   @db.VarChar(255)
+  document_mime_type     String?   @db.VarChar(64)
+  document_file_size     Int?
+  actor_id               String?   @db.VarChar(64)
+  actor_name             String?   @db.VarChar(255)
+  actor_role             String?   @db.VarChar(32)
+  submitted_at           DateTime? @db.Timestamptz(6)
+  notes                  String?
+  proxy_approval_status  String?   @db.VarChar(64)
+  revisions              Json      @default("[]")
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([report_id, stage_key])
+  @@index([report_id, stage_order], map: "idx_milestones_order")
+  @@index([report_id], map: "idx_milestones_report")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model report_progress_photos {
+  id                      String                  @id @db.VarChar(64)
+  progress_update_id      String                  @db.VarChar(64)
+  report_id               String                  @db.VarChar(64)
+  photo_type              String                  @db.VarChar(32)
+  original_path           String
+  watermarked_path        String
+  file_size               Int                     @default(0)
+  mime_type               String                  @default("image/jpeg") @db.VarChar(64)
+  uploaded_by             String                  @db.VarChar(64)
+  uploaded_at             DateTime                @default(now()) @db.Timestamptz(6)
+  report_progress_updates report_progress_updates @relation(fields: [progress_update_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([report_id], map: "idx_progress_photos_report")
+  @@index([photo_type], map: "idx_progress_photos_type")
+  @@index([progress_update_id], map: "idx_progress_photos_update")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model report_progress_updates {
+  id                     String                   @id @db.VarChar(64)
+  report_id              String                   @db.VarChar(64)
+  progress_percentage    Int
+  description            String
+  work_status            String                   @default("IN_PROGRESS") @db.VarChar(32)
+  notes                  String?
+  created_by             String                   @db.VarChar(64)
+  created_by_name        String                   @db.VarChar(255)
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  stage                  String?                  @default("PENGERJAAN") @db.VarChar(32)
+  report_progress_photos report_progress_photos[]
+
+  @@index([created_at], map: "idx_progress_updates_created_at")
+  @@index([report_id], map: "idx_progress_updates_report")
+}
+
+model role_permissions {
+  id             String   @id @db.VarChar(64)
+  business_role  String   @db.VarChar(64)
+  permission_key String   @db.VarChar(64)
+  effect         String   @default("ALLOW") @db.VarChar(16)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([business_role, permission_key], map: "uq_role_permission")
+  @@index([business_role], map: "idx_role_permissions_role")
+}
+
+model sparta_schema_migrations {
+  name       String   @id @db.VarChar(255)
+  checksum   String   @db.VarChar(64)
+  applied_at DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model store_sync_history {
+  id              String    @id
+  sync_source     String
+  status          String
+  started_at      DateTime  @db.Timestamptz(6)
+  completed_at    DateTime? @db.Timestamptz(6)
+  records_read    Int?      @default(0)
+  records_added   Int?      @default(0)
+  records_updated Int?      @default(0)
+  records_skipped Int?      @default(0)
+  records_failed  Int?      @default(0)
+  error_message   String?
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model stores {
+  id                       String  @id
+  kode_toko                String? @unique(map: "uq_stores_kode_toko")
+  nama_toko                String?
+  cabang                   String?
+  alamat                   String?
+  latitude                 Float?
+  longitude                Float?
+  fr_type                  String?
+  branch_emergency_contact String?
+
+  @@index([cabang], map: "idx_stores_cabang")
+  @@index([kode_toko], map: "idx_stores_kode_toko")
+}
+
+model system_audit_logs {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  action        String   @db.VarChar(64)
+  target        String   @db.VarChar(64)
+  details       Json?
+  actor_user_id String   @db.VarChar(64)
+  actor_name    String?  @db.VarChar(128)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([action], map: "idx_system_audit_action")
+  @@index([created_at(sort: Desc)], map: "idx_system_audit_created")
+}
+
+model system_settings {
+  key        String   @id @db.VarChar(64)
+  value      Json
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.VarChar(64)
+}
+
+model user_permission_overrides {
+  id             String    @id @db.VarChar(64)
+  user_id        String    @db.VarChar(64)
+  permission_key String    @db.VarChar(64)
+  effect         String    @default("ALLOW") @db.VarChar(16)
+  scope_type     String    @default("OWN_SCOPE") @db.VarChar(32)
+  branch_code    String?   @db.VarChar(64)
+  reason         String
+  starts_at      DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at     DateTime? @db.Timestamptz(6)
+  granted_by     String?   @db.VarChar(64)
+  revoked_at     DateTime? @db.Timestamptz(6)
+  revoked_by     String?   @db.VarChar(64)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+  users          users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_user_overrides_user")
+}
+
+model user_push_subscriptions {
+  id              String    @id @db.VarChar(64)
+  user_id         String    @db.VarChar(64)
+  endpoint        String    @unique
+  p256dh          String
+  auth            String
+  user_agent      String?
+  branch          String?   @db.VarChar(64)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+  device_type     String?   @default("unknown") @db.VarChar(32)
+  last_success_at DateTime? @db.Timestamptz(6)
+  last_failure_at DateTime? @db.Timestamptz(6)
+  failure_count   Int?      @default(0)
+
+  @@index([branch], map: "idx_push_sub_branch")
+  @@index([user_id], map: "idx_push_sub_user")
+}
+
+model user_sessions {
+  id                          String    @id @db.VarChar(64)
+  user_id                     String    @db.VarChar(64)
+  refresh_token_hash          String    @unique @db.VarChar(64)
+  device_type                 String?   @default("unknown") @db.VarChar(32)
+  user_agent                  String?
+  ip_address                  String?   @db.VarChar(64)
+  token_version               Int?      @default(1)
+  is_revoked                  Boolean?  @default(false)
+  created_at                  DateTime? @default(now()) @db.Timestamptz(6)
+  last_used_at                DateTime? @default(now()) @db.Timestamptz(6)
+  expires_at                  DateTime  @db.Timestamptz(6)
+  previous_refresh_token_hash String?   @db.VarChar(64)
+  previous_token_expires_at   DateTime? @db.Timestamptz(6)
+  current_token_encrypted     String?
+
+  @@index([refresh_token_hash, is_revoked, expires_at], map: "idx_user_sessions_active_lookup")
+  @@index([expires_at], map: "idx_user_sessions_expires")
+  @@index([refresh_token_hash], map: "idx_user_sessions_hash")
+  @@index([previous_refresh_token_hash], map: "idx_user_sessions_prev_hash")
+  @@index([previous_refresh_token_hash, previous_token_expires_at], map: "idx_user_sessions_prev_token_grace")
+  @@index([user_id], map: "idx_user_sessions_user")
+}
+
+model users {
+  id                        String                      @id
+  external_user_id          String?
+  nik                       String?
+  name                      String
+  email                     String?
+  system_role               String                      @default("USER")
+  business_role             String?
+  scope                     String?                     @default("BRANCH")
+  branch                    String?
+  status                    String                      @default("ACTIVE")
+  source                    String                      @default("LOCAL")
+  password_hash             String?
+  avatar_url                String?
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  token_version             Int?                        @default(1)
+  incidents                 incidents[]
+  user_permission_overrides user_permission_overrides[]
+
+  @@index([branch], map: "idx_users_branch")
+  @@index([nik], map: "idx_users_nik")
+  @@index([system_role], map: "idx_users_system_role")
+}

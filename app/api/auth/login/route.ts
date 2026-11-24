@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isGateRequired, hasVerifiedGate } from "@/lib/environment-policy";
 import { dbGetUserByIdentifier } from "@/lib/user-db";
 import bcrypt from "bcryptjs";
 import { signSession } from "@/lib/jwt";
@@ -7,6 +8,7 @@ import { getSessionCookieOptions } from "@/lib/session-config";
 import { canUseLocalPassword } from "@/lib/sparta-identity";
 
 export async function POST(request: Request) {
+  if (isGateRequired(request) && !hasVerifiedGate(request)) return NextResponse.json({ error: "GATE_VERIFICATION_REQUIRED" }, { status: 403 });
   try {
     const body = await request.json();
     const { identifier, password } = body;

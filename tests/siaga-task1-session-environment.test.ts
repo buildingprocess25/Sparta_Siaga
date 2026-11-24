@@ -1,0 +1,55 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+// Explicit dummy configuration: this suite never connects to PostgreSQL.
+test("environment policy, gate and session tokens reject cross-environment use", async () => {
+  process.env.DATABASE_URL = "postgresql://dummy:dummy@fixture.aivencloud.com:5432/sparta_siaga_isolated?sslmode=require";
+  process.env.JWT_SECRET = "fixture-only-not-a-real-secret-01234567890123456789";
+  process.env.DEV_GATE_PASSCODE = "fixture-passcode-dev-0123456789";
+  process.env.UAT_GATE_PASSCODE = "fixture-passcode-uat-0123456789";
+  process.env.SPARTA_TEST_GATE_ENABLED = "true";
+  const env = (value: string) => { process.env.APP_ENV = value; process.env.SPARTA_ENVIRONMENT = value; };
+  env("development");
+  const policy = await import("../lib/environment-policy");
+  const isolation = await import("../lib/session-environment");
+  const jwt = await import("../lib/jwt");
+  const sessions = await import("../lib/session-service");
+  const local = new Request("http://localhost:3004/login", { headers: { host: "localhost:3004" } });
+  const tunnel = new Request("https://fixture.devtunnels.ms/login", { headers: { host: "fixture.devtunnels.ms" } });
+  assert.equal(policy.getSpartaEnvironment(), "development");
+  assert.equal(policy.isQuickLoginPermitted(local).allowed, true);
+  assert.equal(policy.isQuickLoginPermitted(tunnel).allowed, false);
+  const devGate = policy.issueGateToken();
+  assert.equal(policy.verifyGateToken(devGate), true);
+  assert.equal(policy.verifyGateToken(devGate + "x"), false);
+  const devAccess = await jwt.signSession({ id: "fixture", nik: "DEV_FIXTURE", systemRole: "USER", v: 1 });
+  assert.ok(await jwt.verifySession(devAccess));
+  const devRefresh = sessions.generateRefreshToken();
+  assert.equal(isolation.hasCurrentRefreshEnvironment(devRefresh), true);
+  env("uat");
+  assert.equal(policy.isQuickLoginPermitted(local).allowed, false);
+  assert.equal(policy.verifyGateToken(devGate), false);
+  assert.equal(await jwt.verifySession(devAccess), null);
+  assert.equal(await sessions.rotateDeviceSession(devRefresh), null);
+  const uatGate = policy.issueGateToken();
+  const gated = new Request(tunnel.url, { headers: { host: "fixture.devtunnels.ms", cookie: `siaga_gate_token=${uatGate}` } });
+  assert.equal(policy.isQuickLoginPermitted(gated).allowed, true);
+  assert.equal(policy.getLogoutRedirectUrl(), "/login");
+  const uatAccess = await jwt.signSession({ id: "fixture", nik: "DEV_FIXTURE", systemRole: "USER", v: 1 });
+  const uatRefresh = sessions.generateRefreshToken();
+  env("production");
+  assert.equal(policy.isQuickLoginPermitted(gated).allowed, false);
+  assert.equal(policy.isUatSimulationAllowed(), false);
+  assert.equal(policy.verifyGateToken(uatGate), false);
+  assert.equal(await jwt.verifySession(uatAccess), null);
+  assert.equal(await sessions.rotateDeviceSession(uatRefresh), null);
+  assert.equal(isolation.canUseSessionIdentity({ id: "fixture", source: "DEVELOPMENT" }), false);
+  const prodAccess = await jwt.signSession({ id: "fixture", nik: "FIXTURE", systemRole: "USER", v: 1 });
+  assert.ok(await jwt.verifySession(prodAccess));
+  env("development");
+  assert.equal(await jwt.verifySession(prodAccess), null);
+  // A production-like target overrides the explicit development flag. Never connect.
+  process.env.DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/siaga";
+  assert.equal(policy.getSpartaEnvironment(), "production");
+  assert.equal(policy.isQuickLoginPermitted(local).allowed, false);
+});

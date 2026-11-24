@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isGateRequired, hasVerifiedGate } from "@/lib/environment-policy";
 import { cookies } from "next/headers";
 import { 
   ACCESS_TOKEN_COOKIE, 
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 const inFlightRefreshes = new Map<string, Promise<any>>();
 
 export async function POST(request: Request) {
+  if (isGateRequired(request) && !hasVerifiedGate(request)) return NextResponse.json({ error: "GATE_VERIFICATION_REQUIRED" }, { status: 403 });
   try {
     let refreshToken: string | undefined;
 

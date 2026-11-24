@@ -1,206 +1,170 @@
 /**
- * SPARTA SIAGA — Environment Safety & Simulation Policy Engine
- *
- * Implements strict, fail-closed separation between Development, UAT/Testing, and Production.
- * Enforces rule:
- * - Production: Simulation triggers, synthetic earthquake generators, UAT logins,
- *   Quick Login, and test reset endpoints MUST NEVER be available or executable.
- * - UAT: SSO authentication is MANDATORY. Quick Login and Direct Login are strictly FORBIDDEN.
- *   Simulations are permitted for authorized evaluators on staging database.
- * - Local Development: Quick Login with 9-role selection is permitted ONLY on local loopback.
+ * SPARTA SIAGA environment safety.
+ * Testing is allowed only on the explicitly configured isolated database.
+ * Gate primitives are available, but public Quick Login remains disabled
+ * until the complete login/session isolation flow is reviewed.
  */
-
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { isProductionDatabaseTarget } from "./db";
+import { getJwtSecret } from "./runtime-config";
 
 export type SpartaEnvironment = "development" | "test" | "uat" | "staging" | "production";
 
-/**
- * Resolves current environment name based on server environment variables.
- * In production deployments, APP_ENV or SPARTA_ENVIRONMENT is set to 'production'.
- */
+function normalizeEnvironment(value: string | undefined): SpartaEnvironment | null {
+  switch ((value || "").trim().toLowerCase()) {
+    case "production": case "prod": return "production";
+    case "development": case "dev": return "development";
+    case "uat": case "staging": return "uat";
+    case "test": case "testing": return "test";
+    default: return null;
+  }
+}
+
+function isIsolatedDatabaseTarget(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "postgresql:" || url.protocol === "postgres:") &&
+      url.hostname.toLowerCase().endsWith(".aivencloud.com") &&
+      decodeURIComponent(url.pathname) === "/sparta_siaga_isolated" &&
+      [...url.searchParams.keys()].every(key => key === "sslmode");
+  } catch { return false; }
+}
+
 export function getSpartaEnvironment(): SpartaEnvironment {
-  // 1. Fail-closed: If target database is production, environment is ALWAYS production
-  const dbUrl = process.env.DATABASE_URL || "";
-  if (isProductionDatabaseTarget(dbUrl)) {
-    return "production";
-  }
-
-  // 2. Explicit environment flag
-  const explicitEnv = (
-    process.env.APP_ENV ||
-    process.env.SPARTA_ENVIRONMENT ||
-    ""
-  ).trim().toLowerCase();
-
-  if (explicitEnv === "production" || explicitEnv === "prod") return "production";
-  if (explicitEnv === "test" || explicitEnv === "testing") return "test";
-  if (explicitEnv === "uat" || explicitEnv === "staging") return "uat";
-  if (explicitEnv === "development" || explicitEnv === "dev") return "development";
-
-  // 3. Target database inference for isolated staging
-  if (dbUrl.includes("sparta_siaga_isolated") || dbUrl.includes("aivencloud.com")) {
-    return "uat";
-  }
-
-  if (process.env.NODE_ENV === "production") return "production";
-  if (process.env.NODE_ENV === "test") return "test";
-  return "development";
+  const dbUrl = (process.env.DATABASE_URL || "").trim();
+  if (isProductionDatabaseTarget(dbUrl) || !isIsolatedDatabaseTarget(dbUrl)) return "production";
+  const rawFlags = [process.env.APP_ENV, process.env.SPARTA_ENVIRONMENT].filter(v => Boolean(v?.trim()));
+  const flags = rawFlags.map(normalizeEnvironment);
+  // No inference from cloud hostname, no conflicting/unknown/missing flags.
+  // NODE_ENV=production is normal for a built UAT application.
+  if (!flags.length || flags.some(v => v === null || v === "production") ||
+      new Set(flags).size !== 1) return "production";
+  return flags[0] as SpartaEnvironment;
 }
 
-/**
- * Returns true if the runtime is strictly identified as Production.
- * Fail-closed: If the target database URL is the production database,
- * it is ALWAYS treated as Production regardless of other environment flags.
- */
 export function isProductionEnvironment(): boolean {
-  // 1. Fail-closed: If target database is the production database, ALWAYS production
-  const dbUrl = process.env.DATABASE_URL || "";
-  if (isProductionDatabaseTarget(dbUrl)) {
-    return true;
-  }
-
-  // 2. Explicit environment flag
-  const explicitEnv = (
-    process.env.APP_ENV ||
-    process.env.SPARTA_ENVIRONMENT ||
-    ""
-  ).trim().toLowerCase();
-
-  if (explicitEnv === "production" || explicitEnv === "prod") {
-    return true;
-  }
-  if (
-    explicitEnv === "uat" ||
-    explicitEnv === "staging" ||
-    explicitEnv === "test" ||
-    explicitEnv === "development" ||
-    explicitEnv === "dev"
-  ) {
-    return false;
-  }
-
-  // 3. Isolated database check (Aiven sparta_siaga_isolated is strictly staging/UAT)
-  if (dbUrl.includes("sparta_siaga_isolated") || dbUrl.includes("aivencloud.com")) {
-    return false;
-  }
-
-  // 4. Fallback to NODE_ENV
-  return process.env.NODE_ENV === "production";
+  return getSpartaEnvironment() === "production";
 }
-
-/**
- * Returns true if the runtime is UAT / Staging.
- */
 export function isUatEnvironment(): boolean {
-  if (isProductionEnvironment()) return false;
-  const env = getSpartaEnvironment();
-  return env === "uat" || env === "staging";
+  return getSpartaEnvironment() === "uat";
 }
-
-/**
- * Returns true if the runtime is Local Development.
- */
 export function isDevelopmentEnvironment(): boolean {
-  if (isProductionEnvironment()) return false;
   return getSpartaEnvironment() === "development";
 }
-
-/**
- * Returns true only if UAT simulation tools, synthetic earthquakes,
- * and test accounts are legitimately permitted in the current runtime.
- */
 export function isUatSimulationAllowed(): boolean {
-  if (isProductionEnvironment()) {
-    return false;
-  }
-
-  const dbUrl = process.env.DATABASE_URL || "";
-  if (isProductionDatabaseTarget(dbUrl)) {
-    return false;
-  }
-
-  return true;
+  return !isProductionEnvironment();
 }
-
-/**
- * Server-side guard for API routes and backend services.
- * Throws a fatal 403 error if called in Production.
- */
 export function assertSimulationAllowed(): void {
   if (!isUatSimulationAllowed()) {
-    throw new Error(
-      "SIMULATION_FORBIDDEN_IN_PRODUCTION: Fitur simulasi gempa, reset skenario UAT, dan kredensial pengujian dilarang keras di environment Production."
-    );
+    throw new Error("SIMULATION_FORBIDDEN_IN_PRODUCTION: Fitur simulasi dan kredensial pengujian dilarang pada target production atau target yang belum terverifikasi.");
   }
 }
 
-/**
- * Checks whether Quick Login is permitted.
- * Quick Login is strictly permitted ONLY in Local Development, on loopback access,
- * and never over public tunnels or in UAT/Production.
- */
-export function isQuickLoginPermitted(req?: Request): { allowed: boolean; reason?: string } {
-  // 1. Fail-closed: Must not be production
-  if (isProductionEnvironment()) {
-    return {
-      allowed: false,
-      reason: "Quick Login dilarang keras di environment Production.",
-    };
-  }
-
-  // 2. Database target guard
-  const dbUrl = process.env.DATABASE_URL || "";
-  if (isProductionDatabaseTarget(dbUrl)) {
-    return {
-      allowed: false,
-      reason: "Quick Login dilarang keras saat terhubung ke database Production.",
-    };
-  }
-
-  // 3. Must be explicitly Local Development
+/** Browser gate is only applicable to explicitly isolated development/UAT. */
+export function isTestBrowserEnvironment(): boolean {
   const env = getSpartaEnvironment();
-  if (env !== "development") {
-    return {
-      allowed: false,
-      reason: `Quick Login hanya diizinkan di Local Development (environment saat ini: ${env}). UAT wajib melalui Portal SSO SPARTA.`,
-    };
-  }
+  return env === "development" || env === "uat";
+}
+export function isLocalLoopbackRequest(req: Request): boolean {
+  const local = new Set(["localhost", "127.0.0.1", "[::1]"]);
+  const localAuthority = (value: string) => {
+    if (!value || /[\s,/@?#]/.test(value)) return false;
+    try { return local.has(new URL(`http://${value}`).hostname.toLowerCase()); }
+    catch { return false; }
+  };
+  try {
+    const host = req.headers.get("host") || "";
+    const forwardedHost = req.headers.get("x-forwarded-host");
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    const loopbackIp = (v: string) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(v.trim());
+    return localAuthority(host) && local.has(new URL(req.url).hostname.toLowerCase()) &&
+      (!forwardedHost || localAuthority(forwardedHost)) &&
+      (!forwardedFor || forwardedFor.split(",").every(loopbackIp));
+  } catch { return false; }
+}
+export function isGateRequired(req: Request): boolean {
+  return isTestBrowserEnvironment() &&
+    !(isDevelopmentEnvironment() && isLocalLoopbackRequest(req));
+}
+export function isGateEnabled(): boolean {
+  return isTestBrowserEnvironment() && process.env.SPARTA_TEST_GATE_ENABLED === "true" &&
+    getConfiguredGatePasscode() !== null;
+}
+export function isGateTransportAllowed(req: Request): boolean {
+  try {
+    return isLocalLoopbackRequest(req) || new URL(req.url).protocol === "https:" ||
+      req.headers.get("x-forwarded-proto") === "https";
+  } catch { return false; }
+}
+export function hasVerifiedGate(req: Request): boolean {
+  if (!isGateEnabled() || !isGateTransportAllowed(req)) return false;
+  const tokens = (req.headers.get("cookie") || "").split(";").map(v => v.trim())
+    .filter(v => v.startsWith(`${GATE_TOKEN_COOKIE}=`));
+  return tokens.length === 1 && verifyGateToken(tokens[0].slice(GATE_TOKEN_COOKIE.length + 1));
+}
+export function isQuickLoginPermitted(req?: Request): { allowed: boolean; reason?: string } {
+  if (!req || !isTestBrowserEnvironment()) return { allowed: false, reason: "Quick Login hanya tersedia di Development/UAT terisolasi." };
+  if (isDevelopmentEnvironment() && isLocalLoopbackRequest(req)) return { allowed: true };
+  if (hasVerifiedGate(req)) return { allowed: true };
+  return { allowed: false, reason: "Verifikasi gate diperlukan." };
+}
+// Verify the actual pg pool target before creating synthetic users (not merely DATABASE_URL).
+export function isSafeTestPoolTarget(value: unknown): boolean {
+  return isTestBrowserEnvironment() && typeof value === "string" &&
+    !isProductionDatabaseTarget(value) && isIsolatedDatabaseTarget(value);
+}
 
-  // 4. Loopback and tunnel security check
-  if (req) {
-    const rawHost = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").toLowerCase();
-    const hostName = rawHost.split(":")[0].trim();
+export const GATE_TOKEN_COOKIE = "siaga_gate_token";
+export const GATE_TOKEN_TTL_SECONDS = 8 * 60 * 60;
 
-    // Reject public tunnels or non-loopback domains
-    const isPublicTunnel =
-      rawHost.includes("loca.lt") ||
-      rawHost.includes("ngrok") ||
-      rawHost.includes("trycloudflare.com") ||
-      rawHost.includes("sparta-alfamart.web.id") ||
-      rawHost.includes(".nip.io");
+export function getConfiguredGatePasscode(): string | null {
+  const env = getSpartaEnvironment();
+  if (env !== "development" && env !== "uat") return null;
+  const value = (env === "development"
+    ? process.env.DEV_GATE_PASSCODE || process.env.UAT_GATE_PASSCODE
+    : process.env.UAT_GATE_PASSCODE)?.trim();
+  // No hard-coded fallback or blank/default password.
+  return value && value.length >= 12 && value.length <= 1024 ? value : null;
+}
 
-    if (isPublicTunnel) {
-      return {
-        allowed: false,
-        reason: "Quick Login dilarang diakses melalui tunnel publik atau port forwarding.",
-      };
-    }
+function equalText(a: string, b: string): boolean {
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
-    const isLoopback =
-      hostName === "localhost" ||
-      hostName === "127.0.0.1" ||
-      hostName === "::1" ||
-      hostName === "[::1]";
+export function verifyGatePasscode(candidate: string): boolean {
+  const expected = getConfiguredGatePasscode();
+  return expected !== null && candidate.length <= 1024 && equalText(candidate, expected);
+}
 
-    if (!isLoopback && hostName !== "") {
-      return {
-        allowed: false,
-        reason: `Quick Login hanya dapat diakses melalui loopback lokal (localhost/127.0.0.1). Host terdeteksi: ${hostName}`,
-      };
-    }
-  }
+function gateSignature(payload: string): string {
+  const passcode = getConfiguredGatePasscode();
+  const secret = getJwtSecret();
+  if (!passcode || typeof secret !== "string" || secret.length < 32) throw new Error("GATE_NOT_CONFIGURED");
+  return createHmac("sha256", secret)
+    .update("siaga-gate-v1\0").update(passcode).update("\0").update(payload)
+    .digest("base64url");
+}
 
-  return { allowed: true };
+export function issueGateToken(now = Date.now()): string {
+  const env = getSpartaEnvironment();
+  if (env !== "development" && env !== "uat") throw new Error("GATE_FORBIDDEN");
+  const expiry = Math.floor(now / 1000) + GATE_TOKEN_TTL_SECONDS;
+  const payload = `${env}.${expiry}`;
+  return `${payload}.${gateSignature(payload)}`;
+}
+
+export function verifyGateToken(token: string | undefined, now = Date.now()): boolean {
+  if (!token || token.length > 256 || isProductionEnvironment()) return false;
+  const [env, expires, signature, ...extra] = token.split(".");
+  const expiry = Number(expires);
+  const current = Math.floor(now / 1000);
+  if (extra.length || !signature || env !== getSpartaEnvironment() ||
+      !/^\d+$/.test(expires || "") || !Number.isSafeInteger(expiry) ||
+      expiry <= current || expiry > current + GATE_TOKEN_TTL_SECONDS) return false;
+  try { return equalText(signature, gateSignature(`${env}.${expires}`)); }
+  catch { return false; }
 }
 
 /**
@@ -228,7 +192,7 @@ export function getSsoModuleLauncherUrl(): string {
  * In UAT and Production: redirect to Portal SSO module launcher page (#/modules).
  */
 export function getLogoutRedirectUrl(): string {
-  if (isDevelopmentEnvironment()) {
+  if (isTestBrowserEnvironment()) {
     return "/login";
   }
   return getSsoModuleLauncherUrl();

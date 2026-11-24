@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { isQuickLoginPermitted } from "@/lib/environment-policy";
+import { isQuickLoginPermitted, isSafeTestPoolTarget } from "@/lib/environment-policy";
 import { getDbPool } from "@/lib/db";
 import { 
   createDeviceSession, 
-  revokeSessionByRefreshToken, 
-  revokeAllUserSessions 
+  revokeSessionByRefreshToken 
 } from "@/lib/session-service";
 import {
   ACCESS_TOKEN_COOKIE,
@@ -13,7 +12,6 @@ import {
   getAccessTokenCookieOptions,
   getRefreshTokenCookieOptions,
 } from "@/lib/session-config";
-import { getSessionUser } from "@/lib/auth";
 
 interface QuickLoginPayload {
   role: string;
@@ -181,13 +179,18 @@ export async function POST(req: Request) {
     }
 
     const pool = getDbPool();
+    if (!isSafeTestPoolTarget((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString)) {
+      return NextResponse.json({ error: "UNSAFE_DATABASE_TARGET" }, { status: 403 });
+    }
     const userId = `usr_${def.nik.toLowerCase()}`;
+    const schema = await pool.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'sso_status') AS present");
+    const hasSsoStatus = schema.rows[0]?.present === true;
 
     // 3. Upsert synthetic developer user record into database
-    await pool.query(
+    const upsert = await pool.query(
       `INSERT INTO users (
-        id, nik, name, email, system_role, business_role, scope, branch, status, source, sso_status, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', 'DEVELOPMENT', NULL, NOW(), NOW())
+        id, nik, name, email, system_role, business_role, scope, branch, status, source${hasSsoStatus ? ", sso_status" : ""}, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', 'DEVELOPMENT'${hasSsoStatus ? ', NULL' : ''}, NOW(), NOW())
       ON CONFLICT (id) DO UPDATE SET
         nik = EXCLUDED.nik,
         name = EXCLUDED.name,
@@ -198,8 +201,9 @@ export async function POST(req: Request) {
         branch = EXCLUDED.branch,
         status = 'ACTIVE',
         source = 'DEVELOPMENT',
-        sso_status = NULL,
-        updated_at = NOW()`,
+        ${hasSsoStatus ? "sso_status = NULL," : ""}
+        updated_at = NOW()
+        WHERE users.source = 'DEVELOPMENT' AND users.nik = EXCLUDED.nik AND users.email = EXCLUDED.email`,
       [
         userId,
         def.nik,
@@ -212,11 +216,8 @@ export async function POST(req: Request) {
       ]
     );
 
-    // 4. Revoke previous session if currently authenticated to cleanly switch privileges
-    const existingSession = await getSessionUser(req);
-    if (existingSession && existingSession.id) {
-      await revokeAllUserSessions(existingSession.id).catch(() => undefined);
-    }
+    if (upsert.rowCount !== 1) return NextResponse.json({ error: "TEST_IDENTITY_CONFLICT" }, { status: 409 });
+    // Revoke this browser's previous refresh token only; do not log out all evaluators.
     const cookieHeader = req.headers.get("cookie") || "";
     const refreshMatch = cookieHeader.match(/siaga_refresh=([^;]+)/);
     if (refreshMatch && refreshMatch[1]) {
@@ -291,4 +292,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

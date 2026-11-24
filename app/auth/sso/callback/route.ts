@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { isTestBrowserEnvironment } from "@/lib/environment-policy";
 import {
   exchangeSpartaLaunchToken,
   validateSsoModuleAccess,
@@ -26,6 +27,7 @@ import {
  * 6. Redirects to SIAGA dashboard
  */
 export async function GET(request: Request) {
+  if (isTestBrowserEnvironment()) return new NextResponse(null, { status: 303, headers: { Location: "/login" } });
   const requestUrl = new URL(request.url);
   const token = requestUrl.searchParams.get("token");
 

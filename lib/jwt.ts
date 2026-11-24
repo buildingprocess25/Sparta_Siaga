@@ -1,3 +1,4 @@
+import { currentSessionEnvironment } from "./session-environment";
 import { SignJWT, jwtVerify } from "jose";
 import { getJwtSecret } from "./runtime-config";
 
@@ -20,6 +21,8 @@ export async function signSession(payload: SessionPayload, expiresIn: string = "
     nik: payload.nik,
     systemRole: payload.systemRole,
     v: payload.v || SESSION_VERSION,
+  
+    env: currentSessionEnvironment(),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -31,6 +34,7 @@ export async function signSession(payload: SessionPayload, expiresIn: string = "
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getEncodedJwtSecret());
+    if (payload.env !== currentSessionEnvironment()) return null;
     return payload as unknown as SessionPayload;
   } catch {
     return null;

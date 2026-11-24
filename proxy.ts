@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
-import { getJwtSecret } from './lib/runtime-config';
+import { verifySession } from './lib/jwt';
+import { hasCurrentRefreshEnvironment } from './lib/session-environment';
+import { isGateRequired, hasVerifiedGate } from './lib/environment-policy';
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -48,9 +49,15 @@ export async function proxy(request: NextRequest) {
   const isPublicVapidKeyRequest =
     pathname === '/api/notifications/push/subscribe' && request.method === 'GET';
 
-  if (isPwaOrStatic || isPublicVapidKeyRequest || publicPrefixes.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
+  const machineRoute = pathname === '/api/health/live' || pathname === '/api/health/ready' ||
+    pathname === '/api/notifications/worker' || pathname.startsWith('/api/integrations/');
+  const gateEntry = pathname === '/login' || pathname === '/api/auth/env-status' || pathname === '/api/auth/gate-verify';
+  if (isPwaOrStatic || machineRoute || gateEntry) return NextResponse.next();
+  if (isGateRequired(request) && !hasVerifiedGate(request)) {
+    if (pathname.startsWith('/api/')) return NextResponse.json({ error: 'GATE_VERIFICATION_REQUIRED' }, { status: 403 });
+    return NextResponse.redirect(new URL('/login', request.url));
   }
+  if (isPublicVapidKeyRequest || publicPrefixes.some((p) => pathname === p)) return NextResponse.next();
 
   const sessionToken = request.cookies.get('siaga_session')?.value;
   const refreshToken = request.cookies.get('siaga_refresh')?.value;
@@ -58,8 +65,7 @@ export async function proxy(request: NextRequest) {
   // 2. If valid short-lived access token is present, allow immediately
   if (sessionToken) {
     try {
-      const jwtSecret = new TextEncoder().encode(getJwtSecret());
-      const { payload } = await jwtVerify(sessionToken, jwtSecret);
+      const payload = await verifySession(sessionToken);
       if (payload && payload.id) {
         return NextResponse.next();
       }
@@ -71,7 +77,7 @@ export async function proxy(request: NextRequest) {
   // 3. If access token is expired or missing but 30-day refresh token exists:
   // Allow pass-through so API routes (via getSessionUser) or client shell (via /api/auth/refresh)
   // can transparently renew the session without an abrupt forced logout.
-  if (refreshToken) {
+  if (hasCurrentRefreshEnvironment(refreshToken)) {
     return NextResponse.next();
   }
 
