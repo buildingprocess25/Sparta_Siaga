@@ -237,24 +237,28 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
 
             // Severe rain threshold: precipitation >= 20 mm/h or severe thunderstorm (code 95, 96, 99)
             if (precipitation >= 20.0 || weatherCode >= 95) {
+              const branchKey = b.branch_code || b.cabang;
               const todayStr = new Date().toISOString().slice(0, 10);
-              const floodEventId = `flood_${b.cabang.toLowerCase()}_${todayStr}`;
-              const isProcessed = await hasEventAlreadyBeenProcessed(floodEventId, 'heavy_rain', b.cabang);
-              const inCooldown = await isNotificationCooldownActive('heavy_rain', b.cabang);
+              const floodEventId = `flood_${branchKey.toLowerCase()}_${todayStr}`;
+              const isProcessed = await hasEventAlreadyBeenProcessed(floodEventId, 'heavy_rain', branchKey);
+              const inCooldown = await isNotificationCooldownActive('heavy_rain', branchKey);
 
               if (!isProcessed && !inCooldown) {
                 // Find stores in this branch
-                const branchStores = stores.filter(s => s.cabang === b.cabang).slice(0, 10).map(s => ({
-                  kode_toko: s.kode_toko,
-                  nama_toko: s.nama_toko,
-                  cabang: s.cabang,
-                  distance_km: 1.0,
-                  status: 'MONITOR' as const,
-                  alamat: s.alamat,
-                  fr_type: s.fr_type,
-                }));
+                const branchStores = stores
+                  .filter(s => (b.branch_code ? (s.branch_code === b.branch_code || s.cabang === b.cabang) : s.cabang === b.cabang))
+                  .slice(0, 10)
+                  .map(s => ({
+                    kode_toko: s.kode_toko,
+                    nama_toko: s.nama_toko,
+                    cabang: s.cabang,
+                    distance_km: 1.0,
+                    status: 'MONITOR' as const,
+                    alamat: s.alamat,
+                    fr_type: s.fr_type,
+                  }));
 
-                const ticketNumber = `FL-${b.cabang.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+                const ticketNumber = `FL-${branchKey.substring(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
                 const rainTitle = `SIAGA HUJAN LEBAT - POTENSI BANJIR: Cabang ${b.cabang}`;
                 const rainMessage = `Model cuaca menunjukkan potensi curah hujan lebat (${precipitation.toFixed(1)} mm/jam) di sekitar cabang ${b.cabang}. Bersiap aktifkan SOP pencegahan genangan.`;
 
@@ -262,8 +266,8 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
                   disasterId: floodEventId,
                   disasterType: 'heavy_rain',
                   channel: 'pwa_only',
-                  branch: b.cabang,
-                  recipientContact: `pwa://dc-${b.cabang.toLowerCase()}`,
+                  branch: branchKey,
+                  recipientContact: `pwa://dc-${branchKey.toLowerCase()}`,
                   title: rainTitle,
                   message: rainMessage,
                   affectedStores: branchStores,

@@ -355,7 +355,9 @@ export default function MonitoringPage() {
       !(Number(loc.latitude) === 0 && Number(loc.longitude) === 0) &&
       Math.abs(Number(loc.latitude)) <= 90 && Math.abs(Number(loc.longitude)) <= 180;
     const inBranch = (loc: Store) =>
-      !facilityBranch || (loc.cabang || "").toLowerCase() === facilityBranch.toLowerCase();
+      !facilityBranch ||
+      (loc.cabang || "").toLowerCase() === facilityBranch.toLowerCase() ||
+      (loc.branch_code || "").toLowerCase() === facilityBranch.toLowerCase();
     const realStores = computedStores.filter(loc => isValid(loc) && inBranch(loc));
     const dcs = locationModeStores.filter(loc =>
       isValid(loc) && loc.fr_type === "FACILITY_DC" && inBranch(loc)
@@ -369,7 +371,8 @@ export default function MonitoringPage() {
       list = list.filter(loc =>
         (loc.kode_toko || "").toLowerCase().includes(q) ||
         (loc.nama_toko || "").toLowerCase().includes(q) ||
-        (loc.cabang || "").toLowerCase().includes(q)
+        (loc.cabang || "").toLowerCase().includes(q) ||
+        (loc.branch_code || "").toLowerCase().includes(q)
       );
     }
     if (mapMode === "dc") {

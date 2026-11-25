@@ -37,7 +37,8 @@ import { calculateHaversineDistance } from "./haversine";
 import { ensureEarthquakeReport } from "./earthquake-report-service";
 import { recordNotificationLog } from "./notification-service";
 import { fetchOfficialMmiForEarthquake } from "./official-earthquake-mmi";
-import { Store } from "@/types/store";
+import { Store, getStoreOwnership } from "@/types/store";
+import { branchMasterEnabled } from "./sparta-rollout";
 import {
   ShakeMapGrid,
   interpolateMmiFromGrid,
@@ -75,6 +76,7 @@ export interface EvaluatedStoreTarget {
   kode_toko: string;
   nama_toko: string;
   cabang: string;
+  branch_code?: string | null;
   latitude: number;
   longitude: number;
   alamat?: string;
@@ -334,6 +336,7 @@ export function evaluateEarthquakeV1MmiWorkflow(
       kode_toko: store.kode_toko,
       nama_toko: store.nama_toko,
       cabang: store.cabang,
+      branch_code: store.branch_code ?? null,
       latitude: lat,
       longitude: lon,
       alamat: store.alamat,
@@ -658,6 +661,7 @@ export async function executeEarthquakeV1MmiWorkflow(params: ExecuteWorkflowPara
     const occurredAt = new Date(earthquake.occurredAt ?? earthquake.timestamp ?? now);
     const byBranch = new Map<string, EvaluatedStoreTarget[]>();
     for (const store of evaluation.qualifyingStores) {
+      const branchKey = branchMasterEnabled() && store.branch_code ? store.branch_code : store.cabang;
       const reportHash = crypto.createHash("sha256").update(`${eventId}:STORE:${store.kode_toko}`).digest("hex").slice(0, 16).toUpperCase();
       const report = await ensureEarthquakeReport({
         reportId: `LAP-EQ-STR-${reportHash}`,
@@ -666,7 +670,7 @@ export async function executeEarthquakeV1MmiWorkflow(params: ExecuteWorkflowPara
         source: earthquake.source || "BMKG",
         location: {
           kind: "STORE", id: store.kode_toko, code: store.kode_toko,
-          name: store.nama_toko, type: store.fr_type || "REGULER", branch: store.cabang,
+          name: store.nama_toko, type: getStoreOwnership(store.fr_type), branch: branchKey,
           latitude: store.latitude, longitude: store.longitude,
         },
         clientOrPool: client,
@@ -675,9 +679,9 @@ export async function executeEarthquakeV1MmiWorkflow(params: ExecuteWorkflowPara
       if (report.outcome === "ambiguous") throw new Error(`Unresolved manual reports for ${store.kode_toko}`);
       if (report.outcome === "existing") result.preservedInspectionReports++;
       else { result.createdInspectionReports++; result.createdReportIds.push(report.incidentId); }
-      const targets = byBranch.get(store.cabang) ?? [];
+      const targets = byBranch.get(branchKey) ?? [];
       targets.push(store);
-      byBranch.set(store.cabang, targets);
+      byBranch.set(branchKey, targets);
     }
     for (const [branch, targets] of byBranch) {
       targets.sort((a, b) => a.distanceKm - b.distanceKm);

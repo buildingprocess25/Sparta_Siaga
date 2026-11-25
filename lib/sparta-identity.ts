@@ -9,6 +9,8 @@ export interface IdentityCandidate {
   external_user_id?: string | null;
   nik?: string | null;
   email?: string | null;
+  source?: string | null;
+  system_role?: string | null;
 }
 
 export class SpartaIntegrationError extends Error {
@@ -17,7 +19,11 @@ export class SpartaIntegrationError extends Error {
   }
 }
 
-export function selectSpartaIdentity<T extends IdentityCandidate>(rows: T[], identity: SpartaIdentity): T | null {
+export function selectSpartaIdentity<T extends IdentityCandidate>(
+  rows: T[],
+  identity: SpartaIdentity,
+  options: { allowLegacyLocalRelink?: boolean } = {}
+): T | null {
   const portalId = identity.spartaUserId?.trim();
   const nik = identity.employeeId?.trim().toLowerCase();
   const email = identity.email?.trim().toLowerCase();
@@ -30,7 +36,13 @@ export function selectSpartaIdentity<T extends IdentityCandidate>(rows: T[], ide
   }
   const selected = byId[0] || byNik[0] || byEmail[0] || null;
   if (selected?.external_user_id?.trim() && portalId && selected.external_user_id.trim() !== portalId) {
-    throw new SpartaIntegrationError("IDENTITY_ALREADY_LINKED", "Akun SIAGA sudah terhubung ke ID portal lain.", 409);
+    const canRelinkLegacyLocal =
+      options.allowLegacyLocalRelink === true &&
+      (selected.source || "").trim().toUpperCase() === "LOCAL" &&
+      (selected.system_role || "").trim().toUpperCase() !== "ADMIN";
+    if (!canRelinkLegacyLocal) {
+      throw new SpartaIntegrationError("IDENTITY_ALREADY_LINKED", "Akun SIAGA sudah terhubung ke ID portal lain.", 409);
+    }
   }
   return selected;
 }
@@ -102,4 +114,66 @@ export function shouldRevokeUserSessionsOnUpdate(
   if ((next.branch?.trim() || null) !== (existing.branch?.trim() || null)) return true;
   if ((next.status ?? null) !== (existing.status ?? null)) return true;
   return false;
+}
+
+export function getSpartaPortalUserManagementUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const baseUrl = (
+    env.NEXT_PUBLIC_SPARTA_LOGIN_URL ||
+    env.SPARTA_LOGIN_URL ||
+    "https://sparta-alfamart.web.id"
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  return `${baseUrl}/#/manajemen-user`;
+}
+
+export function detectCentralizedUserManagedFieldChanges(
+  existing: {
+    name?: string | null;
+    nik?: string | null;
+    email?: string | null;
+    businessRole?: string | null;
+    scope?: string | null;
+    branch?: string | null;
+    branchCode?: string | null;
+    status?: string | null;
+  },
+  incoming: {
+    name?: unknown;
+    nik?: unknown;
+    email?: unknown;
+    businessRole?: unknown;
+    scope?: unknown;
+    branch?: unknown;
+    branchCode?: unknown;
+    status?: unknown;
+  }
+): string[] {
+  const changed = detectPortalIdentityFieldChanges(existing, incoming);
+  if (incoming.businessRole !== undefined) {
+    const nextRole = typeof incoming.businessRole === "string" ? incoming.businessRole.trim().toLowerCase() || null : null;
+    const prevRole = existing.businessRole?.trim().toLowerCase() || null;
+    if (nextRole !== prevRole) changed.push("businessRole");
+  }
+  if (incoming.scope !== undefined) {
+    const nextScope = typeof incoming.scope === "string" ? incoming.scope.trim().toUpperCase() || null : null;
+    const prevScope = existing.scope?.trim().toUpperCase() || null;
+    if (nextScope !== prevScope) changed.push("scope");
+  }
+  if (incoming.branch !== undefined) {
+    const nextBranch = typeof incoming.branch === "string" ? incoming.branch.trim() || null : null;
+    const prevBranch = existing.branch?.trim() || null;
+    if (nextBranch !== prevBranch) changed.push("branch");
+  }
+  if (incoming.branchCode !== undefined) {
+    const nextBranchCode = typeof incoming.branchCode === "string" ? incoming.branchCode.trim() || null : null;
+    const prevBranchCode = existing.branchCode?.trim() || null;
+    if (nextBranchCode !== prevBranchCode) changed.push("branchCode");
+  }
+  if (incoming.status !== undefined) {
+    const nextStatus = typeof incoming.status === "string" ? incoming.status.trim().toUpperCase() || null : null;
+    const prevStatus = existing.status?.trim().toUpperCase() || null;
+    if (nextStatus !== prevStatus) changed.push("status");
+  }
+  return changed;
 }

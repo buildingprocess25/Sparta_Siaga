@@ -51,7 +51,7 @@ export function parseProvisioningEvent(value: unknown, eventHeader: string | nul
 
 export function initialProvisioningRole(value: string) {
   const role = value.trim().toLowerCase();
-  const known = CANONICAL_HUMAN_ROLES.find(r => r.key === role && r.key !== "tim_toko");
+  const known = CANONICAL_HUMAN_ROLES.find(r => r.key === role && r.selectable);
   if (!known) throw new SpartaIntegrationError("UNKNOWN_BUSINESS_ROLE", "Role portal belum terdaftar di katalog role SIAGA.", 422);
   return known.key;
 }
@@ -72,10 +72,15 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
     [event.user.spartaUserId.trim(), event.eventId, event.occurredAt]);
     const identity = { spartaUserId: event.user.spartaUserId, employeeId: event.user.employeeId, email: event.user.email };
     const { rows } = await client.query(`SELECT * FROM users WHERE ${SPARTA_IDENTITY_WHERE} FOR UPDATE`, identityParameters(identity));
-    const user = selectSpartaIdentity(rows, identity);
+    const user = selectSpartaIdentity(rows, identity, { allowLegacyLocalRelink: true });
     if (user?.last_provisioned_at && Date.parse(event.occurredAt) <= new Date(user.last_provisioned_at).getTime()) {
       await client.query("COMMIT");
       return { result: "ignored", reason: "stale_event" };
+    }
+    if (user?.system_role === "ADMIN" && (user.source || "").trim().toUpperCase() === "LOCAL") {
+      await saveCheckpoint();
+      await client.query("COMMIT");
+      return { result: "ignored", reason: "protected_system_admin" };
     }
     const disable = event.type === "access.revoked" || event.type === "user.deactivated" ||
       !event.access.isActive || event.user.status !== "ACTIVE";
@@ -103,6 +108,7 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
         : preserveLocalRole && (user?.scope === "HO" || user?.scope === "BRANCH")
           ? user.scope
           : deriveScopeFromBusinessRole(role);
+    const targetBranchCode = systemAdmin || scope === "HO" ? null : branchCode;
     const existingBranch = user?.branch?.trim() && user.branch.trim() !== "-" ? user.branch.trim() : null;
     let assignedBranch = systemAdmin || scope === "HO" ? null : existingBranch;
     if (!disable && scope === "BRANCH" && (convertBranch || !existingBranch) && (!event.user.branch.trim() || event.user.branch.trim() === "-")) {
@@ -138,8 +144,8 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
       const status = disable ? "INACTIVE" : "ACTIVE";
       const changesAccess = disable || user.status !== status || user.sso_status !== ssoStatus ||
         user.business_role !== role || user.scope !== scope || (user.branch || null) !== assignedBranch ||
-        user.source !== "SPARTA" || (convertBranch && (user.branch_code || null) !== branchCode);
-      await client.query(`UPDATE users SET external_user_id=$2,nik=$3,name=$4,email=$5,
+        user.source !== "SPARTA" || (convertBranch && (user.branch_code || null) !== targetBranchCode);
+      await client.query(`UPDATE users SET external_user_id=$2,nik=COALESCE($3, nik),name=$4,email=$5,
         pending_portal_branch=jsonb_build_object('branch',$6::text,'branchCode',$7::text),
         source='SPARTA',status=$8,sso_status=$9,last_provisioned_at=$10,
         token_version=COALESCE(token_version,1)+$11,business_role=$12,scope=$13,branch=$14,updated_at=NOW() WHERE id=$1`,
@@ -148,9 +154,14 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
         event.occurredAt, changesAccess ? 1 : 0, role, scope, assignedBranch]);
       if (changesAccess) await client.query("UPDATE user_sessions SET is_revoked=TRUE WHERE user_id=$1", [id]);
     }
-    if (convertBranch && !disable && branchCode) {
-      await client.query(`UPDATE users SET branch=$2,branch_code=$3 WHERE id=$1
-        AND system_role<>'ADMIN' AND COALESCE(scope,'')<>'HO'`, [id, event.user.branch, branchCode]);
+    if (convertBranch && !disable) {
+      if (scope === "BRANCH" && branchCode) {
+        await client.query(`UPDATE users SET branch=$2,branch_code=$3 WHERE id=$1
+          AND system_role<>'ADMIN' AND COALESCE(scope,'')<>'HO'`, [id, event.user.branch, branchCode]);
+      } else if (scope === "HO") {
+        await client.query(`UPDATE users SET branch=NULL,branch_code=NULL WHERE id=$1
+          AND system_role<>'ADMIN'`, [id]);
+      }
     }
     await saveCheckpoint();
     await client.query("COMMIT");

@@ -47,6 +47,7 @@ interface UserSummary {
   businessRole: string | null;
   scope: "HO" | "BRANCH" | null;
   branch: string | null;
+  branchCode?: string | null;
 }
 
 export function UserOverrideTab() {
@@ -141,7 +142,8 @@ export function UserOverrideTab() {
       u.name.toLowerCase().includes(q) ||
       (u.nik && u.nik.toLowerCase().includes(q)) ||
       (u.businessRole && u.businessRole.toLowerCase().includes(q)) ||
-      (u.branch && u.branch.toLowerCase().includes(q))
+      (u.branch && u.branch.toLowerCase().includes(q)) ||
+      (u.branchCode && u.branchCode.toLowerCase().includes(q))
     );
   });
 

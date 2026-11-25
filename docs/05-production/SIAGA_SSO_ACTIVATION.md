@@ -4,14 +4,16 @@ Source SIAGA menerima pemberian akses, pembaruan identitas, dan pencabutan akses
 
 ## Perilaku
 
-- Pada `access.granted` (atau akun yang belum memiliki `business_role` lokal), role modul SIAGA dari portal menjadi `business_role` awal dan scope HO/BRANCH diturunkan dari katalog SIAGA. `ADMIN` pada katalog modul berarti Admin HO, bukan System Admin.
-- Pada `user.updated`, portal hanya menyinkronkan identitas (`spartaUserId`, `nik`, `name`, `email`, `pending_portal_branch`) dan status nonaktif/blokir apabila akses dicabut; `business_role` dan `scope` lokal yang sudah ditetapkan di SIAGA tetap dipertahankan dan tidak ditimpa.
-- Perubahan `business_role` yang dilakukan admin di SIAGA dilaporkan kembali ke Portal melalui `POST /v1/admin/users/sync` hanya untuk akun Portal yang masih berstatus `ACTIVE` (guard anti-reaktivasi mencegah pengaktifan ulang akses yang sudah dicabut/dinonaktifkan).
-- User baru yang valid langsung ACTIVE dan tidak mendapat password lokal. Perubahan role/status/scope/cabang atau pencabutan akses membatalkan sesi lama (`token_version` dinaikkan dan `user_sessions` dicabut). Role awal tidak dikenal ditolak; pencabutan tetap diproses meskipun role lama tidak dikenal.
-- Akun lama dicocokkan melalui ID portal, NIK, lalu email. Konflik identitas dibatalkan tanpa mengganti akun. ID lokal dan referensi histori laporan tetap dipertahankan.
-- Sebelum konversi akhir (`SPARTA_BRANCH_MASTER_ENABLED=false`), cabang akun lama yang masih valid dipertahankan. User baru (atau user yang baru mendapat cakupan `BRANCH` tanpa cabang valid) memakai padanan nama cabang SIAGA: kecocokan nama langsung atau alias resmi portal. Padanan yang tidak ada/ambigu ditolak dan terlihat sebagai event gagal di portal.
-- Perpindahan cabang akun lama mengikuti tahap konversi akhir. Area belum dikirim dalam kontrak provisioning portal; jangan menganggap area sudah tersinkronisasi.
-- Permission per role dan override khusus tetap lokal. System Admin yang sudah ada tidak dipromosikan/didemotasikan dari role modul portal.
+- **Manajemen user terpusat di Portal SPARTA:** penambahan akun baru, perubahan identitas (`name`, `nik`, `email`), cabang, role operasional, status akun, serta pemberian/pencabutan akses modul SIAGA dilakukan melalui Portal SPARTA dan dikirim otomatis ke `POST /internal/sparta/provision` tanpa menunggu pengguna login pertama kali.
+- Pada `access.granted`, SIAGA otomatis membuat akun lokal (atau mengaktifkan kembali akun yang sebelumnya dicabut), menetapkan `business_role` dari katalog 8 role aktif SIAGA (`admin`, `bm`, `bms`, `bmc`, `bes`, `bec`, `bbs`, `bbc`), dan menurunkan `scope` (`HO`/`BRANCH`) secara otomatis. `ADMIN` pada katalog modul berarti Admin HO, bukan System Admin.
+- Pada `user.updated`, portal hanya menyinkronkan identitas (`spartaUserId`, `nik` dengan perlindungan `COALESCE` agar NIK existing tidak terhapus oleh `null`, `name`, `email`, `pending_portal_branch`) dan status nonaktif/blokir apabila akses dicabut; `business_role` dan `scope` lokal yang sudah ada tetap dipertahankan dan tidak ditimpa.
+- Menu **Manajemen Pengguna & Peran** di SIAGA bersifat informasional untuk akun operasional (menonaktifkan pembuatan, pengeditan operasional, dan penghapusan user di SIAGA agar tidak menduplikasi Portal) sambil tetap mempertahankan daftar pengguna, detail izin efektif, **Hak Akses Role**, dan **Akses Khusus User**.
+- User baru yang valid langsung `ACTIVE` tanpa password lokal. Perubahan role/status/scope/cabang atau pencabutan akses membatalkan sesi lama (`token_version` dinaikkan dan `user_sessions` dicabut). Role awal di luar 8 role aktif ditolak (`422`); pencabutan tetap diproses meskipun role lama tidak dikenal.
+- Akun lama dicocokkan melalui ID portal, NIK, lalu email; penautan ulang ID legacy pada akun `LOCAL` non-admin diizinkan secara aman oleh provisioning, sedangkan konflik antar-akun SSO tetap ditolak (`409`). ID lokal dan referensi histori laporan tetap dipertahankan.
+- Sebelum konversi akhir (`SPARTA_BRANCH_MASTER_ENABLED=false`), cabang akun lama yang masih valid dipertahankan. User baru (atau user yang baru mendapat cakupan `BRANCH` tanpa cabang valid) memakai padanan nama cabang SIAGA: kecocokan nama langsung atau alias resmi portal. Pada saat konversi aktif (`SPARTA_BRANCH_MASTER_ENABLED=true`), transisi `BRANCH` ↔ `HO` ikut menyelaraskan atau mengosongkan `branch` dan `branch_code`.
+- Permission per role (`role_permissions`) dan override khusus (`user_permission_overrides`) tetap dikelola lokal di SIAGA. Akun `SYSTEM_ADMIN` darurat lokal dilindungi dari provisioning Portal (tidak dipromosikan, didemotasikan, maupun dinonaktifkan oleh event Portal) dan rotasi password darurat lokalnya tetap tersedia hingga pengganti terverifikasi.
+
+Kebutuhan backfill dan koordinasi data Portal terdokumentasi di [SIAGA_PORTAL_DATA_COORDINATION.md](./SIAGA_PORTAL_DATA_COORDINATION.md).
 
 ## Penerapan
 

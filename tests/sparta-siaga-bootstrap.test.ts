@@ -8,6 +8,7 @@ test("initial replay grants only existing SIAGA entitlements and revokes account
     { id: "active", status: "ACTIVE", modules: [{ moduleId: "siaga", role: "BMS", isActive: true }] },
     { id: "revoked", status: "ACTIVE", modules: [{ moduleId: "siaga", role: "USER", isActive: false }] },
     { id: "inactive", status: "INACTIVE", modules: [{ moduleId: "siaga", role: "USER", isActive: true }] },
+    { id: "legacy", status: "ACTIVE", modules: [{ moduleId: "siaga", role: "HO_ADMIN", isActive: true }] },
     { id: "invalid", status: "ACTIVE", modules: [{ moduleId: "siaga", role: "SUPER_ADMIN", isActive: true }] },
   ]);
   assert.deepEqual(plan.events, [
@@ -16,5 +17,8 @@ test("initial replay grants only existing SIAGA entitlements and revokes account
     { userId: "revoked", type: "access.revoked" },
     { userId: "inactive", type: "user.deactivated" },
   ]);
-  assert.deepEqual(plan.invalid, [{ userId: "invalid", role: "SUPER_ADMIN" }]);
+  assert.deepEqual(plan.invalid, [
+    { userId: "legacy", role: "HO_ADMIN" },
+    { userId: "invalid", role: "SUPER_ADMIN" },
+  ]);
 });

@@ -19,6 +19,7 @@ type Facility = {
 
 export default function FacilityAdminPage() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [branches, setBranches] = useState<Array<{ code: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -54,6 +55,19 @@ export default function FacilityAdminPage() {
     const timeout = window.setTimeout(load, 250);
     return () => window.clearTimeout(timeout);
   }, [load]);
+
+  useEffect(() => {
+    fetch("/api/branches", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (Array.isArray(payload?.data)) {
+          setBranches(payload.data.map((b: { code: string; name: string }) => ({ code: b.code, name: b.name })));
+        }
+      })
+      .catch(() => {
+        setBranches([]);
+      });
+  }, []);
 
   async function updateFacility(id: string, patch: Record<string, unknown>) {
     setSavingId(id);
@@ -174,9 +188,32 @@ export default function FacilityAdminPage() {
                   <label className="text-xs font-semibold text-slate-600">Longitude<input type="number" step="any" defaultValue={facility.longitude} onBlur={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && value !== facility.longitude) updateFacility(facility.id, { longitude: value }); }} className="mt-1 min-h-11 w-full rounded-md border border-slate-300 px-2 text-sm font-normal" /></label>
                 </div>
                 <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Cabang penanggung jawab
-                  <input defaultValue={facility.branch_id || ""} placeholder="Belum dipetakan"
-                    onBlur={(event) => { const next = event.target.value.trim() || null; if (next !== facility.branch_id) updateFacility(facility.id, { branchId: next }); }}
-                    className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+                  {branches.length > 0 ? (
+                    <select
+                      value={facility.branch_id || ""}
+                      disabled={savingId === facility.id}
+                      onChange={(event) => {
+                        const next = event.target.value.trim() || null;
+                        if (next !== facility.branch_id) updateFacility(facility.id, { branchId: next });
+                      }}
+                      className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">Belum dipetakan</option>
+                      {facility.branch_id &&
+                        !branches.some((b) => b.code.toUpperCase() === facility.branch_id?.toUpperCase()) && (
+                          <option value={facility.branch_id}>{facility.branch_id} (Legacy)</option>
+                        )}
+                      {branches.map((b) => (
+                        <option key={b.code} value={b.code}>
+                          {b.code.toUpperCase() === b.name.toUpperCase() ? b.name : `${b.code} — ${b.name}`}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input defaultValue={facility.branch_id || ""} placeholder="Belum dipetakan"
+                      onBlur={(event) => { const next = event.target.value.trim() || null; if (next !== facility.branch_id) updateFacility(facility.id, { branchId: next }); }}
+                      className="mt-1 min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" />
+                  )}
                 </label>
                 <div className="grid gap-2"><button type="button" disabled={savingId === facility.id || !facility.mapping_verified_at}
                   onClick={() => updateFacility(facility.id, { autoReportEnabled: !facility.auto_report_enabled })}

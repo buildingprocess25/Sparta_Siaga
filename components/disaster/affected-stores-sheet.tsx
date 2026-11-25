@@ -174,7 +174,12 @@ export function AffectedStoresSheet({
                     <div className={`text-[10px] flex items-center gap-1.5 font-medium ${isLight ? "text-slate-500" : "text-slate-400"}`}>
                       <span>{store.kode_toko}</span>
                       <span className="opacity-50">•</span>
-                      <span>Cabang {store.cabang}</span>
+                      <span>
+                        Cabang {store.cabang}
+                        {store.branch_code && store.branch_code.toUpperCase() !== store.cabang.toUpperCase()
+                          ? ` (${store.branch_code})`
+                          : ""}
+                      </span>
                     </div>
                   </div>
 

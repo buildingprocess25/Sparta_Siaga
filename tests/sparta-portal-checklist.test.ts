@@ -17,10 +17,14 @@ import { backfillPortalBranches, fetchPortalMaster, previewPortalStores, syncSto
 import { exchangeSpartaLaunchToken, matchSsoIdentityToSiagaUser, querySpartaBatchModuleGrants } from "../lib/sso-service";
 import { compareFacilityMasters } from "../lib/sparta-facility-comparison";
 import { getStoreOwnership, getStoreOwnershipLabel } from "../types/store";
+import { evaluateEarthquakeV1MmiWorkflow } from "../lib/earthquake-v1-mmi-service";
 import { canActOnReport, type UserContext } from "../lib/report-permissions";
 import { getReportAccessSql } from "../lib/report-access-policy";
 import type { IncidentRecord } from "../types/incident";
 import { POST as provisionPost } from "../app/internal/sparta/provision/route";
+import { GET as adminUsersGet, POST as adminUsersPost } from "../app/api/admin/users/route";
+import { PATCH as adminUserPatch, DELETE as adminUserDelete } from "../app/api/admin/users/[id]/route";
+import { signSession } from "../lib/jwt";
 
 import {
   evaluatePortalRoleSyncEligibility,
@@ -674,4 +678,268 @@ test("a missing portal export is reported before any database connection", () =>
       assert.ok(!/ENOTFOUND|ECONNREFUSED|FATAL_DATABASE/.test(stderr));
       return true;
     });
+});
+test("provisioning preserves existing NIK via COALESCE when Portal sends employeeId: null", async () => {
+  const db = database(sql => sql.startsWith("SELECT * FROM users") ? [existingUser({ nik: "20240001" })] : []);
+  await applyProvisioningEvent(
+    event({ type: "user.updated", user: { ...event().user, employeeId: null } }),
+    { pool: db.pool }
+  );
+  const update = db.calls.find(call => call.sql.startsWith("UPDATE users"))!;
+  assert.match(update.sql, /nik=COALESCE\(\$3,\s*nik\)/);
+  assert.equal(update.values[2], null);
+
+  db.calls.length = 0;
+  await applyProvisioningEvent(
+    event({ eventId: "event-test-2", type: "user.updated", occurredAt: new Date(now + 1000).toISOString(),
+      user: { ...event().user, employeeId: "20249999" } }),
+    { pool: db.pool }
+  );
+  const updateWithNik = db.calls.find(call => call.sql.startsWith("UPDATE users"))!;
+  assert.equal(updateWithNik.values[2], "20249999");
+});
+test("initialProvisioningRole allows only the 8 active selectable roles and rejects legacy roles", () => {
+  for (const role of ["admin", "bm", "bms", "bmc", "bes", "bec", "bbs", "bbc"]) {
+    assert.equal(initialProvisioningRole(role.toUpperCase()), role);
+  }
+  for (const rejected of ["ho_admin", "gm_ho", "sm_ho", "tim_toko", "rekanan", "USER", "SYSTEM_ADMIN"]) {
+    assert.throws(() => initialProvisioningRole(rejected), /katalog/);
+  }
+});
+test("selectSpartaIdentity allows legacy non-admin LOCAL relinking while protecting SSO and ADMIN links", () => {
+  const localLegacy = existingUser({ source: "LOCAL", system_role: "USER", external_user_id: "usr_legacy_01" });
+  assert.equal(
+    selectSpartaIdentity([localLegacy], { spartaUserId: "portal-new", email: "user@example.test" }, { allowLegacyLocalRelink: true })?.id,
+    localLegacy.id
+  );
+  assert.throws(
+    () => selectSpartaIdentity([localLegacy], { spartaUserId: "portal-new", email: "user@example.test" }),
+    /ID portal lain/
+  );
+  assert.throws(
+    () => selectSpartaIdentity(
+      [existingUser({ source: "SPARTA_SSO", system_role: "USER", external_user_id: "portal-old" })],
+      { spartaUserId: "portal-new", email: "user@example.test" },
+      { allowLegacyLocalRelink: true }
+    ),
+    /ID portal lain/
+  );
+  assert.throws(
+    () => selectSpartaIdentity(
+      [existingUser({ source: "LOCAL", system_role: "ADMIN", external_user_id: "adm0001" })],
+      { spartaUserId: "portal-new", email: "user@example.test" },
+      { allowLegacyLocalRelink: true }
+    ),
+    /ID portal lain/
+  );
+});
+test("provisioning protects local emergency SYSTEM_ADMIN from deactivation or mutation", async () => {
+  const db = database(sql =>
+    sql.startsWith("SELECT * FROM users")
+      ? [existingUser({ id: "usr_sysadmin_01", source: "LOCAL", system_role: "ADMIN", external_user_id: "portal-1", business_role: null, scope: null, branch: null })]
+      : []
+  );
+  const result = await applyProvisioningEvent(
+    event({ type: "access.revoked", access: { isActive: false, role: "ADMIN" } }),
+    { pool: db.pool }
+  );
+  assert.deepEqual(result, { result: "ignored", reason: "protected_system_admin" });
+  assert.ok(!db.calls.some(call => call.sql.startsWith("UPDATE users") || call.sql.startsWith("UPDATE user_sessions")));
+  assert.ok(db.calls.some(call => call.sql.includes("INSERT INTO sparta_provisioning_state")));
+});
+test("branch master mode clears branch and branch_code on BRANCH->HO and updates both on branch change", async () => {
+  process.env.SPARTA_BRANCH_MASTER_ENABLED = "true";
+  const dbToHo = database(sql =>
+    sql.startsWith("SELECT * FROM users")
+      ? [existingUser({ scope: "BRANCH", business_role: "bms", branch: "CIKOKOL", branch_code: "KZ01" })]
+      : []
+  );
+  const hoGrant = event({ type: "access.granted", access: { isActive: true, role: "ADMIN" } });
+  hoGrant.user.branch = "HEAD OFFICE";
+  hoGrant.user.branchCode = "HEAD";
+  await applyProvisioningEvent(hoGrant, { pool: dbToHo.pool });
+  assert.ok(dbToHo.calls.some(call => call.sql.includes("UPDATE users SET branch=NULL,branch_code=NULL")));
+  assert.ok(dbToHo.calls.some(call => call.sql.startsWith("UPDATE user_sessions SET is_revoked=TRUE")));
+
+  const dbBranchChange = database(sql =>
+    sql.startsWith("SELECT * FROM users")
+      ? [existingUser({ scope: "BRANCH", business_role: "bms", branch: "BANDUNG", branch_code: "BZ01" })]
+      : sql.startsWith("SELECT code FROM sparta_master_branches")
+        ? [{ code: "KZ01" }]
+        : []
+  );
+  await applyProvisioningEvent(event({ type: "user.updated" }), { pool: dbBranchChange.pool });
+  assert.ok(dbBranchChange.calls.some(call => call.sql.includes("UPDATE users SET branch=$2,branch_code=$3") && call.values[2] === "KZ01"));
+  assert.ok(dbBranchChange.calls.some(call => call.sql.startsWith("UPDATE user_sessions SET is_revoked=TRUE")));
+});
+test("centralized admin user APIs block operational CRUD while preserving read-only listing and emergency admin rotation", async () => {
+  const prevSecret = process.env.JWT_SECRET;
+  const prevTestMode = process.env.SPARTA_TEST_MODE;
+  process.env.JWT_SECRET = process.env.JWT_SECRET || "test-only-jwt-secret-minimum-32-characters";
+  process.env.SPARTA_TEST_MODE = "true";
+  const g = globalThis as unknown as { isolatedPool?: Pool };
+  const prevPool = g.isolatedPool;
+
+  const sysAdminRow = {
+    id: "usr_sysadmin_01",
+    external_user_id: null,
+    nik: "0001",
+    name: "System Admin",
+    email: "siaga@admin.com",
+    system_role: "ADMIN",
+    business_role: null,
+    scope: null,
+    branch: null,
+    branch_code: null,
+    status: "ACTIVE",
+    source: "LOCAL",
+    sso_status: null,
+    token_version: 2,
+    created_at: new Date(now),
+    updated_at: new Date(now),
+  };
+  const opUserRow = {
+    ...sysAdminRow,
+    id: "usr_sso_01",
+    external_user_id: "portal-1",
+    nik: "123",
+    name: "User SSO",
+    email: "user@example.test",
+    system_role: "USER",
+    business_role: "bms",
+    scope: "BRANCH",
+    branch: "CIKOKOL",
+    source: "SPARTA",
+    sso_status: "ACTIVE",
+  };
+  const localUserRow = { ...opUserRow, id: "usr_local_01", external_user_id: null, source: "LOCAL", sso_status: null };
+
+  const queries: string[] = [];
+  const mockClient = {
+    async query(sql: string, values: unknown[] = []) {
+      queries.push(sql);
+      if (sql.includes("FROM users WHERE id = $1")) {
+        const id = values[0];
+        const row = id === "usr_sysadmin_01" ? sysAdminRow : id === "usr_sso_01" ? opUserRow : id === "usr_local_01" ? localUserRow : null;
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+      if (sql.includes("FROM users ORDER BY")) {
+        return { rows: [sysAdminRow, opUserRow], rowCount: 2 };
+      }
+      if (sql.includes("FROM user_permission_overrides")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.startsWith("UPDATE users SET")) {
+        return { rows: [{ ...sysAdminRow, token_version: 2 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    },
+    release() {},
+  };
+  g.isolatedPool = {
+    query: mockClient.query,
+    connect: async () => mockClient,
+  } as unknown as Pool;
+
+  try {
+    const token = await signSession({ id: "usr_sysadmin_01" });
+    const headers = { cookie: `siaga_session=${token}`, "Content-Type": "application/json" };
+
+    const getRes = await adminUsersGet(new Request("http://localhost/api/admin/users", { headers }));
+    assert.equal(getRes.status, 200);
+    const getJson = await getRes.json();
+    assert.equal(getJson.meta.centralizedInPortal, true);
+    assert.match(getJson.meta.portalUserManagementUrl, /#\/manajemen-user$/);
+
+    const postRes = await adminUsersPost(new Request("http://localhost/api/admin/users", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Baru" }),
+    }));
+    assert.equal(postRes.status, 403);
+    assert.equal((await postRes.json()).code, "PORTAL_USER_MANAGEMENT_REQUIRED");
+
+    const patchOpRes = await adminUserPatch(
+      new Request("http://localhost/api/admin/users/usr_sso_01", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ businessRole: "bmc", branch: "BANDUNG", status: "INACTIVE" }),
+      }),
+      { params: Promise.resolve({ id: "usr_sso_01" }) }
+    );
+    assert.equal(patchOpRes.status, 400);
+    assert.equal((await patchOpRes.json()).code, "PORTAL_USER_MANAGEMENT_REQUIRED");
+
+    const delLocalRes = await adminUserDelete(
+      new Request("http://localhost/api/admin/users/usr_local_01", { method: "DELETE", headers }),
+      { params: Promise.resolve({ id: "usr_local_01" }) }
+    );
+    assert.equal(delLocalRes.status, 400);
+    assert.equal((await delLocalRes.json()).code, "PORTAL_USER_MANAGEMENT_REQUIRED");
+
+    const adminDemoteRes = await adminUserPatch(
+      new Request("http://localhost/api/admin/users/usr_sysadmin_01", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ systemRole: "USER" }),
+      }),
+      { params: Promise.resolve({ id: "usr_sysadmin_01" }) }
+    );
+    assert.equal(adminDemoteRes.status, 400);
+    assert.match((await adminDemoteRes.json()).error, /Tidak dapat mencabut hak akses ADMIN/i);
+
+    const adminPwRes = await adminUserPatch(
+      new Request("http://localhost/api/admin/users/usr_sysadmin_01", {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ password: "NewEmergencyPassword123!", confirmPassword: "NewEmergencyPassword123!" }),
+      }),
+      { params: Promise.resolve({ id: "usr_sysadmin_01" }) }
+    );
+    assert.equal(adminPwRes.status, 200);
+    assert.ok(queries.some(sql => sql.includes("UPDATE user_sessions SET is_revoked = TRUE")));
+  } finally {
+    g.isolatedPool = prevPool;
+    if (prevTestMode === undefined) delete process.env.SPARTA_TEST_MODE;
+    else process.env.SPARTA_TEST_MODE = prevTestMode;
+    if (prevSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = prevSecret;
+  }
+});
+test("evaluateEarthquakeV1MmiWorkflow propagates branch_code and getStoreOwnership keeps UNKNOWN distinct from REGULAR", () => {
+  assert.equal(getStoreOwnership(null), "UNKNOWN");
+  assert.equal(getStoreOwnership(undefined), "UNKNOWN");
+  assert.equal(getStoreOwnership("UNKNOWN"), "UNKNOWN");
+  assert.notEqual(getStoreOwnership(null), "REGULER");
+
+  const evaluation = evaluateEarthquakeV1MmiWorkflow({
+    earthquake: {
+      id: "eq-test-branch-code",
+      magnitude: 6.2,
+      depthKm: 10,
+      latitude: -6.2,
+      longitude: 106.5,
+      timestamp: now,
+    },
+    currentTime: now + 11 * 60 * 1000,
+    windowStartedAt: now,
+    stores: [
+      {
+        id: "SAT-T100",
+        kode_toko: "T100",
+        nama_toko: "Toko Uji Gempa",
+        cabang: "CIKOKOL",
+        branch_code: "KZ01",
+        alamat: "",
+        latitude: -6.21,
+        longitude: 106.51,
+        fr_type: "UNKNOWN",
+        status: "SAFE",
+      },
+    ],
+  });
+
+  assert.equal(evaluation.allEvaluatedStores.length, 1);
+  assert.equal(evaluation.allEvaluatedStores[0].branch_code, "KZ01");
+  assert.equal(getStoreOwnership(evaluation.allEvaluatedStores[0].fr_type), "UNKNOWN");
 });

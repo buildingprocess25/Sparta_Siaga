@@ -9,7 +9,7 @@ import {
   runAutonomousStoreSyncCycle,
   WORKER_STORE_SYNC_ADVISORY_LOCK_ID,
 } from "../lib/server-daemon";
-import { getOrLoadMasterStores, invalidateMasterStoresCache } from "../lib/store-master-loader";
+import { getOrLoadMasterStores, getBranchCentroidsFromStores, invalidateMasterStoresCache } from "../lib/store-master-loader";
 
 type SqlCall = { sql: string; values: unknown[] };
 
@@ -255,5 +255,41 @@ test("getOrLoadMasterStores enforces portal active filter and preserves UNKNOWN 
   assert.equal(stores.length, 1);
   assert.equal(stores[0].branch_code, "KZ01");
   assert.equal(stores[0].fr_type, "UNKNOWN");
-  assert.equal(stores[0].alamat, "Alfamart Toko Portal, Cabang CIKOKOL");
+  assert.equal(stores[0].alamat, "");
+
+  // When Portal store has alamat: null, return empty string (never synthetic fallback) and group centroids by branch_code
+  const nullAddrDb = mockPool(() => [
+    {
+      id: "SAT-T002",
+      kode_toko: "T002",
+      nama_toko: "Toko Dua",
+      cabang: "CIKOKOL",
+      branch_code: "KZ01",
+      alamat: null,
+      latitude: -6.2,
+      longitude: 106.5,
+      fr_type: "FRANCHISE",
+      branch_emergency_contact: null,
+    },
+    {
+      id: "SAT-T003",
+      kode_toko: "T003",
+      nama_toko: "Toko Tiga",
+      cabang: "BALARAJA",
+      branch_code: "KZ01",
+      alamat: "Jl. Resmi",
+      latitude: -6.3,
+      longitude: 106.4,
+      fr_type: "REGULAR",
+      branch_emergency_contact: null,
+    },
+  ]);
+  const loaded = await getOrLoadMasterStores(true, { pool: nullAddrDb.pool });
+  assert.equal(loaded[0].alamat, "");
+  assert.equal(loaded[1].alamat, "Jl. Resmi");
+
+  const centroids = getBranchCentroidsFromStores(loaded);
+  assert.equal(centroids.length, 1);
+  assert.equal(centroids[0].branch_code, "KZ01");
+  assert.equal(centroids[0].store_count, 2);
 });

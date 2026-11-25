@@ -71,11 +71,11 @@ async function main() {
     if (plan.invalid.length) throw new Error("INVALID_SIAGA_ROLES_RUN_PREVIEW");
     await db.$transaction(async (tx: PortalDatabase) => {
       await tx.appModule.update({ where: { id: "SIAGA" }, data: { provisioningUrl: receiverUrl } });
-      for (const role of CANONICAL_HUMAN_ROLES.filter(r => r.key !== "tim_toko")) {
+      for (const role of CANONICAL_HUMAN_ROLES.filter(r => r.selectable)) {
         const code = role.key.toUpperCase();
         await tx.moduleRole.upsert({ where: { moduleId_code: { moduleId: "SIAGA", code } },
-          create: { moduleId: "SIAGA", code, label: role.label, isActive: true },
-          update: { label: role.label, isActive: true } });
+          create: { moduleId: "SIAGA", code, label: role.label, isActive: true, isModuleAdmin: role.key === "admin" },
+          update: { label: role.label, isActive: true, isModuleAdmin: role.key === "admin" } });
       }
       const publisher = new ProvisioningService(new PrismaProvisioningRepository(tx));
       const currentUsers = new PrismaUsersRepository(tx);

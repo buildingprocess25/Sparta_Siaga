@@ -1,27 +1,13 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
 import { AppDialog } from "@/components/shared/app-dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   ShieldAlert,
   UserCog,
-  Edit,
-  Trash2,
-  Plus,
   X,
   Search,
-  CheckCircle,
   Loader2,
   Eye,
   EyeOff,
@@ -32,26 +18,19 @@ import {
   Lock,
   AlertTriangle,
   RotateCcw,
-  Users,
   CheckCircle2,
   XCircle,
   ShieldCheck,
-  Building2,
   Globe,
   ChevronLeft,
   ChevronRight,
   Info,
   Store,
+  ExternalLink,
 } from "lucide-react";
 import { RolePermissionTab } from "@/components/admin/role-permission-tab";
 import { UserOverrideTab } from "@/components/admin/user-override-tab";
-import {
-  HUMAN_SELECTABLE_HO_ROLES,
-  HUMAN_SELECTABLE_BRANCH_ROLES,
-  getRoleDisplayLabel,
-  deriveScopeFromBusinessRole,
-} from "@/lib/role-catalog";
-import { normalizeBranchCode } from "@/lib/branch-utils";
+import { getRoleDisplayLabel } from "@/lib/role-catalog";
 
 interface User {
   id: string;
@@ -85,6 +64,7 @@ interface User {
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [portalManagementUrl, setPortalManagementUrl] = useState("https://sparta-alfamart.web.id/#/manajemen-user");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,41 +85,16 @@ export default function UserManagementPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(25);
 
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Detail & Emergency Admin Password Modal State
   const [isSsoInfoModalOpen, setIsSsoInfoModalOpen] = useState(false);
   const [selectedUserForDetail, setSelectedUserForDetail] = useState<User | null>(null);
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [formMode, setFormMode] = useState<"CREATE" | "EDIT">("CREATE");
-  const [initialEditForm, setInitialEditForm] = useState<any>(null);
-  const [editForm, setEditForm] = useState<Partial<User> & { password?: string; confirmPassword?: string }>({
-    name: "",
-    nik: "",
-    email: "",
-    systemRole: "USER",
-    businessRole: "bms",
-    scope: "BRANCH",
-    branch: "",
-    status: "ACTIVE",
-    password: "",
-    confirmPassword: "",
-  });
+  const [adminPasswordTarget, setAdminPasswordTarget] = useState<User | null>(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showConfirmClose, setShowConfirmClose] = useState(false);
-  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
-
-  // Search Branch/Store State
-  const [branchQuery, setBranchQuery] = useState("");
-  const [branchResults, setBranchResults] = useState<any[]>([]);
-  const [isSearchingBranch, setIsSearchingBranch] = useState(false);
-  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
-  const [selectedLocationObj, setSelectedLocationObj] = useState<any>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -219,7 +174,8 @@ export default function UserManagementPage() {
           (u.nik && u.nik.toLowerCase().includes(lower)) ||
           (u.email && u.email.toLowerCase().includes(lower)) ||
           (u.externalUserId && u.externalUserId.toLowerCase().includes(lower)) ||
-          (u.branch && u.branch.toLowerCase().includes(lower))
+          (u.branch && u.branch.toLowerCase().includes(lower)) ||
+          (u.branchCode && u.branchCode.toLowerCase().includes(lower))
       );
     }
 
@@ -356,64 +312,6 @@ export default function UserManagementPage() {
 
   const totalPages = pageSize === -1 ? 1 : Math.max(1, Math.ceil(filteredUsers.length / pageSize));
 
-  // Click outside to close branch dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsBranchDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Debounced search for canonical organizational branches
-  useEffect(() => {
-    if (!branchQuery.trim() || branchQuery.length < 1) {
-      setBranchResults([]);
-      setIsSearchingBranch(false);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      return;
-    }
-
-    if (
-      selectedLocationObj &&
-      (branchQuery.trim().toUpperCase() === selectedLocationObj.code?.toUpperCase() ||
-        branchQuery.trim() === `${selectedLocationObj.code} — ${selectedLocationObj.name}`)
-    ) {
-      return;
-    }
-
-    const delay = setTimeout(async () => {
-      setIsSearchingBranch(true);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
-
-      try {
-        const res = await fetch(`/api/branches?q=${encodeURIComponent(branchQuery)}`, {
-          signal: abortControllerRef.current.signal,
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setBranchResults(data.data || []);
-          setIsBranchDropdownOpen(true);
-        }
-      } catch (err: any) {
-        if (err.name !== "AbortError") {
-          console.error("Branch search failed", err);
-        }
-      } finally {
-        setIsSearchingBranch(false);
-      }
-    }, 200);
-
-    return () => clearTimeout(delay);
-  }, [branchQuery, selectedLocationObj]);
-
   const fetchUsers = async () => {
     setLoading(true);
     setError(null);
@@ -426,6 +324,9 @@ export default function UserManagementPage() {
       if (!res.ok) throw new Error("Gagal mengambil data user");
       const json = await res.json();
       setUsers(json.data || []);
+      if (typeof json.meta?.portalUserManagementUrl === "string" && json.meta.portalUserManagementUrl.trim()) {
+        setPortalManagementUrl(json.meta.portalUserManagementUrl.trim());
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -433,307 +334,57 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleOpenCreate = () => {
-    setFormMode("CREATE");
-    const initialState = {
-      name: "",
-      nik: "",
-      email: "",
-      systemRole: "USER",
-      businessRole: "bms",
-      scope: "BRANCH",
-      branch: "",
-      status: "ACTIVE",
-      password: "",
-      confirmPassword: "",
-    };
-    setEditForm(initialState as any);
-    setInitialEditForm(initialState);
-    setBranchQuery("");
-    setSelectedLocationObj(null);
-    setFormError(null);
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-    setIsResetPasswordOpen(false);
-    setCurrentStep(1);
-    setIsModalOpen(true);
-  };
-
   const isPortalManagedAccount = (u: Partial<User>) =>
     Boolean(u.externalUserId) ||
     (Boolean(u.source) && u.source !== "LOCAL" && u.source !== "DEVELOPMENT");
 
-  const handleOpenEdit = async (user: User) => {
-    setFormMode("EDIT");
-    const derived = deriveScopeFromBusinessRole(user.businessRole) || user.scope;
-    const initialState = {
-      id: user.id,
-      externalUserId: user.externalUserId ?? null,
-      name: user.name,
-      nik: user.nik || "",
-      email: user.email || "",
-      systemRole: user.systemRole,
-      businessRole: user.businessRole || "",
-      scope: derived,
-      branch: user.branch,
-      status: user.status,
-      source: user.source,
-      password: "",
-      confirmPassword: "",
-    };
-    setEditForm(initialState as any);
-    setInitialEditForm(initialState);
-    setFormError(null);
+  const openAdminPasswordModal = (user: User) => {
+    setAdminPasswordTarget(user);
+    setAdminPassword("");
+    setAdminConfirmPassword("");
     setShowPassword(false);
     setShowConfirmPassword(false);
-    setIsResetPasswordOpen(false);
-
-    if (derived === "BRANCH" && (user.branchCode || user.branch)) {
-      const canonical = user.branchCode || normalizeBranchCode(user.branch) || user.branch || "";
-      initialState.branch = canonical;
-      setEditForm(initialState as any);
-      setBranchQuery(canonical);
-      setIsSearchingBranch(true);
-      try {
-        const res = await fetch(`/api/branches?q=${encodeURIComponent(canonical)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.data && data.data.length > 0) {
-            const found = data.data.find((b: any) => b.code === canonical) || data.data[0];
-            setSelectedLocationObj(found);
-            setBranchQuery(`${found.code} — ${found.name}`);
-          } else {
-            setSelectedLocationObj({ code: canonical, name: `Cabang ${canonical}` });
-            setBranchQuery(canonical);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-        setSelectedLocationObj({ code: canonical, name: `Cabang ${canonical}` });
-        setBranchQuery(canonical);
-      } finally {
-        setIsSearchingBranch(false);
-      }
-    } else {
-      setBranchQuery("");
-      setSelectedLocationObj(null);
-    }
-
-    setCurrentStep(1);
-    setIsModalOpen(true);
-  };
-
-  const handleLocationSelect = (loc: any) => {
-    const code = loc.code || loc.cabang || loc.kode_toko;
-    const name = loc.name || `Cabang ${code}`;
-    setSelectedLocationObj({ ...loc, code, name });
-    setBranchQuery(`${code} — ${name}`);
-    setEditForm({ ...editForm, branch: code });
-    setIsBranchDropdownOpen(false);
-  };
-
-  const handleBusinessRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const role = e.target.value;
-    const newScope = deriveScopeFromBusinessRole(role) || "BRANCH";
-    let newBranch = editForm.branch;
-
-    if (newScope === "HO") {
-      newBranch = null;
-      setBranchQuery("");
-      setSelectedLocationObj(null);
-    }
-
-    setEditForm({
-      ...editForm,
-      businessRole: role,
-      scope: newScope,
-      branch: newBranch,
-    });
-  };
-
-  const handleCloseModal = () => {
-    const isDirty = JSON.stringify(editForm) !== JSON.stringify(initialEditForm);
-    if (isDirty) {
-      setShowConfirmClose(true);
-    } else {
-      setIsModalOpen(false);
-    }
-  };
-
-  const handleNextStep = () => {
     setFormError(null);
-    if (!editForm.name || !editForm.name.trim()) {
-      setFormError("Nama lengkap wajib diisi.");
-      return;
-    }
-    if (formMode === "CREATE" && (!editForm.nik || !editForm.nik.trim())) {
-      setFormError("NIK wajib diisi untuk pengguna baru.");
-      return;
-    }
-    if (editForm.systemRole !== "ADMIN") {
-      if (!editForm.businessRole) {
-        setFormError("Business Role wajib dipilih.");
-        return;
-      }
-      if (editForm.scope === "BRANCH" && (!editForm.branch || !editForm.branch.trim())) {
-        setFormError("Cabang / Toko wajib dipilih untuk role dengan cakupan BRANCH.");
-        return;
-      }
-    }
-    setCurrentStep(2);
   };
 
-  const handlePrevStep = () => {
-    setFormError(null);
-    setCurrentStep(1);
-  };
-
-  const confirmCloseModal = () => {
-    setShowConfirmClose(false);
-    setIsModalOpen(false);
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSaveAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!adminPasswordTarget) return;
     setFormError(null);
 
-    if (!editForm.name || !editForm.name.trim()) {
-      setFormError("Nama lengkap wajib diisi.");
+    if (!adminPassword || adminPassword.length < 8) {
+      setFormError("Password minimal 8 karakter.");
       return;
     }
-
-    if (formMode === "CREATE") {
-      if (!editForm.nik || !editForm.nik.trim()) {
-        setFormError("NIK wajib diisi untuk pengguna lokal.");
-        return;
-      }
-    }
-
-    if (editForm.systemRole !== "ADMIN") {
-      if (!editForm.businessRole) {
-        setFormError("Business Role wajib dipilih.");
-        return;
-      }
-
-      if (editForm.scope === "BRANCH" && (!editForm.branch || !editForm.branch.trim())) {
-        setFormError("Cabang / Toko wajib dipilih untuk role dengan cakupan BRANCH.");
-        return;
-      }
-    }
-
-    // Password validation only for LOCAL accounts
-    const isLocalUser = editForm.source === "LOCAL" || formMode === "CREATE";
-    if (formMode === "CREATE") {
-      if (!editForm.password || !editForm.password.trim()) {
-        setFormError("Password wajib diisi.");
-        return;
-      }
-      if (editForm.password.length < 8) {
-        setFormError("Password minimal 8 karakter.");
-        return;
-      }
-      if (editForm.password !== editForm.confirmPassword) {
-        setFormError("Konfirmasi password tidak sesuai.");
-        return;
-      }
-    } else if (isLocalUser && isResetPasswordOpen) {
-      if (!editForm.password || !editForm.password.trim()) {
-        setFormError("Password baru wajib diisi jika ingin mereset password.");
-        return;
-      }
-      if (editForm.password.length < 8) {
-        setFormError("Password minimal 8 karakter.");
-        return;
-      }
-      if (editForm.password !== editForm.confirmPassword) {
-        setFormError("Konfirmasi password tidak sesuai.");
-        return;
-      }
+    if (adminPassword !== adminConfirmPassword) {
+      setFormError("Konfirmasi password tidak sesuai.");
+      return;
     }
 
     try {
       setIsSubmitting(true);
-      const isCreate = formMode === "CREATE";
-      const url = isCreate ? "/api/admin/users" : `/api/admin/users/${editForm.id}`;
-      const method = isCreate ? "POST" : "PATCH";
-
-      const payload: any = { ...editForm };
-      if (!isCreate && isPortalManagedAccount(editForm)) {
-        delete payload.name;
-        delete payload.nik;
-        delete payload.email;
-      }
-      if (!isCreate && (!isLocalUser || !isResetPasswordOpen || !editForm.password)) {
-        delete payload.password;
-        delete payload.confirmPassword;
-      }
-
-      const res = await fetch(url, {
-        method,
+      const res = await fetch(`/api/admin/users/${adminPasswordTarget.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          password: adminPassword,
+          confirmPassword: adminConfirmPassword,
+        }),
       });
-
       const json = await res.json();
       if (!res.ok) {
-        throw new Error(json.error || "Gagal menyimpan data");
+        throw new Error(json.error || "Gagal memperbarui password admin darurat");
       }
-
       await fetchUsers();
-      setIsModalOpen(false);
-      toast.success(isCreate ? "User berhasil ditambahkan" : "Perubahan berhasil disimpan", {
-        description: isCreate
-          ? "Akun pengguna baru berhasil disimpan."
-          : json.portalRoleSync?.status === "SYNCED"
-            ? "Data SIAGA diperbarui dan perubahan role dilaporkan ke Portal SPARTA."
-            : "Data pengguna berhasil diperbarui.",
+      setAdminPasswordTarget(null);
+      toast.success("Password System Administrator diperbarui", {
+        description: "Seluruh sesi lama admin darurat dicabut untuk keamanan.",
       });
-      if (!isCreate && json.portalRoleSync?.status === "FAILED") {
-        toast.warning("Sinkronisasi role ke Portal SPARTA tertunda", {
-          description: json.portalRoleSync.message || "Perubahan tersimpan di SIAGA, namun gagal dilaporkan ke Portal SPARTA.",
-        });
-      }
     } catch (err: any) {
       setFormError(err.message);
-      toast.error("Gagal menyimpan perubahan", {
-        description: err.message,
-      });
+      toast.error("Gagal memperbarui password", { description: err.message });
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (user: User) => {
-    if (user.systemRole === "ADMIN" || user.id === "usr_seed_admin" || user.id === "usr_sysadmin_01") {
-      alert("System Administrator dilindungi dan tidak dapat dihapus.");
-      return;
-    }
-
-    if (user.source !== "LOCAL") {
-      alert("Akun SSO dikelola melalui Portal Login Sparta dan tidak dapat dihapus dari SIAGA. Anda dapat menonaktifkan akun melalui menu Edit.");
-      return;
-    }
-
-    const confirmed = confirm(
-      `Peringatan: Apakah Anda yakin ingin menghapus user '${user.name}' (${user.nik})?\n\nJika user memiliki riwayat audit atau laporan, disarankan untuk menonaktifkan status user (INACTIVE) melalui menu Edit alih-alih menghapus data fisik.`
-    );
-    if (!confirmed) return;
-
-    try {
-      setIsDeleting(user.id);
-      const res = await fetch(`/api/admin/users/${user.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error || "Gagal menghapus user");
-      }
-      await fetchUsers();
-      toast.success(user.status === "ACTIVE" ? "User berhasil dihapus/dinonaktifkan" : "Status user berhasil diubah");
-    } catch (err: any) {
-      toast.error("Gagal menghapus user", { description: err.message });
-    } finally {
-      setIsDeleting(null);
     }
   };
 
@@ -793,22 +444,25 @@ export default function UserManagementPage() {
           </div>
         </div>
         {activeTab === "users" && (
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
               onClick={() => setIsSsoInfoModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-700 transition-colors shadow-xs"
+              className="flex items-center justify-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg border border-slate-300 dark:border-slate-700 transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               title="Informasi Arsitektur SSO Portal Sparta"
             >
               <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               <span>Integrasi SSO Sparta</span>
             </button>
-            <button
-              onClick={handleOpenCreate}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+            <a
+              href={portalManagementUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
-              <Plus className="w-4 h-4" /> Tambah User
-            </button>
+              <ExternalLink className="w-4 h-4" />
+              <span>Kelola di Portal SPARTA</span>
+            </a>
           </div>
         )}
       </div>
@@ -855,6 +509,29 @@ export default function UserManagementPage() {
 
       {activeTab === "users" && (
         <div className="space-y-4">
+          <div className="bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                <div className="font-bold text-slate-900 dark:text-white">
+                  Pengelolaan Pengguna Terpusat di Portal SPARTA
+                </div>
+                <p className="leading-relaxed">
+                  Pembuatan akun, perubahan identitas (Nama, NIK, Email), cabang, peran operasional, status aktif, dan pencabutan akses modul SIAGA dilakukan melalui Portal SPARTA dan otomatis disinkronkan ke SIAGA tanpa perlu menunggu pengguna login pertama. Gunakan tab <strong>Hak Akses Role</strong> dan <strong>Akses Khusus User</strong> untuk pengaturan perizinan internal SIAGA.
+                </p>
+              </div>
+            </div>
+            <a
+              href={portalManagementUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Buka Portal SPARTA
+            </a>
+          </div>
+
           {/* Dynamic KPI Summary Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-xs">
@@ -1181,11 +858,16 @@ export default function UserManagementPage() {
                               <span className="font-bold text-xs text-blue-700 dark:text-blue-400">
                                 {user.scope}
                               </span>
-                              {user.scope === "BRANCH" && user.branch && (
+                              {user.scope === "BRANCH" && (user.branch || user.branchCode) && (
                                 <>
                                   <span className="text-slate-400 dark:text-slate-600 mx-1">•</span>
                                   <span className="text-slate-700 dark:text-slate-300 font-medium text-xs">
-                                    {user.branch}
+                                    {user.branch || user.branchCode}
+                                    {user.branch &&
+                                      user.branchCode &&
+                                      user.branchCode.toUpperCase() !== user.branch.toUpperCase()
+                                      ? ` (${user.branchCode})`
+                                      : ""}
                                   </span>
                                 </>
                               )}
@@ -1271,36 +953,23 @@ export default function UserManagementPage() {
                             <button
                               type="button"
                               onClick={() => setSelectedUserForDetail(user)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 transition-colors"
+                              aria-label={`Lihat Detail Izin Efektif ${user.name}`}
+                              className="p-2 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                               title="Lihat Detail Izin Efektif Pengguna"
                             >
                               <Shield className="w-4 h-4" />
                             </button>
 
-                            {/* Tombol Edit User */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(user)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 transition-colors"
-                              title={isSystemAdmin ? "Lihat Detail Admin" : "Edit User"}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-
-                            {/* Tombol Hapus (Hanya untuk Lokal non-Admin) */}
-                            {!isSystemAdmin && user.source === "LOCAL" && (
+                            {/* Rotasi Password Khusus System Admin Darurat Lokal */}
+                            {isSystemAdmin && user.source === "LOCAL" && (
                               <button
                                 type="button"
-                                onClick={() => handleDelete(user)}
-                                disabled={isDeleting === user.id}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition-colors disabled:opacity-50"
-                                title="Hapus User Lokal"
+                                onClick={() => openAdminPasswordModal(user)}
+                                aria-label={`Ubah Password Admin Darurat ${user.name}`}
+                                className="p-2 rounded-lg text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                                title="Ubah Password Admin Darurat Lokal"
                               >
-                                {isDeleting === user.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
+                                <KeyRound className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -1458,7 +1127,19 @@ export default function UserManagementPage() {
                   </div>
                   <div>
                     <span className="text-slate-400">Cakupan (Scope):</span>
-                    <div className="font-semibold text-slate-800 dark:text-slate-200">{selectedUserForDetail.scope || "Nasional / N/A"} {selectedUserForDetail.branch ? `(Cabang ${selectedUserForDetail.branch})` : ""}</div>
+                    <div className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedUserForDetail.scope || "Nasional / N/A"}
+                      {selectedUserForDetail.branch
+                        ? ` (Cabang ${selectedUserForDetail.branch}${
+                            selectedUserForDetail.branchCode &&
+                            selectedUserForDetail.branchCode.toUpperCase() !== selectedUserForDetail.branch.toUpperCase()
+                              ? ` — ${selectedUserForDetail.branchCode}`
+                              : ""
+                          })`
+                        : selectedUserForDetail.branchCode
+                          ? ` (${selectedUserForDetail.branchCode})`
+                          : ""}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1616,17 +1297,29 @@ export default function UserManagementPage() {
               </div>
             </div>
 
-            <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedUserForDetail(null);
-                  setActiveTab("overrides");
-                }}
-                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"
-              >
-                <Sliders className="w-3.5 h-3.5" /> Kelola di Tab Akses Khusus User →
-              </button>
+            <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUserForDetail(null);
+                    setActiveTab("overrides");
+                  }}
+                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"
+                >
+                  <Sliders className="w-3.5 h-3.5" /> Kelola di Tab Akses Khusus User
+                </button>
+                {selectedUserForDetail.systemRole !== "ADMIN" && (
+                  <a
+                    href={portalManagementUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:underline flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Ubah Akun / Role di Portal SPARTA
+                  </a>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedUserForDetail(null)}
@@ -1658,13 +1351,14 @@ export default function UserManagementPage() {
                   Integrasi Portal Login Sparta SSO
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  SSO Terpusat & Otorisasi Mandiri SPARTA SIAGA
+                  Manajemen User Terpusat & Otorisasi Internal SPARTA SIAGA
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setIsSsoInfoModalOpen(false)}
+              aria-label="Tutup informasi integrasi"
               className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
             >
               <X className="w-5 h-5" />
@@ -1678,50 +1372,58 @@ export default function UserManagementPage() {
                 <span>Prinsip Otoritas Tunggal (Single Source of Truth)</span>
               </div>
               <p className="text-blue-800 dark:text-blue-300/80 text-[11px]">
-                Portal Login Sparta adalah pusat identitas user dan akses modul. SIAGA mengelola role operasional, cakupan cabang, status lokal, dan hak perizinan; perubahan role di SIAGA dilaporkan kembali ke Portal untuk akun dengan akses aktif.
+                Portal SPARTA adalah pusat tunggal penambahan user, perubahan identitas (Nama, NIK, Email), cabang, role operasional SIAGA, status akun, dan pencabutan akses modul. Perubahan dari Portal disinkronkan otomatis ke database SIAGA melalui provisioning tanpa menunggu login pertama.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
                 <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Identitas SSO Sparta
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Provisioning Otomatis & Aman
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Pencocokan akun dilakukan menggunakan <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">external_user_id</code>. Akun tidak dibuat secara otomatis dari email bebas.
+                  Pencocokan akun memakai <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">external_user_id</code>, NIK, lalu email agar tidak terjadi duplikasi dan menjaga histori laporan tetap utuh.
                 </p>
               </div>
 
               <div className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
                 <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-600" /> Penetapan HO Mandiri
+                  <ShieldCheck className="w-4 h-4 text-blue-600" /> Permission & Histori Lokal SIAGA
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  24 akun Head Office aktif terbagi menjadi 8 akun Monitoring + Instruksi dan 16 akun Monitoring Saja yang dilindungi oleh override perizinan internal.
+                  Matriks <strong>Hak Akses Role</strong> dan <strong>Akses Khusus User</strong> (termasuk pembatasan instruksi HO) tetap dikelola mandiri di SIAGA tanpa tertimpa saat sync Portal.
                 </p>
               </div>
 
               <div className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
                 <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <Lock className="w-4 h-4 text-purple-600" /> Proteksi System Administrator
+                  <Lock className="w-4 h-4 text-purple-600" /> Proteksi System Admin Darurat
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Akun System Administrator diisolasi dari peran bisnis dan operasional cabang (Zero Operational Bypass), serta dilindungi dari penghapusan atau demosi.
+                  Akun System Administrator lokal tetap dilindungi dari demosi, penghapusan, maupun provisioning Portal, dan hanya mendukung rotasi password darurat di SIAGA.
                 </p>
               </div>
 
               <div className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
                 <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-slate-600" /> Penonaktifan Sinkronisasi Lama
+                  <CheckCircle2 className="w-4 h-4 text-slate-600" /> Penonaktifan Form Duplikatif
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Impor dataset staging/CSV lama telah dinonaktifkan dari UI operasional guna menjamin stabilitas dan integritas data pengguna Production.
+                  Form tambah, edit operasional, dan hapus user di SIAGA dinonaktifkan agar tidak menduplikasi Portal SPARTA atau menghapus histori laporan.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-end bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+            <a
+              href={portalManagementUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Buka Manajemen User Portal SPARTA
+            </a>
             <button
               type="button"
               onClick={() => setIsSsoInfoModalOpen(false)}
@@ -1733,485 +1435,121 @@ export default function UserManagementPage() {
         </div>
       </AppDialog>
 
-      {/* Modal Create / Edit User */}
+      {/* Modal Rotasi Password System Admin Darurat Lokal */}
       <AppDialog
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        title={formMode === "CREATE" ? "Tambah User Baru" : "Edit Data User"}
-        description="Form manajemen akun dan penempatan operasional SPARTA SIAGA"
-        className="sm:!max-w-2xl"
+        open={Boolean(adminPasswordTarget)}
+        onClose={() => setAdminPasswordTarget(null)}
+        title="Ubah Password System Administrator Darurat"
+        description="Rotasi password lokal untuk akun System Administrator darurat SIAGA"
+        className="sm:!max-w-md"
       >
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85dvh] overscroll-contain touch-auto select-text">
-          {/* Modal Header */}
-          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl">
-                {formMode === "CREATE" ? <Plus className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
-              </div>
-              <div>
-                <h2 className="font-bold text-lg text-slate-900 dark:text-white">
-                  {formMode === "CREATE" ? "Tambah User Baru" : "Edit Data User"}
-                </h2>
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5 font-medium">
-                  <span className={currentStep === 1 ? "text-blue-600 dark:text-blue-400 font-bold" : ""}>
-                    1. Identitas & Penempatan
-                  </span>
-                  <span className="text-slate-300 dark:text-slate-600">→</span>
-                  <span className={currentStep === 2 ? "text-blue-600 dark:text-blue-400 font-bold" : ""}>
-                    2. Status & Konfirmasi
-                  </span>
+        {adminPasswordTarget && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl">
+                  <KeyRound className="w-5 h-5" />
                 </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleCloseModal}
-              aria-label="Tutup modal"
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Modal Body */}
-          <div className="p-6 overflow-y-auto overscroll-contain flex-1 space-y-6">
-            {formError && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            {/* Protected System Admin Notice */}
-            {editForm.systemRole === "ADMIN" && (
-              <div className="p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl text-purple-900 dark:text-purple-300 text-xs space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <Shield className="w-4 h-4 text-purple-600" />
-                  <span>Akun System Administrator SPARTA SIAGA Dilindungi</span>
-                </div>
-                <p className="text-[11px] leading-relaxed text-purple-800 dark:text-purple-300/80">
-                  Akun ini bertindak sebagai administrator teknikal sistem. Tidak memiliki Business Role atau Cabang operasional (Zero Operational Bypass), dan tidak dapat diubah menjadi akun USER.
-                </p>
-              </div>
-            )}
-
-            {/* SSO Account Notice */}
-            {formMode === "EDIT" && isPortalManagedAccount(editForm) && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-900 dark:text-blue-300 text-xs flex items-center gap-2.5">
-                <Globe className="w-4 h-4 text-blue-600 shrink-0" />
                 <div>
-                  <span className="font-bold">Akun Terhubung Portal Sparta SSO:</span> Identitas utama (Nama, NIK, Email) dan kata sandi dimiliki Portal SPARTA sehingga bersifat read-only di SIAGA. Perubahan role operasional pada akun aktif otomatis dilaporkan kembali ke Portal.
+                  <h2 className="font-bold text-base text-slate-900 dark:text-white">
+                    Ubah Password Admin Darurat
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {adminPasswordTarget.name} ({adminPasswordTarget.id})
+                  </p>
                 </div>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setAdminPasswordTarget(null)}
+                aria-label="Tutup modal ubah password"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            <form id="user-form" onSubmit={handleSave} className="space-y-6">
-              {currentStep === 1 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                  {/* SECTION A: Informasi Pengguna */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
-                      <UserIcon className="w-4 h-4 text-blue-500" /> Informasi Pengguna
-                    </h3>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
-                          Nama Lengkap *
-                        </label>
-                        <input
-                          required
-                          disabled={formMode === "EDIT" && isPortalManagedAccount(editForm)}
-                          value={editForm.name || ""}
-                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
-                            formMode === "EDIT" && isPortalManagedAccount(editForm) ? "opacity-70 cursor-not-allowed bg-slate-100 dark:bg-slate-800/70" : ""
-                          }`}
-                          placeholder="Mis. Ahmad Fauzi"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
-                          NIK {formMode === "CREATE" && "*"}
-                        </label>
-                        <input
-                          required={formMode === "CREATE"}
-                          disabled={formMode === "EDIT" && isPortalManagedAccount(editForm)}
-                          value={editForm.nik || ""}
-                          onChange={(e) => setEditForm({ ...editForm, nik: e.target.value })}
-                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
-                            formMode === "EDIT" && isPortalManagedAccount(editForm) ? "opacity-70 cursor-not-allowed bg-slate-100 dark:bg-slate-800/70" : ""
-                          }`}
-                          placeholder="Mis. 24001234"
-                        />
-                      </div>
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Email</label>
-                        <input
-                          type="email"
-                          disabled={formMode === "EDIT" && isPortalManagedAccount(editForm)}
-                          value={editForm.email || ""}
-                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                          className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
-                            formMode === "EDIT" && isPortalManagedAccount(editForm) ? "opacity-70 cursor-not-allowed bg-slate-100 dark:bg-slate-800/70" : ""
-                          }`}
-                          placeholder="user@sparta.com"
-                        />
-                        {formMode === "EDIT" && isPortalManagedAccount(editForm) && (
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Perubahan Nama, NIK, atau Email dilakukan melalui Portal SPARTA.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SECTION B: Peran & Penempatan */}
-                  {editForm.systemRole !== "ADMIN" && (
-                    <div className="space-y-4">
-                      <h3 className="text-xs font-bold text-slate-900 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Shield className="w-4 h-4 text-blue-500" /> Peran & Penempatan
-                        </div>
-                        {formMode === "CREATE" && (
-                          <span className="text-[10px] text-slate-400 font-normal italic">
-                            Akun operasional (USER)
-                          </span>
-                        )}
-                      </h3>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
-                            Business Role *
-                          </label>
-                          <select
-                            value={editForm.businessRole || "bms"}
-                            onChange={handleBusinessRoleChange}
-                            className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 font-semibold"
-                          >
-                            <optgroup label="HEAD OFFICE (Cakupan Nasional)">
-                              {HUMAN_SELECTABLE_HO_ROLES.map((r) => (
-                                <option key={r.key} value={r.key}>
-                                  {r.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                            <optgroup label="BRANCH / CABANG (Cakupan Wilayah)">
-                              {HUMAN_SELECTABLE_BRANCH_ROLES.map((r) => (
-                                <option key={r.key} value={r.key}>
-                                  {r.fullLabel ? `${r.label} \u2014 ${r.fullLabel}` : r.label}
-                                </option>
-                              ))}
-                            </optgroup>
-                            {!HUMAN_SELECTABLE_BRANCH_ROLES.some((r) => r.key === editForm.businessRole) &&
-                              !HUMAN_SELECTABLE_HO_ROLES.some((r) => r.key === editForm.businessRole) &&
-                              editForm.businessRole && (
-                                <optgroup label="PERAN NONAKTIF / HISTORIS">
-                                  <option value={editForm.businessRole} disabled>
-                                    {getRoleDisplayLabel(editForm.businessRole)} (Nonaktif)
-                                  </option>
-                                </optgroup>
-                              )}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
-                            Otorisasi Scope
-                          </label>
-                          <div className="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold flex items-center justify-between">
-                            <span>{editForm.scope}</span>
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              {editForm.scope === "HO" ? "Nasional (HO)" : "Terbatas Cabang"}
-                            </span>
-                          </div>
-                        </div>
-
-                        {editForm.scope === "BRANCH" && (
-                          <div className="space-y-1.5 relative sm:col-span-2" ref={dropdownRef}>
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
-                                Cabang Penempatan *
-                              </label>
-                              <span className="text-[10px] text-slate-400">Unit Cabang Organisasi</span>
-                            </div>
-                            <div className="relative mt-1">
-                              <input
-                                placeholder="Cari cabang (misal: CIKOKOL, BANDUNG, G001)..."
-                                value={branchQuery}
-                                onChange={(e) => {
-                                  setBranchQuery(e.target.value);
-                                  if (editForm.branch) setEditForm({ ...editForm, branch: "" });
-                                  setIsBranchDropdownOpen(true);
-                                }}
-                                onFocus={() => {
-                                  setIsBranchDropdownOpen(true);
-                                }}
-                                className={`w-full border ${
-                                  !editForm.branch && branchQuery ? "border-amber-400" : "border-slate-200 dark:border-slate-700"
-                                } rounded-xl pl-10 pr-4 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100`}
-                              />
-                              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-
-                              {/* Search Dropdown */}
-                              {isBranchDropdownOpen &&
-                                (branchResults.length > 0 || isSearchingBranch || branchQuery.length > 0) && (
-                                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-64 overflow-y-auto text-sm animate-in fade-in slide-in-from-top-2">
-                                    {isSearchingBranch ? (
-                                      <div className="p-4 text-center text-slate-500 flex items-center justify-center gap-2">
-                                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> Mencari data cabang...
-                                      </div>
-                                    ) : branchResults.length > 0 ? (
-                                      <ul className="py-1">
-                                        {branchResults.map((loc, idx) => {
-                                          const code = loc.code || loc.cabang || loc.kode_toko;
-                                          const name = loc.name || `Cabang ${code}`;
-                                          return (
-                                            <li
-                                              key={idx}
-                                              onClick={() => handleLocationSelect(loc)}
-                                              className="px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex flex-col border-b border-slate-50 dark:border-slate-800/50 last:border-0"
-                                            >
-                                              <div className="flex items-center justify-between">
-                                                <span className="font-bold text-slate-800 dark:text-slate-200">{code}</span>
-                                                {loc.storeCount !== undefined && (
-                                                  <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-full">
-                                                    {loc.storeCount.toLocaleString("id-ID")} Toko
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
-                                                <span>{name}</span>
-                                              </div>
-                                            </li>
-                                          );
-                                        })}
-                                      </ul>
-                                    ) : (
-                                      <div className="p-4 text-center text-slate-500">Cabang tidak ditemukan</div>
-                                    )}
-                                  </div>
-                                )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+            <form onSubmit={handleSaveAdminPassword} className="p-6 space-y-4">
+              {formError && (
+                <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs font-semibold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{formError}</span>
                 </div>
               )}
 
-              {currentStep === 2 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                  {/* SUMMARY */}
-                  <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl space-y-2">
-                    <div className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">
-                      Ringkasan Identitas & Penempatan
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-slate-500">Nama Lengkap</div>
-                      <div className="font-medium text-slate-900 dark:text-slate-100">{editForm.name || "-"}</div>
-                      <div className="text-slate-500">Business Role</div>
-                      <div className="font-medium text-slate-900 dark:text-slate-100">
-                        {editForm.systemRole === "ADMIN" ? "System Admin" : getRoleDisplayLabel(editForm.businessRole) || "-"}
-                      </div>
-                      {editForm.systemRole !== "ADMIN" && (
-                        <>
-                          <div className="text-slate-500">Cabang / Scope</div>
-                          <div className="font-medium text-slate-900 dark:text-slate-100">
-                            {editForm.scope === "HO" ? "Head Office" : editForm.branch || "-"}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
+              <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl text-[11px] text-purple-900 dark:text-purple-300 leading-relaxed">
+                Akun ini merupakan akses administrator darurat lokal. Perubahan password akan otomatis mencabut sesi login lama untuk menjaga keamanan.
+              </div>
 
-                  {/* Password fields only for LOCAL accounts */}
-                  {(formMode === "CREATE" || (formMode === "EDIT" && editForm.source === "LOCAL" && isResetPasswordOpen)) && (
-                    <div className="space-y-4">
-                      <h3 className="text-xs font-bold text-slate-900 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
-                        <Lock className="w-4 h-4 text-blue-500" /> Keamanan Akun Lokal
-                      </h3>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Password *</label>
-                          <div className="relative">
-                            <input
-                              type={showPassword ? "text" : "password"}
-                              required
-                              value={editForm.password || ""}
-                              onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
-                              placeholder="Min. 8 karakter"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                            >
-                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
-                            Konfirmasi Password *
-                          </label>
-                          <div className="relative">
-                            <input
-                              type={showConfirmPassword ? "text" : "password"}
-                              required
-                              value={editForm.confirmPassword || ""}
-                              onChange={(e) => setEditForm({ ...editForm, confirmPassword: e.target.value })}
-                              className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100"
-                              placeholder="Ulangi password"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                            >
-                              {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {formMode === "EDIT" && editForm.source === "LOCAL" && (
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsResetPasswordOpen(!isResetPasswordOpen);
-                          setEditForm({ ...editForm, password: "", confirmPassword: "" });
-                        }}
-                        className="inline-flex items-center gap-2 text-xs font-bold text-[#1D5AA6] dark:text-blue-400 hover:underline"
-                      >
-                        <KeyRound className="w-3.5 h-3.5" />
-                        {isResetPasswordOpen ? "Batal Ubah Password" : "Reset / Ubah Password Akun Lokal"}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status Akun */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-900 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-2">
-                      <Sliders className="w-4 h-4 text-blue-500" /> Status Akun SIAGA
-                    </h3>
-                    <div className="space-y-1.5 w-full md:w-1/2">
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-400">Status *</label>
-                      <select
-                        disabled={editForm.systemRole === "ADMIN"}
-                        value={editForm.status || "ACTIVE"}
-                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
-                        className={`w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-900 dark:text-slate-100 ${
-                          editForm.systemRole === "ADMIN" ? "opacity-60 cursor-not-allowed" : ""
-                        }`}
-                      >
-                        <option value="ACTIVE">ACTIVE</option>
-                        <option value="INACTIVE">INACTIVE</option>
-                      </select>
-                      {editForm.systemRole === "ADMIN" && (
-                        <div className="text-[10px] text-slate-400">
-                          Akun System Admin dilindungi dan harus selalu ACTIVE.
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
+                  Password Baru *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
+                    placeholder="Minimal 8 karakter"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Sembunyikan password baru" : "Tampilkan password baru"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-              )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-400">
+                  Konfirmasi Password Baru *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    value={adminConfirmPassword}
+                    onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                    className="w-full border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-sm bg-slate-50 hover:bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
+                    placeholder="Ulangi password baru"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    aria-label={showConfirmPassword ? "Sembunyikan konfirmasi password" : "Tampilkan konfirmasi password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminPasswordTarget(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                >
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+                  {isSubmitting ? "Menyimpan..." : "Simpan Password"}
+                </button>
+              </div>
             </form>
           </div>
-
-          {/* Modal Footer */}
-          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-            {currentStep === 2 ? (
-              <button
-                type="button"
-                onClick={handlePrevStep}
-                className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
-              >
-                Kembali
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                className="px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors"
-              >
-                Batal
-              </button>
-            )}
-
-            {currentStep === 1 ? (
-              <button
-                type="button"
-                onClick={handleNextStep}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors"
-              >
-                Lanjut
-              </button>
-            ) : (
-              <button
-                type="submit"
-                form="user-form"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors disabled:opacity-50"
-              >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}{" "}
-                {isSubmitting
-                  ? "Menyimpan..."
-                  : formMode === "CREATE"
-                  ? "Simpan User"
-                  : "Simpan Perubahan"}
-              </button>
-            )}
-          </div>
-        </div>
+        )}
       </AppDialog>
-
-      {/* Confirmation Dialog Unsaved Changes */}
-      <AlertDialog
-        open={showConfirmClose}
-        onOpenChange={(open) => {
-          if (!open) setShowConfirmClose(false);
-        }}
-      >
-        <AlertDialogContent className="max-w-sm rounded-2xl p-6">
-          <AlertDialogHeader>
-            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400">
-              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <AlertDialogTitle className="text-base font-bold text-slate-900 dark:text-white">
-                Perubahan Belum Disimpan
-              </AlertDialogTitle>
-            </div>
-            <AlertDialogDescription className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed text-left pt-2">
-              Ada perubahan yang belum disimpan. Apakah Anda yakin ingin menutup tanpa menyimpan?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex items-center justify-end gap-3 pt-2">
-            <AlertDialogCancel
-              onClick={() => setShowConfirmClose(false)}
-              className="rounded-xl text-xs font-bold"
-            >
-              Batal
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmCloseModal}
-              className="rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              Ya, Tutup
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

@@ -4,9 +4,11 @@ import type { Pool } from "pg";
 import { Store } from "@/types/store";
 import { getDbPool } from "./db";
 import { portalStoresEnabled } from "./sparta-master-contract";
+import { branchMasterEnabled } from "./sparta-rollout";
 
 export interface BranchCentroid {
   cabang: string;
+  branch_code?: string | null;
   lat: number;
   lon: number;
   store_count: number;
@@ -73,7 +75,7 @@ export async function getOrLoadMasterStores(
         nama_toko: r.nama_toko,
         cabang: r.cabang,
         branch_code: r.branch_code ?? null,
-        alamat: r.alamat?.trim() || `Alfamart ${r.nama_toko}, Cabang ${r.cabang}`,
+        alamat: r.alamat?.trim() || (portalStoresEnabled() ? "" : `Alfamart ${r.nama_toko}, Cabang ${r.cabang}`),
         latitude: parseFloat(r.latitude),
         longitude: parseFloat(r.longitude),
         fr_type: r.fr_type || "UNKNOWN",
@@ -172,13 +174,21 @@ export async function getOrLoadMasterStores(
  * Calculates branch centroids from the loaded stores dataset.
  */
 export function getBranchCentroidsFromStores(stores: Store[]): BranchCentroid[] {
-  const branchMap = new Map<string, { sumLat: number; sumLon: number; count: number }>();
+  const useBranchCode = branchMasterEnabled();
+  const branchMap = new Map<string, { cabang: string; branch_code: string | null; sumLat: number; sumLon: number; count: number }>();
 
   for (const s of stores) {
     if (s.latitude == null || s.longitude == null || !s.cabang) continue;
-    const existing = branchMap.get(s.cabang);
+    const key = useBranchCode && s.branch_code ? s.branch_code : s.cabang;
+    const existing = branchMap.get(key);
     if (!existing) {
-      branchMap.set(s.cabang, { sumLat: s.latitude, sumLon: s.longitude, count: 1 });
+      branchMap.set(key, {
+        cabang: s.cabang,
+        branch_code: s.branch_code ?? null,
+        sumLat: s.latitude,
+        sumLon: s.longitude,
+        count: 1,
+      });
     } else {
       existing.sumLat += s.latitude;
       existing.sumLon += s.longitude;
@@ -187,9 +197,10 @@ export function getBranchCentroidsFromStores(stores: Store[]): BranchCentroid[] 
   }
 
   const result: BranchCentroid[] = [];
-  branchMap.forEach((val, cabang) => {
+  branchMap.forEach((val) => {
     result.push({
-      cabang,
+      cabang: val.cabang,
+      branch_code: val.branch_code,
       lat: Math.round((val.sumLat / val.count) * 10000) / 10000,
       lon: Math.round((val.sumLon / val.count) * 10000) / 10000,
       store_count: val.count,

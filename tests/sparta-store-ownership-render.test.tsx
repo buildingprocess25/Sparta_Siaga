@@ -19,3 +19,26 @@ for (const theme of ["dark", "light"] as const) {
     });
   }
 }
+
+test("store panels display branch_code and handle empty address or nullable coordinates safely", () => {
+  const store: Store = {
+    id: "test-portal-store",
+    kode_toko: "T002",
+    nama_toko: "Toko Portal Minim Data",
+    cabang: "CIKOKOL",
+    branch_code: "KZ01",
+    alamat: "",
+    latitude: null as unknown as number,
+    longitude: Number.NaN,
+    fr_type: "UNKNOWN",
+    status: "MONITOR",
+    distanceFromDisasterKm: 2,
+  };
+  const detail = renderToStaticMarkup(<StoreDetailSheet store={store} onClose={() => {}} theme="light" />);
+  const affected = renderToStaticMarkup(<AffectedStoresSheet isOpen affectedStores={[store]} onClose={() => {}} onSelectStore={() => {}} theme="light" />);
+
+  assert.ok(detail.includes("Cabang CIKOKOL (KZ01)"));
+  assert.ok(affected.includes("Cabang CIKOKOL (KZ01)"));
+  assert.ok(detail.includes("Alamat belum tersedia di master toko"));
+  assert.ok(detail.includes("Koordinat belum tersedia"));
+});

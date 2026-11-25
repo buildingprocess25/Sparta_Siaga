@@ -29,9 +29,18 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const hasValidCoords = Boolean(
+    store &&
+      typeof store.latitude === "number" &&
+      typeof store.longitude === "number" &&
+      Number.isFinite(store.latitude) &&
+      Number.isFinite(store.longitude)
+  );
+
   useEffect(() => {
-    if (!store) {
+    if (!store || !hasValidCoords) {
       setWeather(null);
+      setLoadingWeather(false);
       return;
     }
 
@@ -60,18 +69,20 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
       .finally(() => {
         setLoadingWeather(false);
       });
-  }, [store]);
+  }, [store, hasValidCoords]);
 
   if (!store) return null;
 
   const handleCopyCoord = () => {
+    if (!hasValidCoords) return;
     navigator.clipboard.writeText(`${store.latitude}, ${store.longitude}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-
-  const isFranchise = getStoreOwnership(store.fr_type) === "FRANCHISE";
+  const ownership = getStoreOwnership(store.fr_type);
+  const isFranchise = ownership === "FRANCHISE";
+  const isUnknownOwnership = ownership === "UNKNOWN";
   const isDark = theme === "dark";
 
   return (
@@ -98,11 +109,13 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
               {store.kode_toko}
             </span>
 
-            {/* Franchise / Reguler badge */}
+            {/* Franchise / Reguler / Unknown badge */}
             <span
               className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
                 isFranchise
                   ? isDark ? "bg-purple-950/80 text-purple-300 border-purple-600/40" : "bg-purple-100 text-purple-800 border-purple-200"
+                  : isUnknownOwnership
+                  ? isDark ? "bg-slate-800 text-slate-300 border-slate-600/50" : "bg-slate-200 text-slate-700 border-slate-300"
                   : isDark ? "bg-blue-950/80 text-blue-300 border-blue-600/40" : "bg-blue-100 text-blue-800 border-blue-200"
               }`}
             >
@@ -218,24 +231,31 @@ export function StoreDetailSheet({ store, onClose, theme = "dark" }: StoreDetail
         <div className={`rounded-xl p-3 border space-y-2 text-xs ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-slate-100 border-slate-200"}`}>
           <div className="flex items-start gap-2">
             <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${isDark ? "text-slate-400" : "text-slate-500"}`} />
-            <p className={`leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700 font-medium"}`}>{store.alamat}</p>
+            <p className={`leading-relaxed ${isDark ? "text-slate-300" : "text-slate-700 font-medium"}`}>
+              {store.alamat?.trim() ? store.alamat : "Alamat belum tersedia di master toko"}
+            </p>
           </div>
 
           <div className={`pt-2 border-t flex items-center justify-between font-mono ${isDark ? "border-slate-700/40 text-slate-400" : "border-slate-300 text-slate-600"}`}>
             <span>
-              {store.latitude.toFixed(4)}, {store.longitude.toFixed(4)}
+              {hasValidCoords
+                ? `${store.latitude.toFixed(4)}, ${store.longitude.toFixed(4)}`
+                : "Koordinat belum tersedia"}
             </span>
-            <button
-              onClick={handleCopyCoord}
-              className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded transition-colors ${
-                isDark 
-                  ? "bg-slate-700/60 hover:bg-slate-700 text-slate-200" 
-                  : "bg-slate-200 hover:bg-slate-300 text-slate-800"
-              }`}
-            >
-              {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-              <span>{copied ? "Tersalin" : "Salin"}</span>
-            </button>
+            {hasValidCoords && (
+              <button
+                type="button"
+                onClick={handleCopyCoord}
+                className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded transition-colors ${
+                  isDark 
+                    ? "bg-slate-700/60 hover:bg-slate-700 text-slate-200" 
+                    : "bg-slate-200 hover:bg-slate-300 text-slate-800"
+                }`}
+              >
+                {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                <span>{copied ? "Tersalin" : "Salin"}</span>
+              </button>
+            )}
           </div>
         </div>
 
