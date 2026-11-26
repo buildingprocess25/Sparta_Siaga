@@ -3,6 +3,7 @@ import { calculateHaversineDistance } from "./haversine";
 import { getV1Coverage } from "./earthquake-v1-parameters";
 import { dbUpsertEarthquakeEvent, dbGetRecentEarthquakeEvents } from "./earthquake-db";
 import { getExternalApiConfig } from "./runtime-config";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 // Cache in-memory for 30 seconds
 let cachedDisasters: DisasterFeedResponse | null = null;
@@ -583,11 +584,13 @@ export async function fetchDisasterFeed(forceRefresh: boolean = false): Promise<
   // Sort earthquakes by timestamp descending
   canonicalEarthquakes.sort((a, b) => b.timestamp - a.timestamp);
 
-  // Requirement 4: Persist all processed earthquakes to persistent table asynchronously
-  for (const eq of canonicalEarthquakes) {
-    dbUpsertEarthquakeEvent(eq).catch((err) =>
-      console.warn("[Disaster Service] Warning persisting earthquake:", err)
-    );
+  // Requirement 4: Persist all processed earthquakes to persistent table asynchronously (skip in Read-Only mode)
+  if (!isDevelopmentReadOnlyMode()) {
+    for (const eq of canonicalEarthquakes) {
+      dbUpsertEarthquakeEvent(eq).catch((err) =>
+        console.warn("[Disaster Service] Warning persisting earthquake:", err)
+      );
+    }
   }
 
   if (canonicalEarthquakes.length === 0) {

@@ -93,17 +93,17 @@ async function secureCredentials() {
     fs.writeFileSync(credFilePath, content, { encoding: "utf-8" });
     console.log(`[SECURE] Successfully generated private credentials file at: ${credFilePath}`);
 
-    // 6. Update .env.local with UAT_GATE_PASSCODE
+    // 6. Update .env.local with DEV_GATE_PASSCODE
     const envLocalPath = path.join(rootDir, ".env.local");
     if (fs.existsSync(envLocalPath)) {
       let envContent = fs.readFileSync(envLocalPath, "utf-8");
-      if (envContent.includes("UAT_GATE_PASSCODE=")) {
-        envContent = envContent.replace(/UAT_GATE_PASSCODE=.*(\r?\n|$)/, `UAT_GATE_PASSCODE=${gatePasscode}$1`);
+      if (envContent.includes("DEV_GATE_PASSCODE=")) {
+        envContent = envContent.replace(/DEV_GATE_PASSCODE=.*(\r?\n|$)/, `DEV_GATE_PASSCODE=${gatePasscode}$1`);
       } else {
-        envContent += `\r\nUAT_GATE_PASSCODE=${gatePasscode}\r\n`;
+        envContent += `\r\nDEV_GATE_PASSCODE=${gatePasscode}\r\n`;
       }
       fs.writeFileSync(envLocalPath, envContent, "utf-8");
-      console.log("[SECURE] Synchronized UAT_GATE_PASSCODE with .env.local");
+      console.log("[SECURE] Synchronized DEV_GATE_PASSCODE with .env.local");
     }
 
     console.log("==================================================================");

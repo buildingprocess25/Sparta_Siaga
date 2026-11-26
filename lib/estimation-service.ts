@@ -6,6 +6,7 @@ import {
   resolveWorkReadinessCategory,
 } from "./work-readiness";
 import { effectiveBranchValue } from "./sparta-rollout";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export type HandlerType = "BMS" | "BES" | "BUILDING" | "REKANAN";
 export type TargetSystem = "SPARTA_MAINTENANCE" | "BNM_MANTRA";
@@ -82,7 +83,7 @@ export interface UpdateEstimationRouteParams {
 let tableEnsured = false;
 
 export async function ensureEstimationRoutesTable(): Promise<void> {
-  if (tableEnsured) return;
+  if (tableEnsured || isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS report_estimation_routes (

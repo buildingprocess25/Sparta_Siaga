@@ -52,6 +52,7 @@ export interface RuntimeConfig {
   nodeEnv: NodeEnvironment;
   databaseUrl: string;
   isolatedDatabaseUrl?: string;
+  productionReadOnlyDatabaseUrl?: string;
   jwtSecret: string;
   workerSecret: string;
   appUrl?: URL;
@@ -403,6 +404,8 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeC
   const rawDatabaseUrl = getEnvValue(env, "DATABASE_URL", nodeEnv);
   const rawIsolatedUrl = getEnvValue(env, "SPARTA_ISOLATED_TEST_DATABASE_URL", nodeEnv);
   const isolatedDatabaseUrl = rawIsolatedUrl ? parsePostgresUrl(rawIsolatedUrl) : undefined;
+  const rawReadOnlyUrl = getEnvValue(env, "SPARTA_PRODUCTION_READONLY_DATABASE_URL", nodeEnv);
+  const productionReadOnlyDatabaseUrl = rawReadOnlyUrl ? parsePostgresUrl(rawReadOnlyUrl) : undefined;
 
   let databaseUrl: string;
   if (rawDatabaseUrl) {
@@ -430,6 +433,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeC
     nodeEnv,
     databaseUrl,
     isolatedDatabaseUrl,
+    productionReadOnlyDatabaseUrl,
     jwtSecret: getJwtSecret(env),
     workerSecret: getWorkerSecret(env, nodeEnv),
     appUrl: parseOptionalUrl(env, ["APP_BASE_URL", "NEXT_PUBLIC_APP_URL"], nodeEnv),

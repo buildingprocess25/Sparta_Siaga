@@ -2,10 +2,53 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifySession } from './lib/jwt';
 import { hasCurrentRefreshEnvironment } from './lib/session-environment';
-import { isGateRequired, hasVerifiedGate } from './lib/environment-policy';
+import { isGateRequired, hasVerifiedGate, isDevelopmentReadOnlyMode } from './lib/environment-policy';
+
+const READONLY_ALLOWED_POST_PATHS = new Set([
+  '/api/auth/quick-login',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+  '/api/auth/gate-verify',
+]);
+
+function isReadOnlyBlockedEndpoint(pathname: string): boolean {
+  return (
+    pathname === '/internal/sparta/provision' ||
+    pathname.startsWith('/api/simulation/') ||
+    pathname === '/api/notifications/worker' ||
+    pathname === '/api/incidents/expiration' ||
+    pathname === '/api/stores/sync' ||
+    pathname.startsWith('/api/integrations/')
+  );
+}
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (isDevelopmentReadOnlyMode()) {
+    if (isReadOnlyBlockedEndpoint(pathname)) {
+      return NextResponse.json(
+        {
+          error: 'READ_ONLY_DEV_MODE',
+          code: 'READ_ONLY_DEV_MODE',
+          message: 'Mode Development Read-Only aktif: operasi tulis, simulasi, provisioning, sinkronisasi, dan worker diblokir.',
+        },
+        { status: 403 }
+      );
+    }
+
+    const method = request.method.toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && !READONLY_ALLOWED_POST_PATHS.has(pathname)) {
+      return NextResponse.json(
+        {
+          error: 'READ_ONLY_DEV_MODE',
+          code: 'READ_ONLY_DEV_MODE',
+          message: 'Mode Development Read-Only aktif: perubahan data ke database Production diblokir.',
+        },
+        { status: 403 }
+      );
+    }
+  }
 
   if (pathname === '/internal/sparta/provision' && request.method === 'POST') {
     return NextResponse.next();

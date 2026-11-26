@@ -5,6 +5,7 @@ import { checkUserPermission } from "./permission-service";
 import { formatServerTimestampWib } from "./watermark";
 import { IncidentRecord } from "@/types/incident";
 import { effectiveBranchValue } from "./sparta-rollout";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export type WorkStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 export type PhotoType = "PROGRESS" | "FINAL" | "HANDOVER";
@@ -60,7 +61,7 @@ export interface CreateProgressUpdateParams {
 let tablesEnsured = false;
 
 export async function ensureProgressTables(): Promise<void> {
-  if (tablesEnsured) return;
+  if (tablesEnsured || isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS report_progress_updates (

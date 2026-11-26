@@ -2,16 +2,18 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { 
-  ShieldAlert, 
-  Loader2, 
-  LogIn, 
-  Terminal, 
-  Building2, 
+import {
+  ShieldAlert,
+  Loader2,
+  LogIn,
+  Terminal,
+  Building2,
   ChevronRight,
   ShieldCheck,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  Database,
 } from "lucide-react";
 
 interface DevRoleOption {
@@ -98,19 +100,24 @@ const DEV_ROLES: DevRoleOption[] = [
   },
 ];
 
-const BRANCHES = [
-  { id: "BANDUNG", name: "Cabang Bandung", code: "BDG" },
-  { id: "CIKOKOL", name: "Cabang Cikokol", code: "CKL" },
-];
+const DEFAULT_BRANCHES = ["BANDUNG", "CIKOKOL"];
+
+function formatBranchLabel(branch: string): { label: string; code?: string } {
+  if (branch === "BANDUNG") return { label: "Cabang Bandung", code: "BDG" };
+  if (branch === "CIKOKOL") return { label: "Cabang Cikokol", code: "CKL" };
+  return { label: branch };
+}
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [initLoading, setInitLoading] = useState(true);
   const [isDevMode, setIsDevMode] = useState(false);
   const [testEnvironment, setTestEnvironment] = useState(false);
+  const [isReadOnlyMode, setIsReadOnlyMode] = useState(false);
   const [gateEnabled, setGateEnabled] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("sysadmin");
+  const [availableBranches, setAvailableBranches] = useState<string[]>(DEFAULT_BRANCHES);
   const [selectedBranch, setSelectedBranch] = useState("BANDUNG");
   const [error, setError] = useState("");
   const [ssoPortalUrl, setSsoPortalUrl] = useState(
@@ -141,6 +148,7 @@ export default function LoginPage() {
         UserBlocked: "Akses akun Anda telah dinonaktifkan.",
         SessionCreationFailed: "Gagal membuat sesi login perangkat SIAGA. Silakan coba lagi.",
         SsoServiceUnavailable: "Layanan autentikasi SPARTA Portal sedang tidak dapat dihubungi.",
+        ReadOnlyDevMode: "Login SSO dinonaktifkan pada mode Development Production Read-Only. Gunakan Quick Login di bawah.",
         ServerError: "Terjadi kesalahan internal saat memproses autentikasi SSO.",
       };
       setError(errorMap[err] || `Autentikasi SSO gagal (${err}). Silakan coba kembali.`);
@@ -155,7 +163,15 @@ export default function LoginPage() {
         }
 
         setTestEnvironment(data.isTestEnvironment === true);
+        setIsReadOnlyMode(data.isReadOnlyMode === true);
         setGateEnabled(data.gateEnabled === true);
+        if (Array.isArray(data.availableBranches) && data.availableBranches.length > 0) {
+          setAvailableBranches(data.availableBranches);
+          setSelectedBranch((prev) =>
+            data.availableBranches.includes(prev) ? prev : data.availableBranches[0]
+          );
+        }
+
         if (data.isTestEnvironment) {
           setIsDevMode(data.isQuickLoginAllowed === true);
           setInitLoading(false);
@@ -213,7 +229,7 @@ export default function LoginPage() {
   };
   const selectedRole = DEV_ROLES.find((r) => r.id === selectedRoleId) || DEV_ROLES[0];
 
-  // Initial redirecting state for UAT / Production when visiting /login without error
+  // Initial redirecting state for Production when visiting /login without error
   if (initLoading && !error && !isDevMode) {
     return (
       <div className="min-h-screen bg-[#f5f7f9] flex flex-col justify-center items-center p-4">
@@ -230,7 +246,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <form onSubmit={handleGate} className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-4">
         <h1 className="text-xl font-bold text-slate-900">SPARTA SIAGA — Gate Access</h1>
-        <p className="text-sm text-slate-600">Development/UAT terisolasi. Hanya evaluator berwenang.</p>
+        <p className="text-sm text-slate-600">Lingkungan Development terproteksi Gate. Hanya penguji berwenang.</p>
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
         {!gateEnabled && <p className="text-sm text-amber-800">Gate belum diaktifkan oleh administrator.</p>}
         <label className="block text-sm font-medium text-slate-800">Gate passcode
@@ -240,6 +256,7 @@ export default function LoginPage() {
       </form>
     </div>
   );
+
   // Production Error Screen (SSO Portal Re-entry)
   if (!isDevMode) {
     return (
@@ -272,7 +289,7 @@ export default function LoginPage() {
               <div className="mb-6 p-4 bg-blue-50 text-blue-900 rounded-2xl border border-blue-200 text-center">
                 <p className="font-bold text-sm">Autentikasi Tunggal Terpusat</p>
                 <p className="text-xs text-blue-700 mt-1">
-                  Akses SPARTA SIAGA wajib melalui Portal SPARTA SSO Corporate / UAT.
+                  Akses SPARTA SIAGA wajib melalui Portal SPARTA SSO.
                 </p>
               </div>
             )}
@@ -294,7 +311,7 @@ export default function LoginPage() {
     );
   }
 
-  // DEVELOPMENT / UAT — Quick Login with 9 Role Selection
+  // DEVELOPMENT — Quick Login with 9 Role Selection (Isolated DB or Production Read-Only)
   return (
     <div className="min-h-screen bg-[#0f172a] flex flex-col justify-center items-center p-4 py-8">
       <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-800">
@@ -309,22 +326,42 @@ export default function LoginPage() {
                 <h1 className="text-lg font-black tracking-wide">SPARTA SIAGA</h1>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-slate-950 tracking-wider">
                   <Terminal className="w-3 h-3" />
-                  DEVELOPMENT / UAT
+                  DEVELOPMENT
                 </span>
               </div>
-              <p className="text-blue-200 text-xs mt-0.5">Development Login &amp; Role Simulator</p>
+              <p className="text-blue-200 text-xs mt-0.5">
+                {isReadOnlyMode
+                  ? "Quick Login • Data Aktual Production (Read-Only)"
+                  : "Quick Login & Role Simulator • Isolated Aiven DB"}
+              </p>
             </div>
           </div>
 
           <div className="hidden sm:block text-right">
-            <span className="text-[11px] font-semibold text-blue-200 bg-white/10 px-3 py-1.5 rounded-lg border border-white/15">
-              Isolated Environment
+            <span
+              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg border ${
+                isReadOnlyMode
+                  ? "bg-amber-400/20 text-amber-200 border-amber-300/40"
+                  : "bg-white/10 text-blue-200 border-white/15"
+              }`}
+            >
+              {isReadOnlyMode ? <Eye className="w-3.5 h-3.5" /> : <Database className="w-3.5 h-3.5" />}
+              {isReadOnlyMode ? "Production Read-Only" : "Isolated Aiven DB"}
             </span>
           </div>
         </div>
 
         {/* Development Quick Login Body */}
         <div className="p-6 sm:p-8">
+          {isReadOnlyMode && (
+            <div className="mb-5 p-3.5 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 rounded-xl text-xs border border-amber-200 dark:border-amber-800 flex items-start gap-2.5">
+              <Eye className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="leading-relaxed">
+                <strong>Mode Data Aktual Read-Only aktif:</strong> terhubung ke PostgreSQL Production dengan hak <code className="font-mono">SELECT</code> saja. Sesi Quick Login disimpan di memori lokal; semua tulis DB, simulasi, provisioning, worker, dan notifikasi diblokir.
+              </div>
+            </div>
+          )}
+
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -332,7 +369,7 @@ export default function LoginPage() {
                 Pilih Role Developer
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Pilih salah satu dari 9 role resmi untuk testing UI, workflow, dan RBAC tanpa SSO.
+                Pilih salah satu dari 9 role resmi untuk testing UI, tampilan data, dan RBAC tanpa SSO.
               </p>
             </div>
           </div>
@@ -387,28 +424,46 @@ export default function LoginPage() {
 
             {/* Branch Selector for Branch-Scoped Roles */}
             {selectedRole.requiresBranch ? (
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   Pilih Cabang Penugasan ({selectedRole.name})
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {BRANCHES.map((b) => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => setSelectedBranch(b.id)}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-center flex items-center justify-center gap-2 ${
-                        selectedBranch === b.id
-                          ? "bg-[#123B6D] text-white border-[#123B6D] shadow-sm"
-                          : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      }`}
-                    >
-                      <span>{b.name}</span>
-                      <span className="text-[10px] opacity-75">({b.code})</span>
-                    </button>
-                  ))}
-                </div>
+                {availableBranches.length <= 2 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {availableBranches.map((branchName) => {
+                      const meta = formatBranchLabel(branchName);
+                      return (
+                        <button
+                          key={branchName}
+                          type="button"
+                          onClick={() => setSelectedBranch(branchName)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-center flex items-center justify-center gap-2 ${
+                            selectedBranch === branchName
+                              ? "bg-[#123B6D] text-white border-[#123B6D] shadow-sm"
+                              : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                          }`}
+                        >
+                          <span>{meta.label}</span>
+                          {meta.code && <span className="text-[10px] opacity-75">({meta.code})</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <select
+                    aria-label="Pilih Cabang Penugasan"
+                    value={selectedBranch}
+                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100"
+                  >
+                    {availableBranches.map((branchName) => (
+                      <option key={branchName} value={branchName}>
+                        {branchName}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             ) : (
               <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/40 text-xs text-blue-800 dark:text-blue-300 flex items-center justify-between">
@@ -439,7 +494,7 @@ export default function LoginPage() {
 
           {/* Footer Warning */}
           <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-[11px] text-slate-500 dark:text-slate-400">
-            Quick Login hanya aktif pada Development/UAT terisolasi. Production wajib menggunakan autentikasi SSO terpusat.
+            Quick Login hanya aktif pada lingkungan Development. Production wajib menggunakan autentikasi Portal SPARTA SSO.
           </div>
         </div>
       </div>

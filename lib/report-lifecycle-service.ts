@@ -3,6 +3,7 @@ import { IncidentRecord, IncidentStatus } from "@/types/incident";
 import { rowToIncident } from "./incident-db";
 import { recordNotificationLog } from "./notification-service";
 import { DisasterNotificationType } from "@/types/notification";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export interface LifecycleProcessOptions {
   now?: Date | number;
@@ -21,7 +22,7 @@ export interface LifecycleProcessResult {
 
 let isLifecycleSchemaEnsured = false;
 export async function ensureLifecycleSchema(): Promise<void> {
-  if (isLifecycleSchemaEnsured) return;
+  if (isLifecycleSchemaEnsured || isDevelopmentReadOnlyMode()) return;
   try {
     const pool = getDbPool();
     await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reminder_24h_sent_at TIMESTAMP WITH TIME ZONE;`);

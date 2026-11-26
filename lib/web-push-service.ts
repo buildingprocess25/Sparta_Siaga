@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getDbPool, isTestingModeActiveSync } from './db';
 import { ensureWebPushConfigured } from './web-push-config';
 import { branchMasterEnabled, branchSqlParameter } from './sparta-rollout';
+import { isDevelopmentReadOnlyMode } from './environment-policy';
 
 export function buildPushSubscriptionBranchClause(targetParam: string): string {
   return branchMasterEnabled()
@@ -72,7 +73,7 @@ let tableEnsured = false;
  * Ensures the user_push_subscriptions table exists with all necessary columns for delivery tracking.
  */
 export async function ensurePushSubscriptionTable(): Promise<void> {
-  if (tableEnsured) return;
+  if (tableEnsured || isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_push_subscriptions (
@@ -200,14 +201,16 @@ export async function sendSinglePushNotification(
 ): Promise<PushDeliveryOutcome> {
   const deviceType: DeviceType = (sub.device_type as DeviceType) || detectDeviceType(sub.user_agent || null);
 
-  if (isTestingModeActiveSync()) {
+  if (isTestingModeActiveSync() || isDevelopmentReadOnlyMode()) {
     return {
       endpoint: sub.endpoint,
       userId: sub.user_id,
       deviceType,
       branch: sub.branch || null,
       success: false,
-      error: 'Suppressed: Testing Mode is active',
+      error: isDevelopmentReadOnlyMode()
+        ? 'Suppressed: Development Read-Only mode is active'
+        : 'Suppressed: Testing Mode is active',
     };
   }
 
@@ -355,8 +358,8 @@ export async function dispatchEarthquakePushNotifications(params: {
     outcomes: [],
   };
 
-  if (isTestingModeActiveSync()) {
-    console.log('[Web Push] 🛑 SUPPRESSED: Testing Mode active. Real push notifications blocked.');
+  if (isTestingModeActiveSync() || isDevelopmentReadOnlyMode()) {
+    console.log('[Web Push] 🛑 SUPPRESSED: Testing / Read-Only Mode active. Real push notifications blocked.');
     return summary;
   }
 

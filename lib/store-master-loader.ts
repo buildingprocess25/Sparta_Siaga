@@ -66,7 +66,7 @@ export async function getOrLoadMasterStores(
        FROM stores 
        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
        ${portalStoresEnabled() ? "AND is_active=TRUE AND master_source='SPARTA_PORTAL'" : ""}
-       LIMIT 25000`
+       ORDER BY kode_toko ASC`
     );
     if (res.rows && res.rows.length > 0) {
       const mappedStores: Store[] = res.rows.map((r) => ({

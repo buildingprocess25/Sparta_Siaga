@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { isQuickLoginPermitted, isSafeTestPoolTarget } from "@/lib/environment-policy";
+import {
+  isDevelopmentReadOnlyMode,
+  isQuickLoginPermitted,
+  isSafeTestPoolTarget,
+} from "@/lib/environment-policy";
 import { getDbPool } from "@/lib/db";
-import { 
-  createDeviceSession, 
-  revokeSessionByRefreshToken 
+import {
+  createDeviceSession,
+  createReadOnlyDevSession,
+  revokeSessionByRefreshToken,
 } from "@/lib/session-service";
 import {
   ACCESS_TOKEN_COOKIE,
@@ -28,7 +33,25 @@ interface RoleDefinition {
   email: string;
 }
 
-const SUPPORTED_BRANCHES = ["BANDUNG", "CIKOKOL"];
+function sanitizeQuickLoginBranch(rawBranch?: string): string {
+  const cleaned = (rawBranch || "BANDUNG").trim().replace(/\s+/g, " ").toUpperCase();
+  if (!cleaned || cleaned === "-" || !/^[A-Z0-9 _.-]{2,64}$/.test(cleaned)) {
+    return "BANDUNG";
+  }
+  return cleaned;
+}
+
+function buildBranchCodeSlug(branch: string): string {
+  if (branch === "CIKOKOL") return "CKL";
+  if (branch === "BANDUNG") return "BDG";
+  if (branch === "HEAD OFFICE") return "HO";
+  const slug = branch.replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  return slug || "BR";
+}
+
+function buildEmailBranchSlug(branch: string): string {
+  return branch.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "") || "bandung";
+}
 
 export async function POST(req: Request) {
   // 1. Strict server-side policy check (Fail-closed)
@@ -46,9 +69,31 @@ export async function POST(req: Request) {
   try {
     const body: QuickLoginPayload = await req.json().catch(() => ({ role: "" }));
     const rawRole = (body.role || "").trim().toLowerCase();
-    const branchCandidate = (body.branch || "BANDUNG").trim().toUpperCase();
-    const branch = SUPPORTED_BRANCHES.includes(branchCandidate) ? branchCandidate : "BANDUNG";
-    const branchCode = branch === "CIKOKOL" ? "CKL" : "BDG";
+    const readOnlyMode = isDevelopmentReadOnlyMode();
+    let branch = sanitizeQuickLoginBranch(body.branch);
+    let resolvedBranchCode: string | null = null;
+
+    if (readOnlyMode && branch !== "HEAD OFFICE") {
+      try {
+        const pool = getDbPool();
+        const branchLookup = await pool.query<{ cabang: string; branch_code: string | null }>(
+          `SELECT BTRIM(cabang) AS cabang, COALESCE(to_jsonb(stores)->>'branch_code', NULL) AS branch_code
+           FROM stores
+           WHERE UPPER(BTRIM(cabang)) = $1 OR UPPER(BTRIM(COALESCE(to_jsonb(stores)->>'branch_code', ''))) = $1
+           LIMIT 1`,
+          [branch]
+        );
+        if (branchLookup.rows[0]?.cabang) {
+          branch = branchLookup.rows[0].cabang.toUpperCase();
+          resolvedBranchCode = branchLookup.rows[0].branch_code;
+        }
+      } catch {
+        // Fallback to requested branch string without failing Quick Login
+      }
+    }
+
+    const branchCodeSlug = buildBranchCodeSlug(branch);
+    const emailBranchSlug = buildEmailBranchSlug(branch);
 
     // 2. Map requested role to verified specification
     let def: RoleDefinition;
@@ -91,8 +136,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BnM Manajer (${branch})`,
-          nik: `DEV_BM_${branchCode}`,
-          email: `dev.bm.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BM_${branchCodeSlug}`,
+          email: `dev.bm.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -103,8 +148,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BMC (${branch})`,
-          nik: `DEV_BMC_${branchCode}`,
-          email: `dev.bmc.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BMC_${branchCodeSlug}`,
+          email: `dev.bmc.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -115,8 +160,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BEC (${branch})`,
-          nik: `DEV_BEC_${branchCode}`,
-          email: `dev.bec.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BES_${branchCodeSlug}`.replace("_BES_", "_BEC_"),
+          email: `dev.bec.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -127,8 +172,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BBC (${branch})`,
-          nik: `DEV_BBC_${branchCode}`,
-          email: `dev.bbc.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BBC_${branchCodeSlug}`,
+          email: `dev.bbc.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -139,8 +184,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BMS (${branch})`,
-          nik: `DEV_BMS_${branchCode}`,
-          email: `dev.bms.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BMS_${branchCodeSlug}`,
+          email: `dev.bms.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -151,8 +196,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BES (${branch})`,
-          nik: `DEV_BES_${branchCode}`,
-          email: `dev.bes.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BES_${branchCodeSlug}`,
+          email: `dev.bes.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -163,8 +208,8 @@ export async function POST(req: Request) {
           scope: "BRANCH",
           branch,
           name: `Dev BBS (${branch})`,
-          nik: `DEV_BBS_${branchCode}`,
-          email: `dev.bbs.${branch.toLowerCase()}@sparta-siaga.local`,
+          nik: `DEV_BBS_${branchCodeSlug}`,
+          email: `dev.bbs.${emailBranchSlug}@sparta-siaga.local`,
         };
         break;
 
@@ -178,45 +223,10 @@ export async function POST(req: Request) {
         );
     }
 
-    const pool = getDbPool();
-    if (!isSafeTestPoolTarget((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString)) {
-      return NextResponse.json({ error: "UNSAFE_DATABASE_TARGET" }, { status: 403 });
-    }
     const userId = `usr_${def.nik.toLowerCase()}`;
-    const schema = await pool.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'sso_status') AS present");
-    const hasSsoStatus = schema.rows[0]?.present === true;
+    const userAgent = req.headers.get("user-agent") || null;
+    const ipAddress = req.headers.get("x-forwarded-for") || null;
 
-    // 3. Upsert synthetic developer user record into database
-    const upsert = await pool.query(
-      `INSERT INTO users (
-        id, nik, name, email, system_role, business_role, scope, branch, status, source${hasSsoStatus ? ", sso_status" : ""}, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', 'DEVELOPMENT'${hasSsoStatus ? ', NULL' : ''}, NOW(), NOW())
-      ON CONFLICT (id) DO UPDATE SET
-        nik = EXCLUDED.nik,
-        name = EXCLUDED.name,
-        email = EXCLUDED.email,
-        system_role = EXCLUDED.system_role,
-        business_role = EXCLUDED.business_role,
-        scope = EXCLUDED.scope,
-        branch = EXCLUDED.branch,
-        status = 'ACTIVE',
-        source = 'DEVELOPMENT',
-        ${hasSsoStatus ? "sso_status = NULL," : ""}
-        updated_at = NOW()
-        WHERE users.source = 'DEVELOPMENT' AND users.nik = EXCLUDED.nik AND users.email = EXCLUDED.email`,
-      [
-        userId,
-        def.nik,
-        def.name,
-        def.email,
-        def.systemRole,
-        def.businessRole,
-        def.scope,
-        def.branch,
-      ]
-    );
-
-    if (upsert.rowCount !== 1) return NextResponse.json({ error: "TEST_IDENTITY_CONFLICT" }, { status: 409 });
     // Revoke this browser's previous refresh token only; do not log out all evaluators.
     const cookieHeader = req.headers.get("cookie") || "";
     const refreshMatch = cookieHeader.match(/siaga_refresh=([^;]+)/);
@@ -224,15 +234,70 @@ export async function POST(req: Request) {
       await revokeSessionByRefreshToken(refreshMatch[1]).catch(() => undefined);
     }
 
-    // 5. Create fresh device session
-    const userAgent = req.headers.get("user-agent") || null;
-    const ipAddress = req.headers.get("x-forwarded-for") || null;
+    let sessionResult;
+    if (readOnlyMode) {
+      // Zero DB writes in Production-ReadOnly Development mode: store session & persona only in memory + signed JWT.
+      sessionResult = await createReadOnlyDevSession({
+        persona: {
+          id: userId,
+          nik: def.nik,
+          name: def.name,
+          email: def.email,
+          systemRole: def.systemRole,
+          businessRole: def.businessRole,
+          scope: def.systemRole === "ADMIN" ? null : def.scope,
+          branch: def.systemRole === "ADMIN" || def.scope === "HO" ? null : def.branch,
+          branchCode: def.systemRole === "ADMIN" || def.scope === "HO" ? null : resolvedBranchCode,
+        },
+        userAgent,
+        ipAddress,
+      });
+    } else {
+      const pool = getDbPool();
+      if (!isSafeTestPoolTarget((pool as unknown as { options?: { connectionString?: string } }).options?.connectionString)) {
+        return NextResponse.json({ error: "UNSAFE_DATABASE_TARGET" }, { status: 403 });
+      }
+      const schema = await pool.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'sso_status') AS present");
+      const hasSsoStatus = schema.rows[0]?.present === true;
 
-    const sessionResult = await createDeviceSession({
-      userId,
-      userAgent,
-      ipAddress,
-    });
+      // 3. Upsert synthetic developer user record into isolated database
+      const upsert = await pool.query(
+        `INSERT INTO users (
+          id, nik, name, email, system_role, business_role, scope, branch, status, source${hasSsoStatus ? ", sso_status" : ""}, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', 'DEVELOPMENT'${hasSsoStatus ? ', NULL' : ''}, NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          nik = EXCLUDED.nik,
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          system_role = EXCLUDED.system_role,
+          business_role = EXCLUDED.business_role,
+          scope = EXCLUDED.scope,
+          branch = EXCLUDED.branch,
+          status = 'ACTIVE',
+          source = 'DEVELOPMENT',
+          ${hasSsoStatus ? "sso_status = NULL," : ""}
+          updated_at = NOW()
+          WHERE users.source = 'DEVELOPMENT' AND users.nik = EXCLUDED.nik AND users.email = EXCLUDED.email`,
+        [
+          userId,
+          def.nik,
+          def.name,
+          def.email,
+          def.systemRole,
+          def.businessRole,
+          def.scope,
+          def.branch,
+        ]
+      );
+
+      if (upsert.rowCount !== 1) return NextResponse.json({ error: "TEST_IDENTITY_CONFLICT" }, { status: 409 });
+
+      sessionResult = await createDeviceSession({
+        userId,
+        userAgent,
+        ipAddress,
+      });
+    }
 
     if (!sessionResult) {
       return NextResponse.json(
@@ -245,14 +310,15 @@ export async function POST(req: Request) {
     const response = NextResponse.json({
       success: true,
       redirectTo: "/",
+      readOnlyMode,
       user: {
         id: userId,
         nik: def.nik,
         name: def.name,
         role: def.businessRole,
         systemRole: def.systemRole,
-        scope: def.scope,
-        branch: def.branch,
+        scope: def.systemRole === "ADMIN" ? null : def.scope,
+        branch: def.systemRole === "ADMIN" || def.scope === "HO" ? null : def.branch,
       },
     });
 

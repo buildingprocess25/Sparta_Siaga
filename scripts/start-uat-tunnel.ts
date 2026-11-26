@@ -14,13 +14,15 @@ function getNetworkAddresses() {
 }
 
 console.log("==================================================================");
-console.log("SPARTA SIAGA — Panduan Akses Pengujian UAT (Laptop & Mobile)");
+console.log("SPARTA SIAGA — Panduan Akses Development (Laptop, LAN & Tunnel)");
 console.log("==================================================================");
 console.log("");
 console.log("1. AKSES LOKAL (Laptop / PC):");
-console.log("   URL: http://localhost:3004");
+console.log("   - Mode Isolated (Aiven 1GB):   pnpm dev:local");
+console.log("   - Mode Prod Read-Only:         pnpm dev:prod-readonly");
+console.log("   - URL:                         http://localhost:3004");
 console.log("");
-console.log("2. AKSES JARINGAN WIFI / LAN LOKAL (Mobile / Tablet di jaringan yang sama):");
+console.log("2. AKSES JARINGAN WIFI / LAN LOKAL (Wajib DEV_BIND_HOST=0.0.0.0 & Gate):");
 const ips = getNetworkAddresses();
 if (ips.length > 0) {
   ips.forEach((ip) => {
@@ -30,10 +32,9 @@ if (ips.length > 0) {
   console.log("   URL: http://<IP_LAPTOP>:3004");
 }
 console.log("");
-console.log("3. AKSES HTTPS TUNNEL PUBLIK (Mobile dari luar kantor / jaringan seluler):");
-console.log("   Jalankan salah satu opsi berikut di terminal baru:");
+console.log("3. AKSES HTTPS TUNNEL PUBLIK (Wajib SPARTA_TEST_GATE_ENABLED=true & DEV_GATE_PASSCODE):");
 console.log("   Opsi A (localtunnel):");
-console.log("      pnpm run tunnel:uat");
+console.log("      pnpm run tunnel:dev");
 console.log("      atau: pnpm dlx localtunnel --port 3004");
 console.log("");
 console.log("   Opsi B (cloudflared / Cloudflare Tunnel):");
@@ -43,4 +44,3 @@ console.log("   Opsi C (ngrok):");
 console.log("      ngrok http 3004");
 console.log("");
 console.log("==================================================================");
-

@@ -13,6 +13,7 @@ import { saveMilestoneDocument, validateMilestoneDocumentMagicBytes } from "./mi
 import { EstimationIntegrationService } from "./estimation-service";
 import { samePortalBranch } from "./sparta-master-sync";
 import { effectiveBranchValue } from "./sparta-rollout";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 let tablesEnsured = false;
 
@@ -121,7 +122,7 @@ export async function checkOperationalProgressGating(
 }
 
 export async function ensureMilestoneTables(): Promise<void> {
-  if (tablesEnsured) return;
+  if (tablesEnsured || isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
 
   await pool.query(`
@@ -214,6 +215,20 @@ export async function getMilestones(reportId: string): Promise<MilestoneRecord[]
 
     if (existing) {
       initialized.push(rowToMilestone(existing));
+    } else if (isDevelopmentReadOnlyMode()) {
+      const nowIso = new Date().toISOString();
+      initialized.push({
+        id: `ro_ms_${reportId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${key.toLowerCase()}`,
+        reportId,
+        stageOrder: config.order,
+        stageKey: key,
+        stageName: config.label,
+        targetProgress: config.progress,
+        status: "NOT_STARTED",
+        revisions: [],
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
     } else {
       const id = `ms_${reportId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${key.toLowerCase()}`;
       const insertRes = await pool.query(

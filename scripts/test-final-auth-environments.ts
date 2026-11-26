@@ -3,7 +3,6 @@ import { getDbPool } from "../lib/db";
 import { 
   getSpartaEnvironment, 
   isProductionEnvironment, 
-  isUatEnvironment, 
   isDevelopmentEnvironment, 
   isQuickLoginPermitted,
   getLogoutRedirectUrl,
@@ -223,19 +222,19 @@ async function runTestSuite() {
     );
 
     // -------------------------------------------------------------------------
-    // SECTION 2: UAT Environment & SSO Full Lifecycle (Login, Logout, Re-entry)
+    // SECTION 2: Retired UAT Flag Fail-Closed & SSO Behavior
     // -------------------------------------------------------------------------
-    console.log("\n--- SECTION 2: UAT Environment & SSO Full Lifecycle ---");
+    console.log("\n--- SECTION 2: Retired UAT Flag Fail-Closed & SSO Behavior ---");
     process.env.APP_ENV = "uat";
     process.env.SPARTA_ENVIRONMENT = "uat";
 
     testAssert(
-      isUatEnvironment() === true,
-      "isUatEnvironment() returns true when APP_ENV=uat"
+      isProductionEnvironment() === true && getSpartaEnvironment() === "production",
+      "Retired APP_ENV=uat fails closed to 'production'"
     );
     testAssert(
       isDevelopmentEnvironment() === false,
-      "isDevelopmentEnvironment() returns false in UAT"
+      "isDevelopmentEnvironment() returns false when APP_ENV=uat"
     );
 
     // Quick Login MUST be strictly blocked in UAT

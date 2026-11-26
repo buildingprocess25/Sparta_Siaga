@@ -19,6 +19,7 @@ import {
   EmailSendResult,
 } from "./email-service";
 import { getRuntimeConfig } from "./runtime-config";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export interface HoApprovalRecipient {
   userId: string;
@@ -422,6 +423,9 @@ export async function processReportApprovalOutbox(options?: {
   reportId?: string;
   limit?: number;
 }): Promise<ProcessOutboxResult[]> {
+  if (isDevelopmentReadOnlyMode()) {
+    return [];
+  }
   const pool = getDbPool();
   const client = await pool.connect();
   const results: ProcessOutboxResult[] = [];

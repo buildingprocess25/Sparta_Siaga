@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isGateRequired, hasVerifiedGate } from "@/lib/environment-policy";
+import { isGateRequired, hasVerifiedGate, isDevelopmentReadOnlyMode } from "@/lib/environment-policy";
 import { dbGetUserByIdentifier } from "@/lib/user-db";
 import bcrypt from "bcryptjs";
 import { signSession } from "@/lib/jwt";
@@ -8,6 +8,15 @@ import { getSessionCookieOptions } from "@/lib/session-config";
 import { canUseLocalPassword } from "@/lib/sparta-identity";
 
 export async function POST(request: Request) {
+  if (isDevelopmentReadOnlyMode()) {
+    return NextResponse.json(
+      {
+        error: "Gunakan Quick Login pada mode Development Read-Only.",
+        code: "READ_ONLY_DEV_MODE",
+      },
+      { status: 403 }
+    );
+  }
   if (isGateRequired(request) && !hasVerifiedGate(request)) return NextResponse.json({ error: "GATE_VERIFICATION_REQUIRED" }, { status: 403 });
   try {
     const body = await request.json();
@@ -20,9 +29,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const { isProductionEnvironment, isUatEnvironment } = await import("@/lib/environment-policy");
+    const { isProductionEnvironment } = await import("@/lib/environment-policy");
     const isProd = isProductionEnvironment();
-    const isUat = isUatEnvironment();
 
     const user = await dbGetUserByIdentifier(identifier);
 
@@ -38,14 +46,14 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
-          error: "Akun pengujian UAT tidak dapat digunakan pada environment Production.",
+          error: "Akun pengujian tidak dapat digunakan pada environment Production.",
           code: "UAT_LOGIN_FORBIDDEN_IN_PRODUCTION",
         },
         { status: 403 }
       );
     }
 
-    if ((isProd || isUat) && (!user || !canUseLocalPassword(user.source, true, process.env.SPARTA_LOCAL_LOGIN_TRANSITION_ENABLED === "true"))) {
+    if (isProd && (!user || !canUseLocalPassword(user.source, true, process.env.SPARTA_LOCAL_LOGIN_TRANSITION_ENABLED === "true"))) {
       return NextResponse.json(
         {
           error: "Autentikasi langsung dengan password dinonaktifkan. Wajib masuk melalui Portal SSO SPARTA.",
@@ -55,7 +63,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (user && !canUseLocalPassword(user.source, isProd || isUat, process.env.SPARTA_LOCAL_LOGIN_TRANSITION_ENABLED === "true")) {
+    if (user && !canUseLocalPassword(user.source, isProd, process.env.SPARTA_LOCAL_LOGIN_TRANSITION_ENABLED === "true")) {
       return NextResponse.json({ error: "Akun ini wajib masuk melalui Portal SPARTA (SSO).", code: "SSO_LOGIN_REQUIRED" }, { status: 403 });
     }
 

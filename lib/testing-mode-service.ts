@@ -1,4 +1,5 @@
 import { getProductionDbPool, setTestingModeActiveSync, isTestingModeActiveSync } from './db';
+import { isDevelopmentReadOnlyMode } from './environment-policy';
 
 export interface TestingModeState {
   enabled: boolean;
@@ -25,6 +26,10 @@ const CACHE_TTL_MS = 5000;
  * Synchronizes the in-memory sync flag in lib/db.ts.
  */
 export async function getTestingModeState(): Promise<TestingModeState> {
+  if (isDevelopmentReadOnlyMode()) {
+    setTestingModeActiveSync(false);
+    return { enabled: false };
+  }
   const now = Date.now();
   if (cachedState && cachedState.expiresAt > now) {
     return cachedState.state;
@@ -77,6 +82,9 @@ export async function setTestingModeState(
   actor: { id: string; name: string },
   reason?: string
 ): Promise<TestingModeState> {
+  if (isDevelopmentReadOnlyMode()) {
+    throw new Error("READ_ONLY_DEV_MODE: Perubahan testing_mode diblokir pada mode Development Read-Only.");
+  }
   const pool = getProductionDbPool();
   const now = new Date().toISOString();
 

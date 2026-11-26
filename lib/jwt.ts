@@ -8,11 +8,24 @@ function getEncodedJwtSecret(): Uint8Array {
 
 export const SESSION_VERSION = 2;
 
+export interface ReadOnlyDevPersona {
+  id: string;
+  nik: string;
+  name: string;
+  email: string;
+  systemRole: "ADMIN" | "USER";
+  businessRole: string | null;
+  scope: "HO" | "BRANCH" | null;
+  branch: string | null;
+  branchCode?: string | null;
+}
+
 export interface SessionPayload {
   id: string;
   nik?: string | null;
   systemRole?: string;
   v?: number;
+  devPersona?: ReadOnlyDevPersona;
 }
 
 export async function signSession(payload: SessionPayload, expiresIn: string = "15m"): Promise<string> {
@@ -21,7 +34,7 @@ export async function signSession(payload: SessionPayload, expiresIn: string = "
     nik: payload.nik,
     systemRole: payload.systemRole,
     v: payload.v || SESSION_VERSION,
-  
+    ...(payload.devPersona ? { devPersona: payload.devPersona } : {}),
     env: currentSessionEnvironment(),
   })
     .setProtectedHeader({ alg: "HS256" })

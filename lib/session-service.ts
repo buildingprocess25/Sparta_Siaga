@@ -1,11 +1,12 @@
 import crypto from "crypto";
 import { getDbPool } from "./db";
-import { signSession, SessionPayload } from "./jwt";
-import { dbGetUserById } from "./user-db";
+import { ReadOnlyDevPersona, signSession, SessionPayload } from "./jwt";
+import { dbGetUserById, UserModel } from "./user-db";
 import { detectDeviceType } from "./web-push-service";
-import { UserModel } from "./user-db";
 import { getJwtSecret } from "./runtime-config";
 import { currentSessionEnvironment, hasCurrentRefreshEnvironment, canUseSessionIdentity } from "./session-environment";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
+import { Scope, SpartaRole } from "@/types/incident";
 
 export interface DeviceSessionRecord {
   id: string;
@@ -40,11 +41,70 @@ export interface SessionRefreshResult {
   user: UserModel;
 }
 
+interface InMemorySessionEntry {
+  session: DeviceSessionRecord;
+  user: UserModel;
+}
+
+const MAX_READONLY_SESSIONS = 200;
+
+const globalForReadOnlySessions = globalThis as unknown as {
+  __spartaReadOnlyDevSessions?: Map<string, InMemorySessionEntry>;
+  __spartaReadOnlyRevokedUsers?: Map<string, number>;
+};
+
+function getReadOnlySessionsMap(): Map<string, InMemorySessionEntry> {
+  if (!globalForReadOnlySessions.__spartaReadOnlyDevSessions) {
+    globalForReadOnlySessions.__spartaReadOnlyDevSessions = new Map();
+  }
+  return globalForReadOnlySessions.__spartaReadOnlyDevSessions;
+}
+
+function getReadOnlyRevokedUsersMap(): Map<string, number> {
+  if (!globalForReadOnlySessions.__spartaReadOnlyRevokedUsers) {
+    globalForReadOnlySessions.__spartaReadOnlyRevokedUsers = new Map();
+  }
+  return globalForReadOnlySessions.__spartaReadOnlyRevokedUsers;
+}
+
+export function getReadOnlyUserTokenVersion(userId: string): number {
+  return getReadOnlyRevokedUsersMap().get(userId) ?? 1;
+}
+
+function userModelToReadOnlyPersona(user: UserModel): ReadOnlyDevPersona {
+  return {
+    id: user.id,
+    nik: user.nik || "",
+    name: user.name,
+    email: user.email || "",
+    systemRole: user.systemRole,
+    businessRole: user.businessRole,
+    scope: user.scope,
+    branch: user.branch,
+    branchCode: user.branchCode ?? null,
+  };
+}
+
+function pruneExpiredReadOnlySessions(sessions: Map<string, InMemorySessionEntry>): void {
+  const nowMs = Date.now();
+  for (const [id, entry] of sessions.entries()) {
+    if (entry.session.is_revoked || Date.parse(entry.session.expires_at) <= nowMs) {
+      sessions.delete(id);
+    }
+  }
+  while (sessions.size >= MAX_READONLY_SESSIONS) {
+    const oldestKey = sessions.keys().next().value;
+    if (!oldestKey) break;
+    sessions.delete(oldestKey);
+  }
+}
+
 /**
  * Staging schema preparation utility for user_sessions table and token_version column.
  * Strictly decoupled from runtime authentication/session flows to ensure ZERO runtime DDL execution.
  */
 export async function ensureUserSessionsTable(): Promise<void> {
+  if (isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER DEFAULT 1;
@@ -135,6 +195,83 @@ export function generateRefreshToken(): string {
 }
 
 /**
+ * Creates an in-memory per-device session for Development Production-ReadOnly mode
+ * with zero database writes.
+ */
+export async function createReadOnlyDevSession(params: {
+  persona: ReadOnlyDevPersona;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}): Promise<SessionCreationResult> {
+  if (!isDevelopmentReadOnlyMode()) {
+    throw new Error("READONLY_SESSION_FORBIDDEN: Read-only in-memory session is only allowed in Development Read-Only mode.");
+  }
+
+  const nowIso = new Date().toISOString();
+  const tokenVersion = getReadOnlyUserTokenVersion(params.persona.id);
+  const user: UserModel = {
+    id: params.persona.id,
+    nik: params.persona.nik,
+    name: params.persona.name,
+    email: params.persona.email,
+    systemRole: params.persona.systemRole,
+    businessRole: params.persona.businessRole as SpartaRole | null,
+    scope: params.persona.scope as Scope | null,
+    branch: params.persona.branch,
+    branchCode: params.persona.branchCode ?? null,
+    status: "ACTIVE",
+    source: "DEVELOPMENT",
+    ssoStatus: null,
+    tokenVersion,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+
+  const sessionId = `sess_ro_${user.id}_${crypto.randomBytes(8).toString("hex")}`;
+  const rawRefreshToken = generateRefreshToken();
+  const tokenHash = hashToken(rawRefreshToken);
+  const encryptedToken = encryptToken(rawRefreshToken);
+  const deviceType = detectDeviceType(params.userAgent || null);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  const sessions = getReadOnlySessionsMap();
+  pruneExpiredReadOnlySessions(sessions);
+  sessions.set(sessionId, {
+    session: {
+      id: sessionId,
+      user_id: user.id,
+      refresh_token_hash: tokenHash,
+      current_token_encrypted: encryptedToken,
+      device_type: deviceType,
+      user_agent: params.userAgent || null,
+      ip_address: params.ipAddress || null,
+      token_version: tokenVersion,
+      is_revoked: false,
+      created_at: nowIso,
+      last_used_at: nowIso,
+      expires_at: expiresAt.toISOString(),
+    },
+    user,
+  });
+
+  const accessToken = await signSession({
+    id: user.id,
+    nik: user.nik,
+    systemRole: user.systemRole,
+    v: tokenVersion,
+    devPersona: params.persona,
+  });
+
+  return {
+    sessionId,
+    accessToken,
+    refreshToken: rawRefreshToken,
+    expiresAt,
+    user,
+  };
+}
+
+/**
  * Creates a persistent per-device session with a rotating refresh token (30-day sliding window).
  */
 export async function createDeviceSession(params: {
@@ -143,6 +280,10 @@ export async function createDeviceSession(params: {
   ipAddress?: string | null;
   tokenVersion?: number;
 }): Promise<SessionCreationResult | null> {
+  if (isDevelopmentReadOnlyMode()) {
+    throw new Error("READ_ONLY_DATABASE_VIOLATION: Persistent DB session creation is blocked in Development Read-Only mode.");
+  }
+
   const pool = getDbPool();
 
   const user = await dbGetUserById(params.userId);
@@ -210,6 +351,95 @@ export async function rotateDeviceSession(
 ): Promise<SessionRefreshResult | null> {
   if (!hasCurrentRefreshEnvironment(rawRefreshToken)) {
     return null;
+  }
+
+  if (isDevelopmentReadOnlyMode()) {
+    const tokenHash = hashToken(rawRefreshToken);
+    const allowGrace = options.allowGracePeriod ?? false;
+    const nowMs = Date.now();
+    const sessions = getReadOnlySessionsMap();
+    let matched: InMemorySessionEntry | undefined;
+    let isGraceMatch = false;
+
+    for (const entry of sessions.values()) {
+      if (entry.session.refresh_token_hash === tokenHash) {
+        matched = entry;
+        isGraceMatch = false;
+        break;
+      }
+      if (
+        allowGrace &&
+        entry.session.previous_refresh_token_hash === tokenHash &&
+        entry.session.previous_token_expires_at &&
+        Date.parse(entry.session.previous_token_expires_at) > nowMs
+      ) {
+        matched = entry;
+        isGraceMatch = true;
+      }
+    }
+
+    if (!matched) {
+      return null;
+    }
+
+    const { session, user } = matched;
+    if (session.is_revoked || Date.parse(session.expires_at) <= nowMs) {
+      return null;
+    }
+    if (session.token_version < getReadOnlyUserTokenVersion(session.user_id)) {
+      session.is_revoked = true;
+      return null;
+    }
+
+    const persona = userModelToReadOnlyPersona(user);
+    if (isGraceMatch) {
+      const activeRefreshToken = decryptToken(session.current_token_encrypted);
+      if (!hasCurrentRefreshEnvironment(activeRefreshToken)) return null;
+      session.last_used_at = new Date(nowMs).toISOString();
+      const newAccessToken = await signSession({
+        id: user.id,
+        nik: user.nik,
+        systemRole: user.systemRole,
+        v: session.token_version,
+        devPersona: persona,
+      });
+      return {
+        sessionId: session.id,
+        accessToken: newAccessToken,
+        refreshToken: activeRefreshToken,
+        expiresAt: new Date(session.expires_at),
+        user,
+      };
+    }
+
+    const newRawRefreshToken = generateRefreshToken();
+    const newTokenHash = hashToken(newRawRefreshToken);
+    const newEncryptedToken = encryptToken(newRawRefreshToken);
+    const newExpiresAt = new Date(nowMs + 30 * 24 * 60 * 60 * 1000);
+    session.previous_refresh_token_hash = session.refresh_token_hash;
+    session.previous_token_expires_at = new Date(nowMs + 60 * 1000).toISOString();
+    session.refresh_token_hash = newTokenHash;
+    session.current_token_encrypted = newEncryptedToken;
+    session.last_used_at = new Date(nowMs).toISOString();
+    session.expires_at = newExpiresAt.toISOString();
+    if (options.userAgent) session.user_agent = options.userAgent;
+    if (options.ipAddress) session.ip_address = options.ipAddress;
+
+    const newAccessToken = await signSession({
+      id: user.id,
+      nik: user.nik,
+      systemRole: user.systemRole,
+      v: session.token_version,
+      devPersona: persona,
+    });
+
+    return {
+      sessionId: session.id,
+      accessToken: newAccessToken,
+      refreshToken: newRawRefreshToken,
+      expiresAt: newExpiresAt,
+      user,
+    };
   }
 
   const pool = getDbPool();
@@ -368,6 +598,20 @@ export async function rotateDeviceSession(
  */
 export async function revokeSessionByRefreshToken(rawRefreshToken: string): Promise<boolean> {
   if (!hasCurrentRefreshEnvironment(rawRefreshToken)) return false;
+
+  if (isDevelopmentReadOnlyMode()) {
+    const tokenHash = hashToken(rawRefreshToken);
+    let revoked = false;
+    for (const { session } of getReadOnlySessionsMap().values()) {
+      if (session.refresh_token_hash === tokenHash || session.previous_refresh_token_hash === tokenHash) {
+        session.is_revoked = true;
+        session.expires_at = new Date().toISOString();
+        revoked = true;
+      }
+    }
+    return revoked;
+  }
+
   const pool = getDbPool();
   const tokenHash = hashToken(rawRefreshToken);
 
@@ -385,6 +629,18 @@ export async function revokeSessionByRefreshToken(rawRefreshToken: string): Prom
  * Also increments user token_version.
  */
 export async function revokeAllUserSessions(userId: string): Promise<number> {
+  if (isDevelopmentReadOnlyMode()) {
+    const nextVersion = getReadOnlyUserTokenVersion(userId) + 1;
+    getReadOnlyRevokedUsersMap().set(userId, nextVersion);
+    for (const { session } of getReadOnlySessionsMap().values()) {
+      if (session.user_id === userId) {
+        session.is_revoked = true;
+        session.expires_at = new Date().toISOString();
+      }
+    }
+    return nextVersion;
+  }
+
   const pool = getDbPool();
 
   await pool.query(
@@ -415,6 +671,23 @@ export async function getUserActiveSessions(userId: string): Promise<Array<{
   lastUsedAt: string;
   expiresAt: string;
 }>> {
+  if (isDevelopmentReadOnlyMode()) {
+    const nowMs = Date.now();
+    return Array.from(getReadOnlySessionsMap().values())
+      .map((entry) => entry.session)
+      .filter((s) => s.user_id === userId && !s.is_revoked && Date.parse(s.expires_at) > nowMs)
+      .sort((a, b) => Date.parse(b.last_used_at) - Date.parse(a.last_used_at))
+      .map((r) => ({
+        id: r.id,
+        deviceType: r.device_type,
+        userAgent: r.user_agent,
+        ipAddress: r.ip_address,
+        createdAt: r.created_at,
+        lastUsedAt: r.last_used_at,
+        expiresAt: r.expires_at,
+      }));
+  }
+
   const pool = getDbPool();
 
   const { rows } = await pool.query<DeviceSessionRecord>(

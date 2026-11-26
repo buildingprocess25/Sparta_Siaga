@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { isTestBrowserEnvironment } from "@/lib/environment-policy";
+import { isDevelopmentReadOnlyMode, isTestBrowserEnvironment } from "@/lib/environment-policy";
 import {
   exchangeSpartaLaunchToken,
   validateSsoModuleAccess,
@@ -27,6 +27,9 @@ import {
  * 6. Redirects to SIAGA dashboard
  */
 export async function GET(request: Request) {
+  if (isDevelopmentReadOnlyMode()) {
+    return NextResponse.redirect(new URL("/login?error=ReadOnlyDevMode", request.url));
+  }
   if (isTestBrowserEnvironment()) return new NextResponse(null, { status: 303, headers: { Location: "/login" } });
   const requestUrl = new URL(request.url);
   const token = requestUrl.searchParams.get("token");

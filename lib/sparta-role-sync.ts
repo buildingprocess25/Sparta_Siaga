@@ -1,4 +1,5 @@
 import { isPortalManagedUser } from "./sparta-identity";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 import type { UserModel } from "./user-db";
 
 export type PortalRoleSyncSkipReason =
@@ -10,7 +11,8 @@ export type PortalRoleSyncSkipReason =
   | "role_unchanged"
   | "missing_business_role"
   | "missing_portal_branch"
-  | "portal_not_configured";
+  | "portal_not_configured"
+  | "read_only_mode";
 
 export type PortalRoleSyncResult =
   | { status: "SYNCED"; role: string }
@@ -131,6 +133,9 @@ export async function reportSiagaRoleChangeToPortal(
     timeoutMs?: number;
   }
 ): Promise<PortalRoleSyncResult> {
+  if (isDevelopmentReadOnlyMode()) {
+    return { status: "SKIPPED", reason: "read_only_mode" };
+  }
   const spartaApiUrl = (options?.spartaApiUrl ?? process.env.SPARTA_API_URL ?? "").trim().replace(/\/+$/, "");
   const internalApiKey = (options?.internalApiKey ?? process.env.SPARTA_INTERNAL_API_KEY ?? "").trim();
 

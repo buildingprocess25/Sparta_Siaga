@@ -1,5 +1,6 @@
 import { getDbPool } from "./db";
 import bcrypt from "bcryptjs";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export interface IntegrationClientContext {
   id: string;
@@ -65,7 +66,7 @@ export const KNOWN_INTEGRATION_KEYS = new Proxy(
 let keysSeeded = false;
 
 export async function ensureIntegrationSchemaAndSeed(): Promise<void> {
-  if (keysSeeded) return;
+  if (keysSeeded || isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
 
   try {

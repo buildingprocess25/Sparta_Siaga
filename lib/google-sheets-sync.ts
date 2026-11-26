@@ -4,6 +4,7 @@ import crypto from "crypto";
 import type { Pool } from "pg";
 import { getDbPool } from "./db";
 import { Store } from "@/types/store";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export const DEFAULT_GOOGLE_SHEET_ID = "1wvweYqTkS4PA1WKXARRn-vubv7qn6lqISHiSdKSZKcg";
 export const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID?.trim() || DEFAULT_GOOGLE_SHEET_ID;
@@ -215,6 +216,9 @@ function parseCSVLine(text: string): string[] {
 }
 
 export async function ensureStoreSyncTables(): Promise<void> {
+  if (isDevelopmentReadOnlyMode()) {
+    throw new Error("READ_ONLY_DEV_MODE: Sinkronisasi Google Sheets diblokir pada mode Development Read-Only.");
+  }
   const pool = getDbPool();
 
   await pool.query(`

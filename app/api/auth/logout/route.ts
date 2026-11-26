@@ -11,7 +11,7 @@ import {
   revokeAllUserSessions 
 } from "@/lib/session-service";
 import { dbRevokeAllUserSessions } from "@/lib/user-db";
-import { getLogoutRedirectUrl } from "@/lib/environment-policy";
+import { getLogoutRedirectUrl, isDevelopmentReadOnlyMode } from "@/lib/environment-policy";
 
 export async function POST(req: Request) {
   let allDevices = false;
@@ -50,11 +50,13 @@ export async function POST(req: Request) {
 
   const session = await getSessionUser(req);
 
-  // If all-devices logout requested, revoke token version and all sessions in database
+  // If all-devices logout requested, revoke token version and all sessions
   if (allDevices) {
     if (session?.id) {
       await revokeAllUserSessions(session.id);
-      await dbRevokeAllUserSessions(session.id);
+      if (!isDevelopmentReadOnlyMode()) {
+        await dbRevokeAllUserSessions(session.id);
+      }
     }
   } else if (refreshToken) {
     // Single device logout: revoke just this refresh token
@@ -84,4 +86,3 @@ export async function POST(req: Request) {
 
   return response;
 }
-

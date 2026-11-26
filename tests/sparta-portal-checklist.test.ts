@@ -7,13 +7,15 @@ import type { Pool } from "pg";
 import {
   canUseLocalPassword,
   detectPortalIdentityFieldChanges,
+  isLocalEmergencySystemAdmin,
   isPortalManagedUser,
   selectSpartaIdentity,
   shouldRevokeUserSessionsOnUpdate,
 } from "../lib/sparta-identity";
 import { parsePortalBranches, parsePortalStores, resolvePortalBranch, portalStoresEnabled, type PortalBranch } from "../lib/sparta-master-contract";
 import { applyProvisioningEvent, initialProvisioningRole, parseProvisioningEvent, verifyProvisioningRequest, type ProvisioningEvent } from "../lib/sparta-provisioning";
-import { backfillPortalBranches, fetchPortalMaster, previewPortalStores, syncStoresFromPortal } from "../lib/sparta-master-sync";
+import { backfillPortalBranches, fetchPortalMaster, MASTER_SYNC_ADVISORY_LOCK_ID, previewPortalStores, syncBranchesFromPortal, syncStoresFromPortal } from "../lib/sparta-master-sync";
+import { WORKER_DISASTER_ADVISORY_LOCK_ID, WORKER_STORE_SYNC_ADVISORY_LOCK_ID } from "../lib/server-daemon";
 import { exchangeSpartaLaunchToken, matchSsoIdentityToSiagaUser, querySpartaBatchModuleGrants } from "../lib/sso-service";
 import { compareFacilityMasters } from "../lib/sparta-facility-comparison";
 import { getStoreOwnership, getStoreOwnershipLabel } from "../types/store";
@@ -299,7 +301,7 @@ test("conflicting identities roll back provisioning", async () => {
   assert.equal(db.calls.at(-1)?.sql, "ROLLBACK");
 });
 test("branch dry-run reports unmatched values without writing", async () => {
-  const db = database(sql => sql.includes("SELECT branch AS value") ? [{ value: "UNKNOWN", count: 1 }] : []);
+  const db = database(sql => (sql.includes("FROM users") || sql.includes("FROM incidents")) && sql.includes(" AS value") ? [{ value: "UNKNOWN", count: 1 }] : []);
   process.env.SPARTA_API_URL = "http://portal.test";
   process.env.SPARTA_INTERNAL_API_KEY = "test-master-key";
   const result = await backfillPortalBranches({ pool: db.pool, fetchFn: masterFetch() });
@@ -942,4 +944,129 @@ test("evaluateEarthquakeV1MmiWorkflow propagates branch_code and getStoreOwnersh
   assert.equal(evaluation.allEvaluatedStores.length, 1);
   assert.equal(evaluation.allEvaluatedStores[0].branch_code, "KZ01");
   assert.equal(getStoreOwnership(evaluation.allEvaluatedStores[0].fr_type), "UNKNOWN");
+});
+
+test("SSO login identity matching excludes local emergency SYSTEM_ADMIN while keeping SSO users linkable", async () => {
+  const localAdminNull = existingUser({
+    id: "usr_sysadmin_local",
+    external_user_id: null,
+    nik: "0001",
+    email: "admin.darurat@sat.co.id",
+    system_role: "ADMIN",
+    business_role: null,
+    scope: null,
+    branch: null,
+    source: "LOCAL",
+    sso_status: null,
+  });
+
+  assert.equal(isLocalEmergencySystemAdmin(localAdminNull), true);
+  assert.equal(isLocalEmergencySystemAdmin({ ...localAdminNull, source: "SPARTA" }), false);
+
+  // Reject LOCAL ADMIN across null, ACTIVE, and PENDING_SSO_GRANT sso_status without running any UPDATE
+  for (const ssoStatus of [null, "ACTIVE", "PENDING_SSO_GRANT"] as const) {
+    const db = database(sql => sql.startsWith("SELECT * FROM users") ? [{ ...localAdminNull, sso_status: ssoStatus }] : []);
+    const res = await matchSsoIdentityToSiagaUser(
+      { spartaUserId: "portal-attacker", employeeId: "0001", email: "admin.darurat@sat.co.id", access: ["siaga"] },
+      { pool: db.pool }
+    );
+    assert.equal(res.status, "NOT_FOUND");
+    assert.ok(!db.calls.some(call => call.sql.startsWith("UPDATE users")));
+  }
+
+  // If both a LOCAL SYSTEM_ADMIN and a SPARTA SSO user share email/NIK, cleanly select the SSO user
+  const ssoUser = existingUser({
+    id: "usr_sso_op",
+    external_user_id: null,
+    nik: "0001",
+    email: "admin.darurat@sat.co.id",
+    system_role: "USER",
+    business_role: "bms",
+    scope: "BRANCH",
+    branch: "CIKOKOL",
+    source: "SPARTA",
+    sso_status: "ACTIVE",
+  });
+  const sharedDb = database(sql => {
+    if (sql.startsWith("SELECT * FROM users")) return [localAdminNull, ssoUser];
+    if (sql.startsWith("UPDATE users SET external_user_id=$2")) return [{ external_user_id: "portal-sso-1" }];
+    return [];
+  });
+  const sharedRes = await matchSsoIdentityToSiagaUser(
+    { spartaUserId: "portal-sso-1", employeeId: "0001", email: "admin.darurat@sat.co.id", access: ["siaga"] },
+    { pool: sharedDb.pool }
+  );
+  assert.equal(sharedRes.status, "MATCHED");
+  assert.equal(sharedRes.user?.id, "usr_sso_op");
+  const updateCall = sharedDb.calls.find(call => call.sql.startsWith("UPDATE users SET external_user_id=$2"))!;
+  assert.equal(updateCall.values[0], "usr_sso_op");
+  assert.match(updateCall.sql, /NOT \(system_role = 'ADMIN' AND UPPER\(TRIM\(COALESCE\(source, ''\)\)\) = 'LOCAL'\)/);
+
+  // selectSpartaIdentity excludeLocalSystemAdmin drops LOCAL ADMIN but retains SPARTA ADMIN
+  const ssoAdmin = { ...localAdminNull, id: "usr_sso_admin", source: "SPARTA", external_user_id: "portal-admin-1" };
+  assert.equal(
+    selectSpartaIdentity([localAdminNull], { email: "admin.darurat@sat.co.id" }, { excludeLocalSystemAdmin: true }),
+    null
+  );
+  assert.equal(
+    selectSpartaIdentity([localAdminNull, ssoAdmin], { spartaUserId: "portal-admin-1", email: "admin.darurat@sat.co.id" }, { excludeLocalSystemAdmin: true })?.id,
+    "usr_sso_admin"
+  );
+});
+
+test("master data sync advisory lock ID is isolated from disaster and store-sync worker locks", async () => {
+  assert.equal(MASTER_SYNC_ADVISORY_LOCK_ID, 7421843);
+  assert.notEqual(MASTER_SYNC_ADVISORY_LOCK_ID, WORKER_DISASTER_ADVISORY_LOCK_ID);
+  assert.notEqual(MASTER_SYNC_ADVISORY_LOCK_ID, WORKER_STORE_SYNC_ADVISORY_LOCK_ID);
+
+  process.env.SPARTA_BRANCH_MASTER_ENABLED = "true";
+
+  const backfillDb = database(sql => sql.includes(" AS value") ? [{ value: "G001", count: 1 }] : []);
+  await backfillPortalBranches({ pool: backfillDb.pool, fetchFn: masterFetch(), apply: true });
+  assert.ok(backfillDb.calls.some(call => call.sql.includes(`pg_advisory_xact_lock(${MASTER_SYNC_ADVISORY_LOCK_ID})`)));
+  assert.ok(!backfillDb.calls.some(call => call.sql.includes(`pg_advisory_xact_lock(${WORKER_DISASTER_ADVISORY_LOCK_ID})`)));
+
+  const branchSyncDb = database();
+  await syncBranchesFromPortal({ pool: branchSyncDb.pool, fetchFn: masterFetch() });
+  assert.ok(branchSyncDb.calls.some(call => call.sql.includes(`pg_advisory_xact_lock(${MASTER_SYNC_ADVISORY_LOCK_ID})`)));
+  assert.ok(!branchSyncDb.calls.some(call => call.sql.includes(`pg_advisory_xact_lock(${WORKER_DISASTER_ADVISORY_LOCK_ID})`)));
+
+  const storeSyncDb = database(sql => sql.includes("INSERT INTO stores") ? [{ inserted: true }] : []);
+  await syncStoresFromPortal({ pool: storeSyncDb.pool, fetchFn: masterFetch(), full: true, confirmFull: true });
+  assert.ok(storeSyncDb.calls.some(call => call.sql.includes(`pg_advisory_xact_lock(${MASTER_SYNC_ADVISORY_LOCK_ID})`)));
+  assert.ok(!storeSyncDb.calls.some(call => call.sql.includes(`pg_advisory_xact_lock(${WORKER_DISASTER_ADVISORY_LOCK_ID})`)));
+});
+
+test("branch backfill inspects and resolves pending_portal_branch before legacy branch fallback", async () => {
+  const dryDb = database(sql => {
+    if (sql.includes("FROM users") && sql.includes("to_jsonb(users)->'pending_portal_branch'")) {
+      return [{ value: "UNMAPPED_PENDING", count: 1 }];
+    }
+    return [];
+  });
+  const dryRes = await backfillPortalBranches({ pool: dryDb.pool, fetchFn: masterFetch() });
+  assert.equal(dryRes.applied, false);
+  assert.equal(dryRes.unmapped.length, 1);
+  assert.equal(dryRes.unmapped[0].table, "users");
+  assert.equal(dryRes.unmapped[0].value, "UNMAPPED_PENDING");
+
+  process.env.SPARTA_BRANCH_MASTER_ENABLED = "true";
+  const applyDb = database(sql => {
+    if (sql.includes("FROM users") && sql.includes("to_jsonb(users)->'pending_portal_branch'")) {
+      return [{ value: "KZ01", count: 2 }, { value: "G001", count: 1 }];
+    }
+    if (sql.includes(" AS value")) return [{ value: "G001", count: 1 }];
+    return [];
+  });
+  const applyRes = await backfillPortalBranches({ pool: applyDb.pool, fetchFn: masterFetch(), apply: true });
+  assert.equal(applyRes.applied, true);
+
+  const schemaCheck = applyDb.calls.find(call => call.sql.includes("AS master_schema_ready"))!;
+  assert.ok(schemaCheck.sql.includes("('users','pending_portal_branch')"));
+
+  const usersUpdate = applyDb.calls.find(call => call.sql.startsWith("UPDATE users"))!;
+  assert.match(usersUpdate.sql, /pending_portal_branch->>'branchCode'/);
+  assert.match(usersUpdate.sql, /pending_portal_branch->>'branch'/);
+  assert.match(usersUpdate.sql, /branch_code = sparta_resolve_branch/);
+  assert.match(usersUpdate.sql, /pending_portal_branch = CASE/);
 });

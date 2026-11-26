@@ -1,11 +1,13 @@
 import { cookies } from "next/headers";
 import { UserContext } from "./report-permissions";
-import { SpartaRole } from "@/types/incident";
-import { dbGetUserById, dbUpsertUser, UserModel } from "./user-db";
+import { Scope, SpartaRole } from "@/types/incident";
+import { dbGetUserById, UserModel } from "./user-db";
 import { verifySession } from "./jwt";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 import { canUseSessionIdentity } from "./session-environment";
-import { 
-  rotateDeviceSession 
+import {
+  getReadOnlyUserTokenVersion,
+  rotateDeviceSession
 } from "./session-service";
 import { 
   ACCESS_TOKEN_COOKIE, 
@@ -57,7 +59,7 @@ function buildUserContext(dbUser: UserModel): UserContext | null {
  * 
  * Extracts authenticated user context from the active session.
  * Supports persistent per-device sessions with transparent Refresh Token Rotation.
- * Database is the single source of truth for authorization.
+ * In Development Read-Only mode, Quick Login sessions are verified from signed JWT + in-memory store with zero DB writes.
  */
 export async function getSessionUser(req?: Request): Promise<UserContext | null> {
   let sessionToken: string | undefined;
@@ -93,6 +95,35 @@ export async function getSessionUser(req?: Request): Promise<UserContext | null>
   if (sessionToken) {
     const payload = await verifySession(sessionToken);
     if (payload && payload.id) {
+      if (isDevelopmentReadOnlyMode()) {
+        if (!payload.devPersona) {
+          return null;
+        }
+        const minVersion = getReadOnlyUserTokenVersion(payload.id);
+        const tokenVersion = payload.v || 1;
+        if (tokenVersion < minVersion) {
+          return null;
+        }
+        const nowIso = new Date().toISOString();
+        return buildUserContext({
+          id: payload.devPersona.id,
+          nik: payload.devPersona.nik,
+          name: payload.devPersona.name,
+          email: payload.devPersona.email,
+          systemRole: payload.devPersona.systemRole,
+          businessRole: payload.devPersona.businessRole as SpartaRole | null,
+          scope: payload.devPersona.scope as Scope | null,
+          branch: payload.devPersona.branch,
+          branchCode: payload.devPersona.branchCode ?? null,
+          status: "ACTIVE",
+          source: "DEVELOPMENT",
+          ssoStatus: null,
+          tokenVersion,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        });
+      }
+
       const dbUser = await dbGetUserById(payload.id);
 
       if (dbUser && dbUser.status === "ACTIVE") {
@@ -105,7 +136,7 @@ export async function getSessionUser(req?: Request): Promise<UserContext | null>
     }
   }
 
-  // 2. If access token is missing or expired, attempt transparent renewal via persistent refresh token
+  // 2. If access token is missing or expired, attempt transparent renewal via refresh token
   if (refreshToken) {
     const userAgent = req?.headers.get("user-agent") || null;
     const ipAddress = req?.headers.get("x-forwarded-for") || null;

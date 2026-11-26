@@ -29,6 +29,7 @@ import { checkUserPermission } from "./permission-service";
 import { formatServerTimestampWib } from "./watermark";
 import { samePortalBranch } from "./sparta-master-sync";
 import { effectiveBranchValue } from "./sparta-rollout";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export type ApprovalFlowType = "BMS" | "BES" | "BUILDING";
 
@@ -121,7 +122,7 @@ export interface ApprovalRouteResolution {
 let tablesEnsured = false;
 
 export async function ensureCompletionApprovalTables(): Promise<void> {
-  if (tablesEnsured) return;
+  if (tablesEnsured || isDevelopmentReadOnlyMode()) return;
   const pool = getDbPool();
 
   await pool.query(`
@@ -245,7 +246,6 @@ export class CompletionApprovalService {
     const route = await EstimationIntegrationService.getRouteByReportId(reportId);
     const resolvedRoute = resolveApprovalRoute(report, route);
 
-    const id = `appr_${reportId}_${Date.now()}`;
     const initialStatus: CompletionApprovalStatus =
       report.status === "resolved" || report.status === "closed"
         ? "CLOSED"
@@ -253,6 +253,46 @@ export class CompletionApprovalService {
         ? "APPROVED_PENDING_CLOSE"
         : "WAITING_PIC_SUBMISSION";
 
+    const branchCode = effectiveBranchValue(report) || report.branch || "N/A";
+    if (isDevelopmentReadOnlyMode()) {
+      const fallbackTs = report.updatedAt || report.createdAt || new Date().toISOString();
+      return {
+        id: `ro_appr_${reportId}`,
+        reportId,
+        flowType: resolvedRoute.flowType,
+        status: initialStatus,
+        picRole: resolvedRoute.picRole,
+        picUserId: null,
+        picUserName: null,
+        submittedAt: null,
+        submissionNotes: null,
+        attachments: [],
+        coordinatorRole: resolvedRoute.coordinatorRole,
+        coordinatorUserId: null,
+        coordinatorUserName: null,
+        coordinatorApprovedAt: null,
+        coordinatorNotes: null,
+        managerRole: resolvedRoute.managerRole,
+        managerUserId: null,
+        managerUserName: null,
+        managerApprovedAt: null,
+        managerNotes: null,
+        closedAt: null,
+        closedByUserId: null,
+        closedByUserName: null,
+        closingNotes: null,
+        rejectionReason: null,
+        rejectedByRole: null,
+        rejectedByUserId: null,
+        rejectedByUserName: null,
+        rejectedAt: null,
+        branchCode,
+        createdAt: fallbackTs,
+        updatedAt: fallbackTs,
+      };
+    }
+
+    const id = `appr_${reportId}_${Date.now()}`;
     const insertRes = await pool.query(
       `INSERT INTO report_completion_approvals (
         id, report_id, flow_type, status, pic_role, coordinator_role,
@@ -267,7 +307,7 @@ export class CompletionApprovalService {
         resolvedRoute.picRole,
         resolvedRoute.coordinatorRole,
         resolvedRoute.managerRole,
-        effectiveBranchValue(report) || report.branch || "N/A",
+        branchCode,
       ]
     );
 

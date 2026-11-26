@@ -2,8 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { Pool } from 'pg';
+import { isProductionDatabaseTarget } from '../lib/environment-policy';
 
-process.loadEnvFile('.env.local');
+try {
+  process.loadEnvFile('.env.local');
+} catch {
+  // .env.local optional if SPARTA_ISOLATED_TEST_DATABASE_URL is already in process.env
+}
 
 const ADVISORY_LOCK_ID = 7421839;
 const MIGRATIONS_DIR = path.join(process.cwd(), 'database', 'migrations');
@@ -13,10 +18,31 @@ function computeChecksum(content: string) {
   return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
+function isStrictIsolatedAivenUrl(value: string | undefined): value is string {
+  if (!value || isProductionDatabaseTarget(value)) return false;
+  try {
+    const parsed = new URL(value.trim());
+    return (
+      (parsed.protocol === 'postgresql:' || parsed.protocol === 'postgres:') &&
+      parsed.hostname.toLowerCase().endsWith('.aivencloud.com') &&
+      decodeURIComponent(parsed.pathname) === '/sparta_siaga_isolated'
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function run() {
-  const url = process.env.SPARTA_ISOLATED_TEST_DATABASE_URL;
+  const url = process.env.SPARTA_ISOLATED_TEST_DATABASE_URL?.trim();
   if (!url) {
-    console.error('SPARTA_ISOLATED_TEST_DATABASE_URL not found in .env.local');
+    console.error('SPARTA_ISOLATED_TEST_DATABASE_URL not found in environment or .env.local');
+    process.exit(1);
+  }
+  if (!isStrictIsolatedAivenUrl(url)) {
+    console.error(
+      'FATAL_DATABASE_SAFETY_VIOLATION: migrate-isolated hanya boleh menargetkan Aiven sparta_siaga_isolated, ' +
+      'dilarang menargetkan Production atau SPARTA_PRODUCTION_READONLY_DATABASE_URL.'
+    );
     process.exit(1);
   }
 

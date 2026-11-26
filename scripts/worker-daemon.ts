@@ -1,6 +1,12 @@
 import { writeFile } from 'node:fs/promises';
 import { getDisasterCycleHealth, startServerDaemon, stopServerDaemon } from '../lib/server-daemon';
 import { closeDbPool } from '../lib/db';
+import { isDevelopmentReadOnlyMode } from '../lib/environment-policy';
+
+if (isDevelopmentReadOnlyMode()) {
+  console.error('[SPARTA SIAGA WORKER] BLOCKED: Autonomous worker is forbidden in Development Read-Only mode.');
+  process.exit(1);
+}
 
 console.log('============================================================');
 console.log('🚀 [SPARTA SIAGA WORKER] Standalone Autonomous Worker starting...');

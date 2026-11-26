@@ -1,6 +1,7 @@
 import { getDbPool } from "./db";
 import { IncidentRecord, ManagementInstruction } from "@/types/incident";
 import { branchSqlKey, branchSqlParameter } from "./sparta-rollout";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export function rowToIncident(row: Record<string, unknown>): IncidentRecord {
   return {
@@ -201,7 +202,7 @@ export async function dbFindUnlinkedManualEarthquakeCandidates(
 
 let isReporterColumnEnsured = false;
 async function ensureReporterColumn(pool: ReturnType<typeof getDbPool>) {
-  if (isReporterColumnEnsured) return;
+  if (isReporterColumnEnsured || isDevelopmentReadOnlyMode()) return;
   try {
     await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reporter JSONB;`);
     await pool.query(`ALTER TABLE incidents ADD COLUMN IF NOT EXISTS reminder_24h_sent_at TIMESTAMP WITH TIME ZONE;`);

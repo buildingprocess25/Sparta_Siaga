@@ -17,6 +17,7 @@ import { AffectedStoreSummary } from '@/types/notification';
 import { Store } from '@/types/store';
 import { Earthquake } from '@/types/disaster';
 import { getExternalApiConfig } from './runtime-config';
+import { isDevelopmentReadOnlyMode, isSimulationAllowed } from './environment-policy';
 
 import {
   getLastStoreSyncHistory,
@@ -129,6 +130,10 @@ async function getBranchCentroids(): Promise<BranchCentroid[]> {
  * Autonomous evaluation cycle that runs on the server 24/7
  */
 export async function runAutonomousDisasterCycle(): Promise<void> {
+  if (isDevelopmentReadOnlyMode()) {
+    console.log('[Autonomous Daemon] Blocked in Development Read-Only mode.');
+    return;
+  }
   if (isCycleRunning || isDaemonStopped) {
     if (isCycleRunning) {
       console.log('[Autonomous Daemon] Previous cycle still running, skipping...');
@@ -201,8 +206,7 @@ export async function runAutonomousDisasterCycle(): Promise<void> {
     }
 
     // Pending decisions must reach their deadline even when the live feed stops updating.
-    const { isUatSimulationAllowed } = await import("./environment-policy");
-    const allowSimulation = isUatSimulationAllowed();
+    const allowSimulation = isSimulationAllowed();
     const pendingEarthquakes = await dbGetPendingEarthquakeEvents();
     if (stores.length && pendingEarthquakes.length) {
       const pending = await processEarthquakeAlertsAndReports(pendingEarthquakes, stores, true, true, allowSimulation);
@@ -370,6 +374,13 @@ export async function runAutonomousStoreSyncCycle(
   record?: StoreSyncHistoryRecord;
   error?: string;
 }> {
+  if (isDevelopmentReadOnlyMode()) {
+    return {
+      success: false,
+      status: "READ_ONLY_BLOCKED",
+      error: "Autonomous store sync is blocked in Development Read-Only mode",
+    };
+  }
   if (isStoreSyncRunning || isDaemonStopped) {
     return { success: false, status: "ALREADY_RUNNING", error: "Store sync cycle already in progress or daemon stopped" };
   }
@@ -487,6 +498,10 @@ export async function getStoreSyncStatus(): Promise<{
  */
 export function startServerDaemon(): void {
   if (typeof window !== "undefined") return; // Server only
+  if (isDevelopmentReadOnlyMode()) {
+    console.warn("[Autonomous Daemon] Startup blocked in Development Read-Only mode.");
+    return;
+  }
 
   const globalScope = globalThis as any;
   if (globalScope.__sparta_daemon_started) {
@@ -578,6 +593,9 @@ export async function processEarthquakeAlertsAndReports(
   allowBackfill: boolean = false,
   allowSimulation: boolean = false
 ): Promise<{ dispatchedAlerts: number; createdReports: number }> {
+  if (isDevelopmentReadOnlyMode()) {
+    return { dispatchedAlerts: 0, createdReports: 0 };
+  }
   let dispatchedAlerts = 0;
   let createdReports = 0;
 
@@ -597,8 +615,7 @@ export async function processEarthquakeAlertsAndReports(
       ((eq as any).provider_event_id && /test|simul|uji|demo/i.test((eq as any).provider_event_id))
     );
 
-    const { isUatSimulationAllowed } = await import("./environment-policy");
-    const simulationAuthorized = allowSimulation && isUatSimulationAllowed();
+    const simulationAuthorized = allowSimulation && isSimulationAllowed();
 
     if ((!isOfficialProvider || isSyntheticOrTest) && !simulationAuthorized) {
       console.warn(`[Daemon Alert Guard] Ignored non-official/synthetic earthquake from production alert evaluation: ID=${eq.id}, Title="${eq.title}", Source="${source}"`);

@@ -88,6 +88,7 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
 
   // Load incidents from database API on mount
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isReadOnlyMode, setIsReadOnlyMode] = useState(false);
   const inFlightCheckRef = useRef<Promise<void> | null>(null);
   const lastVisibilityCheckRef = useRef<number>(0);
 
@@ -183,6 +184,15 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleVisibilityChange);
+
+    fetch("/api/auth/env-status", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((envData) => {
+        if (envData?.isReadOnlyMode === true) {
+          setIsReadOnlyMode(true);
+        }
+      })
+      .catch(() => {});
 
     fetch("/api/incidents")
       .then((res) => res.json())
@@ -917,6 +927,14 @@ export default function SiagaLayout({ children }: { children: React.ReactNode })
         onToggleTheme={handleToggleTheme}
         onOpenReportModal={handleOpenReportModal}
       >
+        {isReadOnlyMode && (
+          <div
+            role="status"
+            className="border-b border-amber-300 bg-amber-50 px-4 py-1.5 text-center text-xs font-medium text-amber-950"
+          >
+            Mode Development Read-Only (Data Aktual Production) — Hanya baca (PostgreSQL SELECT-only); simulasi, penulisan data, dan notifikasi dinonaktifkan.
+          </div>
+        )}
         {children}
       </IncidentAppShell>
 

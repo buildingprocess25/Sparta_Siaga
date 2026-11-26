@@ -1,22 +1,79 @@
 /**
  * SPARTA SIAGA environment safety.
- * Testing is allowed only on the explicitly configured isolated database.
- * Gate primitives are available, but public Quick Login remains disabled
- * until the complete login/session isolation flow is reviewed.
+ * Environments are strictly Development ('development'), Test ('test'), or Production ('production').
+ * Development supports two data modes:
+ * - 'isolated': isolated Aiven database (sparta_siaga_isolated) for Quick Login, CRUD, simulations, and migrations.
+ * - 'production-readonly': PostgreSQL SELECT-only connection to Production data with zero writes.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { isProductionDatabaseTarget } from "./db";
 import { getJwtSecret } from "./runtime-config";
 
-export type SpartaEnvironment = "development" | "test" | "uat" | "staging" | "production";
+export type SpartaEnvironment = "development" | "test" | "production";
+export type DevelopmentDataMode = "isolated" | "production-readonly";
+
+export function isProductionDatabaseTarget(connectionString: string): boolean {
+  if (!connectionString) return false;
+  return (
+    /103\.127\.99\.241/i.test(connectionString) ||
+    /\/siaga(\?|$)/i.test(connectionString)
+  );
+}
 
 function normalizeEnvironment(value: string | undefined): SpartaEnvironment | null {
   switch ((value || "").trim().toLowerCase()) {
     case "production": case "prod": return "production";
     case "development": case "dev": return "development";
-    case "uat": case "staging": return "uat";
     case "test": case "testing": return "test";
     default: return null;
+  }
+}
+
+export function normalizeDevDataMode(value: string | undefined): DevelopmentDataMode | null {
+  switch ((value || "").trim().toLowerCase()) {
+    case "":
+    case "isolated":
+    case "aiven":
+      return "isolated";
+    case "production-readonly":
+    case "prod-readonly":
+    case "readonly":
+      return "production-readonly";
+    default:
+      return null;
+  }
+}
+
+export function areSameDatabaseCredentials(urlA: string | undefined, urlB: string | undefined): boolean {
+  const a = (urlA || "").trim();
+  const b = (urlB || "").trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  try {
+    const parsedA = new URL(a);
+    const parsedB = new URL(b);
+    return (
+      parsedA.hostname.toLowerCase() === parsedB.hostname.toLowerCase() &&
+      (parsedA.port || "5432") === (parsedB.port || "5432") &&
+      decodeURIComponent(parsedA.pathname) === decodeURIComponent(parsedB.pathname) &&
+      decodeURIComponent(parsedA.username).toLowerCase() === decodeURIComponent(parsedB.username).toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isValidReadOnlyPostgresUrl(raw: string): boolean {
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return (
+      (parsed.protocol === "postgresql:" || parsed.protocol === "postgres:") &&
+      parsed.hostname.trim().length > 0 &&
+      decodeURIComponent(parsed.username).trim().length > 0 &&
+      decodeURIComponent(parsed.pathname).replace(/^\/+/, "").length > 0
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -32,38 +89,112 @@ function isIsolatedDatabaseTarget(value: string): boolean {
 
 export function getSpartaEnvironment(): SpartaEnvironment {
   const dbUrl = (process.env.DATABASE_URL || "").trim();
-  if (isProductionDatabaseTarget(dbUrl) || !isIsolatedDatabaseTarget(dbUrl)) return "production";
   const rawFlags = [process.env.APP_ENV, process.env.SPARTA_ENVIRONMENT].filter(v => Boolean(v?.trim()));
   const flags = rawFlags.map(normalizeEnvironment);
-  // No inference from cloud hostname, no conflicting/unknown/missing flags.
-  // NODE_ENV=production is normal for a built UAT application.
+  // Fail-closed on conflicting, unknown, legacy (e.g. 'uat'), missing, or production flags.
   if (!flags.length || flags.some(v => v === null || v === "production") ||
       new Set(flags).size !== 1) return "production";
-  return flags[0] as SpartaEnvironment;
+
+  const target = flags[0]!;
+  if (target === "test") {
+    if (dbUrl && isProductionDatabaseTarget(dbUrl)) return "production";
+    return "test";
+  }
+
+  if (target === "development") {
+    const dataMode = normalizeDevDataMode(process.env.SPARTA_DEV_DATA_MODE);
+    if (dataMode === "production-readonly") {
+      if (process.env.NODE_ENV === "production") return "production";
+      const roUrl = (process.env.SPARTA_PRODUCTION_READONLY_DATABASE_URL || "").trim();
+      const writeCheckUrl =
+        process.env.SPARTA_WRITE_DATABASE_URL_FOR_CHECK?.trim() ||
+        (isProductionDatabaseTarget(dbUrl) ? dbUrl : undefined);
+      if (!isValidReadOnlyPostgresUrl(roUrl) || areSameDatabaseCredentials(roUrl, writeCheckUrl)) {
+        return "production";
+      }
+      return "development";
+    }
+    if (dataMode === "isolated") {
+      if (isProductionDatabaseTarget(dbUrl) || !isIsolatedDatabaseTarget(dbUrl)) return "production";
+      return "development";
+    }
+    return "production";
+  }
+
+  return "production";
 }
 
 export function isProductionEnvironment(): boolean {
   return getSpartaEnvironment() === "production";
 }
-export function isUatEnvironment(): boolean {
-  return getSpartaEnvironment() === "uat";
-}
 export function isDevelopmentEnvironment(): boolean {
   return getSpartaEnvironment() === "development";
 }
-export function isUatSimulationAllowed(): boolean {
-  return !isProductionEnvironment();
+export function getDevelopmentDataMode(): DevelopmentDataMode | null {
+  if (!isDevelopmentEnvironment()) return null;
+  return normalizeDevDataMode(process.env.SPARTA_DEV_DATA_MODE) ?? "isolated";
 }
+export function isDevelopmentReadOnlyMode(): boolean {
+  return getDevelopmentDataMode() === "production-readonly";
+}
+export function isDevelopmentIsolatedMode(): boolean {
+  return getDevelopmentDataMode() === "isolated";
+}
+export function validateProductionDatabaseAccess(): { allowed: true } | { allowed: false; reason: string } {
+  const nodeEnv = process.env.NODE_ENV?.trim().toLowerCase();
+  if (nodeEnv && nodeEnv !== "production") {
+    return {
+      allowed: false,
+      reason: "Koneksi ke database Production ditolak saat NODE_ENV bukan 'production'.",
+    };
+  }
+  if (process.env.SPARTA_DEV_DATA_MODE?.trim()) {
+    return {
+      allowed: false,
+      reason: "Koneksi ke database Production operasional ditolak saat SPARTA_DEV_DATA_MODE aktif atau tidak valid.",
+    };
+  }
+  const rawFlags = [process.env.APP_ENV, process.env.SPARTA_ENVIRONMENT].filter(v => Boolean(v?.trim()));
+  if (rawFlags.length === 0) {
+    if (nodeEnv === "production") {
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: "Environment produksi tidak dikonfigurasi secara eksplisit (APP_ENV/SPARTA_ENVIRONMENT kosong dan NODE_ENV bukan 'production').",
+    };
+  }
+  if (rawFlags.some(v => normalizeEnvironment(v) !== "production")) {
+    return {
+      allowed: false,
+      reason: "Konfigurasi APP_ENV/SPARTA_ENVIRONMENT tidak valid atau bukan Production; fallback otomatis ke database Production diblokir.",
+    };
+  }
+  if (isDevelopmentReadOnlyMode()) {
+    return {
+      allowed: false,
+      reason: "Mode Development Read-Only melarang koneksi ke pool tulis Production.",
+    };
+  }
+  return { allowed: true };
+}
+export function getActiveSessionEnvironmentTag(): string {
+  return isDevelopmentReadOnlyMode() ? "development-readonly" : getSpartaEnvironment();
+}
+export function isSimulationAllowed(): boolean {
+  return isDevelopmentIsolatedMode() || getSpartaEnvironment() === "test";
+}
+/** @deprecated Use isSimulationAllowed */
+export const isUatSimulationAllowed = isSimulationAllowed;
 export function assertSimulationAllowed(): void {
-  if (!isUatSimulationAllowed()) {
-    throw new Error("SIMULATION_FORBIDDEN_IN_PRODUCTION: Fitur simulasi dan kredensial pengujian dilarang pada target production atau target yang belum terverifikasi.");
+  if (!isSimulationAllowed()) {
+    throw new Error("SIMULATION_FORBIDDEN_IN_PRODUCTION: Fitur simulasi dan kredensial pengujian dilarang pada Production atau mode Development Read-Only.");
   }
 }
 
-/** Browser gate is only applicable to explicitly isolated development/UAT. */
+/** Browser gate is only applicable to explicitly verified Development environments. */
 export function isTestBrowserEnvironment(): boolean {
-  const env = getSpartaEnvironment();
-  return env === "development" || env === "uat";
+  return isDevelopmentEnvironment();
 }
 export function isLocalLoopbackRequest(req: Request): boolean {
   const local = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -83,8 +214,8 @@ export function isLocalLoopbackRequest(req: Request): boolean {
   } catch { return false; }
 }
 export function isGateRequired(req: Request): boolean {
-  return isTestBrowserEnvironment() &&
-    !(isDevelopmentEnvironment() && isLocalLoopbackRequest(req));
+  return isDevelopmentEnvironment() &&
+    (process.env.SPARTA_FORCE_DEV_GATE === "true" || !isLocalLoopbackRequest(req));
 }
 export function isGateEnabled(): boolean {
   return isTestBrowserEnvironment() && process.env.SPARTA_TEST_GATE_ENABLED === "true" &&
@@ -103,14 +234,14 @@ export function hasVerifiedGate(req: Request): boolean {
   return tokens.length === 1 && verifyGateToken(tokens[0].slice(GATE_TOKEN_COOKIE.length + 1));
 }
 export function isQuickLoginPermitted(req?: Request): { allowed: boolean; reason?: string } {
-  if (!req || !isTestBrowserEnvironment()) return { allowed: false, reason: "Quick Login hanya tersedia di Development/UAT terisolasi." };
-  if (isDevelopmentEnvironment() && isLocalLoopbackRequest(req)) return { allowed: true };
+  if (!req || !isTestBrowserEnvironment()) return { allowed: false, reason: "Quick Login hanya tersedia di Development terisolasi atau Development Read-Only." };
+  if (isDevelopmentEnvironment() && isLocalLoopbackRequest(req) && process.env.SPARTA_FORCE_DEV_GATE !== "true") return { allowed: true };
   if (hasVerifiedGate(req)) return { allowed: true };
   return { allowed: false, reason: "Verifikasi gate diperlukan." };
 }
-// Verify the actual pg pool target before creating synthetic users (not merely DATABASE_URL).
+// Verify the actual pg pool target before creating synthetic users in isolated Development mode.
 export function isSafeTestPoolTarget(value: unknown): boolean {
-  return isTestBrowserEnvironment() && typeof value === "string" &&
+  return isDevelopmentIsolatedMode() && typeof value === "string" &&
     !isProductionDatabaseTarget(value) && isIsolatedDatabaseTarget(value);
 }
 
@@ -118,11 +249,8 @@ export const GATE_TOKEN_COOKIE = "siaga_gate_token";
 export const GATE_TOKEN_TTL_SECONDS = 8 * 60 * 60;
 
 export function getConfiguredGatePasscode(): string | null {
-  const env = getSpartaEnvironment();
-  if (env !== "development" && env !== "uat") return null;
-  const value = (env === "development"
-    ? process.env.DEV_GATE_PASSCODE || process.env.UAT_GATE_PASSCODE
-    : process.env.UAT_GATE_PASSCODE)?.trim();
+  if (!isDevelopmentEnvironment()) return null;
+  const value = process.env.DEV_GATE_PASSCODE?.trim();
   // No hard-coded fallback or blank/default password.
   return value && value.length >= 12 && value.length <= 1024 ? value : null;
 }
@@ -148,19 +276,19 @@ function gateSignature(payload: string): string {
 }
 
 export function issueGateToken(now = Date.now()): string {
-  const env = getSpartaEnvironment();
-  if (env !== "development" && env !== "uat") throw new Error("GATE_FORBIDDEN");
+  if (!isDevelopmentEnvironment()) throw new Error("GATE_FORBIDDEN");
+  const env = getActiveSessionEnvironmentTag();
   const expiry = Math.floor(now / 1000) + GATE_TOKEN_TTL_SECONDS;
   const payload = `${env}.${expiry}`;
   return `${payload}.${gateSignature(payload)}`;
 }
 
 export function verifyGateToken(token: string | undefined, now = Date.now()): boolean {
-  if (!token || token.length > 256 || isProductionEnvironment()) return false;
+  if (!token || token.length > 256 || !isDevelopmentEnvironment()) return false;
   const [env, expires, signature, ...extra] = token.split(".");
   const expiry = Number(expires);
   const current = Math.floor(now / 1000);
-  if (extra.length || !signature || env !== getSpartaEnvironment() ||
+  if (extra.length || !signature || env !== getActiveSessionEnvironmentTag() ||
       !/^\d+$/.test(expires || "") || !Number.isSafeInteger(expiry) ||
       expiry <= current || expiry > current + GATE_TOKEN_TTL_SECONDS) return false;
   try { return equalText(signature, gateSignature(`${env}.${expires}`)); }
@@ -188,7 +316,7 @@ export function getSsoModuleLauncherUrl(): string {
 
 /**
  * Resolves the appropriate post-logout redirect URL based on environment.
- * In isolated Development and UAT: redirect to /login (Quick Login / Gate page).
+ * In Development (isolated or read-only): redirect to /login.
  * In Production: redirect to Portal SSO module launcher page (#/modules).
  */
 export function getLogoutRedirectUrl(): string {

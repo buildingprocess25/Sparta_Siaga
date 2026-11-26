@@ -9,7 +9,8 @@ async function main() {
   const pool = getDbPool();
   const storeRes = await pool.query(
     `SELECT id, kode_toko, nama_toko, cabang, alamat, latitude, longitude, fr_type 
-     FROM stores LIMIT 25000`
+     FROM stores
+     ORDER BY kode_toko ASC`
   );
   const stores = storeRes.rows;
   console.log(`Total stores fetched from DB: ${stores.length}`);

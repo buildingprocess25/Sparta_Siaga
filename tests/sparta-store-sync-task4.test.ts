@@ -293,3 +293,27 @@ test("getOrLoadMasterStores enforces portal active filter and preserves UNKNOWN 
   assert.equal(centroids[0].branch_code, "KZ01");
   assert.equal(centroids[0].store_count, 2);
 });
+
+test("getOrLoadMasterStores loads over 25000 stores without hard LIMIT truncation", async () => {
+  process.env.SPARTA_BRANCH_MASTER_ENABLED = "true";
+  process.env.STORE_MASTER_SOURCE = "portal";
+
+  const rows = Array.from({ length: 25005 }, (_, i) => ({
+    id: `SAT-T${i}`,
+    kode_toko: `T${String(i).padStart(5, "0")}`,
+    nama_toko: `Toko ${i}`,
+    cabang: "CIKOKOL",
+    branch_code: "KZ01",
+    alamat: null,
+    latitude: -6.2,
+    longitude: 106.5,
+    fr_type: "REGULAR",
+    branch_emergency_contact: null,
+  }));
+  const db = mockPool(() => rows);
+
+  const loaded = await getOrLoadMasterStores(true, { pool: db.pool });
+  assert.equal(loaded.length, 25005);
+  assert.ok(!/\bLIMIT\b/i.test(db.calls[0].sql));
+  assert.match(db.calls[0].sql, /ORDER BY kode_toko ASC/);
+});

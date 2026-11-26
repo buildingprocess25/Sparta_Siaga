@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { getRuntimeConfig } from './runtime-config';
 import { isTestingModeActiveSync } from './db';
+import { isDevelopmentReadOnlyMode } from './environment-policy';
 
 export type EmailDeliveryStatus =
   | 'sent'
@@ -118,12 +119,14 @@ export async function verifyEmailTransporter(): Promise<{ success: boolean; mess
  * Honors Testing Mode suppression, deduplication, and honest provider status.
  */
 export async function sendEmergencyEmail(params: EmergencyEmailParams): Promise<EmailSendResult> {
-  // 1. Check Testing Mode suppression
-  if (isTestingModeActiveSync()) {
-    console.log(`[Email Service] 🛑 SUPPRESSED: Testing Mode active for branch ${params.branch}. Real email blocked.`);
+  // 1. Check Testing Mode / Read-Only suppression
+  if (isTestingModeActiveSync() || isDevelopmentReadOnlyMode()) {
+    console.log(`[Email Service] 🛑 SUPPRESSED: Testing / Read-Only Mode active for branch ${params.branch}. Real email blocked.`);
     return {
       status: 'suppressed_testing_mode',
-      errorMessage: 'Email delivery suppressed because Testing Mode is active.',
+      errorMessage: isDevelopmentReadOnlyMode()
+        ? 'Email delivery suppressed in Development Read-Only mode.'
+        : 'Email delivery suppressed because Testing Mode is active.',
     };
   }
 
@@ -195,12 +198,14 @@ export interface HoApprovalNotificationEmailParams {
 export async function sendHoApprovalNotificationEmail(
   params: HoApprovalNotificationEmailParams
 ): Promise<EmailSendResult> {
-  // 1. Check Testing Mode suppression
-  if (isTestingModeActiveSync()) {
-    console.log(`[Email Service] 🛑 SUPPRESSED: Testing Mode active. Real email to ${params.to} blocked.`);
+  // 1. Check Testing Mode / Read-Only suppression
+  if (isTestingModeActiveSync() || isDevelopmentReadOnlyMode()) {
+    console.log(`[Email Service] 🛑 SUPPRESSED: Testing / Read-Only Mode active. Real email to ${params.to} blocked.`);
     return {
       status: 'suppressed_testing_mode',
-      errorMessage: 'Email delivery suppressed because Testing Mode is active.',
+      errorMessage: isDevelopmentReadOnlyMode()
+        ? 'Email delivery suppressed in Development Read-Only mode.'
+        : 'Email delivery suppressed because Testing Mode is active.',
     };
   }
 

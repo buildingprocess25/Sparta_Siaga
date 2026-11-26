@@ -2,7 +2,7 @@ import { getDbPool } from "./db";
 import type { Pool } from "pg";
 import { UserModel } from "./user-db";
 import { createDeviceSession, SessionCreationResult } from "./session-service";
-import { identityParameters, selectSpartaIdentity, SPARTA_IDENTITY_WHERE, SpartaIntegrationError } from "./sparta-identity";
+import { identityParameters, isLocalEmergencySystemAdmin, selectSpartaIdentity, SPARTA_IDENTITY_WHERE, SpartaIntegrationError } from "./sparta-identity";
 
 export interface SsoExchangeUser {
   contractVersion?: number;
@@ -239,14 +239,28 @@ export async function matchSsoIdentityToSiagaUser(
     };
   }
 
+  const eligibleRows = rows.filter((r) => !isLocalEmergencySystemAdmin(r));
+  if (eligibleRows.length === 0) {
+    return {
+      status: "NOT_FOUND",
+      reason: "Akun SYSTEM_ADMIN darurat lokal dilindungi dan tidak dapat ditautkan atau diakses melalui login SSO.",
+    };
+  }
+
   let row;
   try {
-    row = selectSpartaIdentity(rows, { spartaUserId: ssoId, employeeId: nik, email });
+    row = selectSpartaIdentity(eligibleRows, { spartaUserId: ssoId, employeeId: nik, email }, { excludeLocalSystemAdmin: true });
   } catch (error) {
     if (error instanceof SpartaIntegrationError) return { status: "AMBIGUOUS", reason: error.message };
     throw error;
   }
   if (!row) return { status: "NOT_FOUND", reason: "Identitas SSO tidak ditemukan." };
+  if (isLocalEmergencySystemAdmin(row)) {
+    return {
+      status: "NOT_FOUND",
+      reason: "Akun SYSTEM_ADMIN darurat lokal dilindungi dan tidak dapat ditautkan atau diakses melalui login SSO.",
+    };
+  }
   const user: UserModel = {
     id: row.id,
     externalUserId: row.external_user_id,
@@ -336,6 +350,7 @@ export async function matchSsoIdentityToSiagaUser(
              external_user_id = COALESCE(NULLIF(BTRIM(users.external_user_id), ''), $2),
              updated_at = NOW()
          WHERE id = $1 AND sso_status='PENDING_SSO_GRANT'
+           AND NOT (system_role = 'ADMIN' AND UPPER(TRIM(COALESCE(source, ''))) = 'LOCAL')
            AND (NULLIF(BTRIM(external_user_id),'') IS NULL OR external_user_id=$2)
          RETURNING id, external_user_id, nik, name, email, system_role, business_role, scope, branch, status, sso_status, token_version`,
         [user.id, ssoId]
@@ -381,6 +396,7 @@ export async function matchSsoIdentityToSiagaUser(
   if (ssoId && !user.externalUserId) {
     const linked = await pool.query(`UPDATE users SET external_user_id=$2,updated_at=NOW()
       WHERE id=$1 AND status='ACTIVE' AND (sso_status IS NULL OR sso_status='ACTIVE')
+      AND NOT (system_role = 'ADMIN' AND UPPER(TRIM(COALESCE(source, ''))) = 'LOCAL')
       AND (external_user_id IS NULL OR BTRIM(external_user_id)='' OR external_user_id=$2)
       RETURNING external_user_id`, [user.id, ssoId]);
     if (!linked.rows.length) return { status: "AMBIGUOUS", reason: "Identitas akun berubah saat pencocokan SSO." };

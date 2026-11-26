@@ -19,17 +19,33 @@ export class SpartaIntegrationError extends Error {
   }
 }
 
+export function isLocalEmergencySystemAdmin(
+  user: {
+    system_role?: string | null;
+    systemRole?: string | null;
+    source?: string | null;
+  } | null | undefined
+): boolean {
+  if (!user) return false;
+  const role = (user.system_role ?? user.systemRole ?? "").trim().toUpperCase();
+  const source = (user.source ?? "").trim().toUpperCase();
+  return role === "ADMIN" && source === "LOCAL";
+}
+
 export function selectSpartaIdentity<T extends IdentityCandidate>(
   rows: T[],
   identity: SpartaIdentity,
-  options: { allowLegacyLocalRelink?: boolean } = {}
+  options: { allowLegacyLocalRelink?: boolean; excludeLocalSystemAdmin?: boolean } = {}
 ): T | null {
+  const candidateRows = options.excludeLocalSystemAdmin
+    ? rows.filter(row => !isLocalEmergencySystemAdmin(row))
+    : rows;
   const portalId = identity.spartaUserId?.trim();
   const nik = identity.employeeId?.trim().toLowerCase();
   const email = identity.email?.trim().toLowerCase();
-  const byId = portalId ? rows.filter(row => row.external_user_id?.trim() === portalId) : [];
-  const byNik = nik ? rows.filter(row => row.nik?.trim().toLowerCase() === nik) : [];
-  const byEmail = email ? rows.filter(row => row.email?.trim().toLowerCase() === email) : [];
+  const byId = portalId ? candidateRows.filter(row => row.external_user_id?.trim() === portalId) : [];
+  const byNik = nik ? candidateRows.filter(row => row.nik?.trim().toLowerCase() === nik) : [];
+  const byEmail = email ? candidateRows.filter(row => row.email?.trim().toLowerCase() === email) : [];
   const candidates = [...byId, ...byNik, ...byEmail];
   if (new Set(candidates.map(row => row.id)).size > 1) {
     throw new SpartaIntegrationError("AMBIGUOUS_IDENTITY", "Identitas portal merujuk beberapa akun SIAGA.", 409);

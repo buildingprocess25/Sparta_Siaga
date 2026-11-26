@@ -11,6 +11,8 @@ import { invalidateBranchMasterCache } from "./branch-master-query";
 type Queryable = Pick<PoolClient, "query">;
 export type MasterSyncOptions = { pool?: Pool; fetchFn?: typeof fetch; full?: boolean; confirmFull?: boolean };
 
+export const MASTER_SYNC_ADVISORY_LOCK_ID = 7421843;
+
 const branchKeyCache = new Map<string, { code: string; until: number }>();
 
 export function clearBranchKeyCache() {
@@ -31,7 +33,7 @@ async function requireMasterSchema(client: Queryable) {
     AND to_regclass('sparta_master_sync_state') IS NOT NULL
     AND to_regprocedure('sparta_resolve_branch(text)') IS NOT NULL
     AND NOT EXISTS (
-      SELECT 1 FROM (VALUES ('users','branch_code'),('stores','branch_code'),('incidents','branch_code'),
+      SELECT 1 FROM (VALUES ('users','branch_code'),('users','pending_portal_branch'),('stores','branch_code'),('incidents','branch_code'),
         ('stores','is_active'),('stores','master_source'),('stores','master_synced_at')) AS required(table_name,column_name)
       WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema=current_schema()
         AND c.table_name=required.table_name AND c.column_name=required.column_name)
@@ -96,14 +98,39 @@ export const BRANCH_BACKFILL_TARGETS = [
   { table: "permission_audit_logs", column: "branch_code", code: "branch_code" },
 ] as const;
 
+const USER_PENDING_PORTAL_BRANCH_READONLY_SQL = `COALESCE(
+  NULLIF(NULLIF(BTRIM(to_jsonb(users)->'pending_portal_branch'->>'branchCode'), ''), '-'),
+  NULLIF(NULLIF(BTRIM(to_jsonb(users)->'pending_portal_branch'->>'branch'), ''), '-')
+)`;
+
+const USER_EFFECTIVE_BRANCH_READONLY_SQL = `COALESCE(
+  ${USER_PENDING_PORTAL_BRANCH_READONLY_SQL},
+  NULLIF(NULLIF(BTRIM(branch), ''), '-')
+)`;
+
+const USER_PENDING_PORTAL_BRANCH_SQL = `COALESCE(
+  NULLIF(NULLIF(BTRIM(pending_portal_branch->>'branchCode'), ''), '-'),
+  NULLIF(NULLIF(BTRIM(pending_portal_branch->>'branch'), ''), '-')
+)`;
+
+const USER_EFFECTIVE_BRANCH_SQL = `COALESCE(
+  ${USER_PENDING_PORTAL_BRANCH_SQL},
+  NULLIF(NULLIF(BTRIM(branch), ''), '-')
+)`;
+
 export async function inspectBranchBackfill(client: Queryable, branches: PortalBranch[]) {
   const unmapped: Array<{ table: string; value: string; count: number }> = [];
   const mapped: Array<{ table: string; value: string; code: string; count: number }> = [];
   for (const target of BRANCH_BACKFILL_TARGETS) {
-    const { rows } = await client.query(`SELECT ${target.column} AS value, COUNT(*)::int AS count FROM ${target.table}
-      WHERE NULLIF(BTRIM(${target.column}), '') IS NOT NULL
-      ${target.table === "users" ? "AND COALESCE(scope, '') <> 'HO' AND system_role <> 'ADMIN'" : ""}
-      GROUP BY ${target.column}`);
+    const querySql = target.table === "users"
+      ? `SELECT ${USER_EFFECTIVE_BRANCH_READONLY_SQL} AS value, COUNT(*)::int AS count FROM users
+         WHERE ${USER_EFFECTIVE_BRANCH_READONLY_SQL} IS NOT NULL
+         AND COALESCE(scope, '') <> 'HO' AND system_role <> 'ADMIN'
+         GROUP BY ${USER_EFFECTIVE_BRANCH_READONLY_SQL}`
+      : `SELECT ${target.column} AS value, COUNT(*)::int AS count FROM ${target.table}
+         WHERE NULLIF(BTRIM(${target.column}), '') IS NOT NULL
+         GROUP BY ${target.column}`;
+    const { rows } = await client.query(querySql);
     for (const row of rows) {
       const code = resolvePortalBranch(row.value, branches);
       if (!code) unmapped.push({ table: target.table, value: row.value, count: row.count });
@@ -123,7 +150,7 @@ export async function backfillPortalBranches(options: MasterSyncOptions & { appl
   try {
     await client.query(options.apply ? "BEGIN" : "BEGIN READ ONLY");
     if (options.apply) {
-      await client.query("SELECT pg_advisory_xact_lock(7421840)");
+      await client.query(`SELECT pg_advisory_xact_lock(${MASTER_SYNC_ADVISORY_LOCK_ID})`);
       for (const target of BRANCH_BACKFILL_TARGETS) await client.query(`LOCK TABLE ${target.table} IN SHARE ROW EXCLUSIVE MODE`);
     }
     const inspection = await inspectBranchBackfill(client, branches);
@@ -133,9 +160,26 @@ export async function backfillPortalBranches(options: MasterSyncOptions & { appl
     }
     await savePortalBranches(client, branches);
     for (const target of BRANCH_BACKFILL_TARGETS) {
-      await client.query(`UPDATE ${target.table} SET ${target.code}=sparta_resolve_branch(${target.column})
-        WHERE NULLIF(BTRIM(${target.column}), '') IS NOT NULL
-        ${target.table === "users" ? "AND COALESCE(scope, '') <> 'HO' AND system_role <> 'ADMIN'" : ""}`);
+      if (target.table === "users") {
+        await client.query(`UPDATE users
+          SET
+            branch = COALESCE(
+              (SELECT b.name FROM sparta_master_branches b
+               WHERE b.code = sparta_resolve_branch(${USER_PENDING_PORTAL_BRANCH_SQL})
+                 AND b.is_active = TRUE),
+              branch
+            ),
+            branch_code = sparta_resolve_branch(${USER_EFFECTIVE_BRANCH_SQL}),
+            pending_portal_branch = CASE
+              WHEN sparta_resolve_branch(${USER_PENDING_PORTAL_BRANCH_SQL}) IS NOT NULL THEN NULL
+              ELSE pending_portal_branch
+            END
+          WHERE ${USER_EFFECTIVE_BRANCH_SQL} IS NOT NULL
+            AND COALESCE(scope, '') <> 'HO' AND system_role <> 'ADMIN'`);
+      } else {
+        await client.query(`UPDATE ${target.table} SET ${target.code}=sparta_resolve_branch(${target.column})
+          WHERE NULLIF(BTRIM(${target.column}), '') IS NOT NULL`);
+      }
     }
     await client.query("COMMIT");
     branchKeyCache.clear();
@@ -155,7 +199,7 @@ export async function syncBranchesFromPortal(options: Pick<MasterSyncOptions, "p
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(7421840)");
+    await client.query(`SELECT pg_advisory_xact_lock(${MASTER_SYNC_ADVISORY_LOCK_ID})`);
     const response = await fetchPortalMaster("branches", options);
     const branches = parsePortalBranches(response.data);
     await savePortalBranches(client, branches);
@@ -191,7 +235,7 @@ export async function syncStoresFromPortal(options: MasterSyncOptions = {}): Pro
   let recordsRead = 0;
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(7421840)");
+    await client.query(`SELECT pg_advisory_xact_lock(${MASTER_SYNC_ADVISORY_LOCK_ID})`);
     const cursor = await client.query("SELECT synced_at FROM sparta_master_sync_state WHERE resource='stores'");
     const updatedSince = !options.full && cursor.rows[0]?.synced_at ? new Date(cursor.rows[0].synced_at).toISOString() : undefined;
     if (!updatedSince && !options.confirmFull) throw new SpartaIntegrationError("FULL_SYNC_REQUIRES_REVIEW", "Sync penuh memerlukan preview dan --confirm-full.", 409);

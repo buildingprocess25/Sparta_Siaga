@@ -5,7 +5,8 @@ import { branchMasterEnabled } from "./sparta-rollout";
 import { CANONICAL_HUMAN_ROLES, deriveScopeFromBusinessRole } from "./role-catalog";
 import { fetchPortalMaster } from "./sparta-master-sync";
 import { normalizePortalAlias, parsePortalBranches, resolvePortalBranch } from "./sparta-master-contract";
-import { identityParameters, selectSpartaIdentity, SPARTA_IDENTITY_WHERE, SpartaIntegrationError } from "./sparta-identity";
+import { identityParameters, isLocalEmergencySystemAdmin, selectSpartaIdentity, SPARTA_IDENTITY_WHERE, SpartaIntegrationError } from "./sparta-identity";
+import { isDevelopmentReadOnlyMode } from "./environment-policy";
 
 export interface ProvisioningEvent {
   eventId: string;
@@ -57,6 +58,9 @@ export function initialProvisioningRole(value: string) {
 }
 
 export async function applyProvisioningEvent(event: ProvisioningEvent, options: { pool?: Pool; fetchFn?: typeof fetch } = {}) {
+  if (isDevelopmentReadOnlyMode()) {
+    throw new SpartaIntegrationError("READ_ONLY_DEV_MODE", "Mode Development Read-Only aktif: provisioning dari Portal diblokir.", 403);
+  }
   const pool = options.pool || getDbPool();
   const client = await pool.connect();
   try {
@@ -77,7 +81,7 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
       await client.query("COMMIT");
       return { result: "ignored", reason: "stale_event" };
     }
-    if (user?.system_role === "ADMIN" && (user.source || "").trim().toUpperCase() === "LOCAL") {
+    if (isLocalEmergencySystemAdmin(user)) {
       await saveCheckpoint();
       await client.query("COMMIT");
       return { result: "ignored", reason: "protected_system_admin" };
@@ -156,10 +160,10 @@ export async function applyProvisioningEvent(event: ProvisioningEvent, options: 
     }
     if (convertBranch && !disable) {
       if (scope === "BRANCH" && branchCode) {
-        await client.query(`UPDATE users SET branch=$2,branch_code=$3 WHERE id=$1
+        await client.query(`UPDATE users SET branch=$2,branch_code=$3,pending_portal_branch=NULL WHERE id=$1
           AND system_role<>'ADMIN' AND COALESCE(scope,'')<>'HO'`, [id, event.user.branch, branchCode]);
       } else if (scope === "HO") {
-        await client.query(`UPDATE users SET branch=NULL,branch_code=NULL WHERE id=$1
+        await client.query(`UPDATE users SET branch=NULL,branch_code=NULL,pending_portal_branch=NULL WHERE id=$1
           AND system_role<>'ADMIN'`, [id]);
       }
     }
