@@ -5,14 +5,18 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Pool } from "pg";
 import { NextRequest } from "next/server";
-import { assertReadOnlySql, getProductionDbPool, getProductionReadOnlyDbPool, verifyPostgresReadOnlyPermissions, closeDbPool } from "../lib/db";
+import { assertReadOnlySql, getIsolatedDbPool, getProductionDbPool, getProductionReadOnlyDbPool, verifyPostgresReadOnlyPermissions, closeDbPool } from "../lib/db";
 import {
+  GATE_TOKEN_COOKIE,
   areSameDatabaseCredentials,
   getSpartaEnvironment,
   isDevelopmentReadOnlyMode,
+  isIsolatedDatabaseTarget,
   isSimulationAllowed,
+  issueGateToken,
   validateProductionDatabaseAccess,
 } from "../lib/environment-policy";
+import { POST as gateVerifyPost } from "../app/api/auth/gate-verify/route";
 import { POST as quickLoginPost } from "../app/api/auth/quick-login/route";
 import { POST as refreshPost } from "../app/api/auth/refresh/route";
 import { POST as logoutPost } from "../app/api/auth/logout/route";
@@ -39,6 +43,9 @@ function enableReadOnlyDevEnv() {
     "postgresql://siaga_writer:rw-pass@prod.db.internal:5432/siaga?sslmode=require";
   process.env.DATABASE_URL = "postgresql://readonly-guard@127.0.0.1:5432/siaga_write_blocked";
   process.env.JWT_SECRET = "readonly-test-jwt-secret-minimum-32-characters-long";
+  process.env.DEV_GATE_PASSCODE = "readonly-authorized-gate-passcode-123";
+  process.env.SPARTA_TEST_GATE_ENABLED = "true";
+  process.env.SPARTA_FORCE_DEV_GATE = "true";
 }
 
 function setMockIsolatedPool(handler: (sql: string, params: unknown[]) => Record<string, unknown>[]) {
@@ -169,10 +176,38 @@ test("run-dev CLI switches cleanly between isolated and prod-readonly and reject
       ...process.env,
       DATABASE_URL: "postgresql://writer:pw@prod.db.internal:5432/siaga?sslmode=require",
       SPARTA_PRODUCTION_READONLY_DATABASE_URL: "postgresql://sparta_siaga_readonly:ro@prod.db.internal:5432/siaga?sslmode=require",
+      DEV_GATE_PASSCODE: "readonly-cli-passcode-123456",
+      DEV_BIND_HOST: "",
     },
   });
   assert.match(roOut, /"devDataMode":"production-readonly"/);
   assert.match(roOut, /"workerEnabled":"false"/);
+  assert.match(roOut, /"bindHost":"127\.0\.0\.1"/);
+
+  assert.throws(() => {
+    execFileSync(process.execPath, [tsxCli, "scripts/run-dev.ts", "prod-readonly", "--dry-run-env"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        DATABASE_URL: "postgresql://writer:pw@prod.db.internal:5432/siaga?sslmode=require",
+        SPARTA_PRODUCTION_READONLY_DATABASE_URL: "postgresql://sparta_siaga_readonly:ro@prod.db.internal:5432/siaga?sslmode=require",
+        DEV_GATE_PASSCODE: "short",
+      },
+    });
+  });
+
+  assert.throws(() => {
+    execFileSync(process.execPath, [tsxCli, "scripts/run-dev.ts", "prod-readonly", "--dry-run-env"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        DATABASE_URL: "postgresql://writer:pw@prod.db.internal:5432/siaga?sslmode=require",
+        SPARTA_PRODUCTION_READONLY_DATABASE_URL: "postgresql://sparta_siaga_readonly:ro@prod.db.internal:5432/siaga?sslmode=require",
+        DEV_GATE_PASSCODE: "readonly-cli-passcode-123456",
+        DEV_BIND_HOST: "0.0.0.0",
+      },
+    });
+  });
 
   assert.throws(() => {
     execFileSync(process.execPath, [tsxCli, "scripts/run-dev.ts", "uat", "--dry-run-env"], {
@@ -181,7 +216,7 @@ test("run-dev CLI switches cleanly between isolated and prod-readonly and reject
   });
 });
 
-test("Quick Login 9 roles, getSessionUser, refresh RTR, env-status, and logout execute zero DB writes in read-only mode", async () => {
+test("Quick Login 9 roles, getSessionUser, refresh RTR, env-status, and logout require gate auth and execute zero DB writes in read-only mode", async () => {
   const calls = setMockIsolatedPool((sql) => {
     if (sql.includes("DISTINCT UPPER(BTRIM(cabang))")) {
       return [{ branch: "BANDUNG" }, { branch: "SEMARANG" }];
@@ -192,17 +227,52 @@ test("Quick Login 9 roles, getSessionUser, refresh RTR, env-status, and logout e
     return [];
   });
 
-  const envRes = await envStatusGet(new Request("http://localhost:3004/api/auth/env-status", { headers: { host: "localhost:3004" } }));
+  // Unauthorized loopback user cannot read branch directory from Production DB or use Quick Login
+  const unauthEnvRes = await envStatusGet(new Request("http://localhost:3004/api/auth/env-status", { headers: { host: "localhost:3004" } }));
+  assert.equal(unauthEnvRes.status, 200);
+  const unauthEnvJson = await unauthEnvRes.json();
+  assert.equal(unauthEnvJson.isQuickLoginAllowed, false);
+  assert.equal(unauthEnvJson.gateRequired, true);
+  assert.equal(unauthEnvJson.gateEnabled, true);
+  assert.deepEqual(unauthEnvJson.availableBranches, []);
+  assert.equal(calls.length, 0, "Unauthorized request must not query Production DB");
+
+  const unauthQuickRes = await quickLoginPost(new Request("http://localhost:3004/api/auth/quick-login", {
+    method: "POST",
+    headers: { "content-type": "application/json", host: "localhost:3004" },
+    body: JSON.stringify({ role: "bms", branch: "SEMARANG" }),
+  }));
+  assert.equal(unauthQuickRes.status, 403);
+
+  const unauthPageRes = await proxy(new NextRequest("http://localhost:3004/monitoring", { headers: { host: "localhost:3004" } }));
+  assert.equal(unauthPageRes.status, 307);
+
+  // Authorized local developer passes Gate Passcode first
+  const gateRes = await gateVerifyPost(new Request("http://localhost:3004/api/auth/gate-verify", {
+    method: "POST",
+    headers: { "content-type": "application/json", host: "localhost:3004", origin: "http://localhost:3004" },
+    body: JSON.stringify({ passcode: process.env.DEV_GATE_PASSCODE }),
+  }));
+  assert.equal(gateRes.status, 200);
+  const gateCookie = (gateRes.headers.getSetCookie?.() || [gateRes.headers.get("set-cookie") || ""])
+    .map((c) => c.split(";")[0])
+    .find((c) => c.startsWith(`${GATE_TOKEN_COOKIE}=`))!;
+  assert.ok(gateCookie);
+
+  const envRes = await envStatusGet(new Request("http://localhost:3004/api/auth/env-status", {
+    headers: { host: "localhost:3004", cookie: gateCookie },
+  }));
   const envJson = await envRes.json();
   assert.equal(envJson.isReadOnlyMode, true);
   assert.equal(envJson.dataMode, "production-readonly");
   assert.equal(envJson.isSimulationAllowed, false);
+  assert.equal(envJson.isQuickLoginAllowed, true);
   assert.deepEqual(envJson.availableBranches, ["BANDUNG", "SEMARANG"]);
 
   for (const role of ["sysadmin", "admin", "bm", "bmc", "bec", "bbc", "bms", "bes", "bbs"]) {
     const req = new Request("http://localhost:3004/api/auth/quick-login", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "localhost:3004" },
+      headers: { "content-type": "application/json", host: "localhost:3004", cookie: gateCookie },
       body: JSON.stringify({ role, branch: "SEMARANG" }),
     });
     const res = await quickLoginPost(req);
@@ -211,11 +281,16 @@ test("Quick Login 9 roles, getSessionUser, refresh RTR, env-status, and logout e
     assert.equal(body.readOnlyMode, true);
 
     const setCookies = res.headers.getSetCookie?.() || [res.headers.get("set-cookie") || ""];
-    const cookieHeader = setCookies.map((c) => c.split(";")[0]).join("; ");
+    const sessionCookies = setCookies.map((c) => c.split(";")[0]).join("; ");
+    const cookieHeader = `${gateCookie}; ${sessionCookies}`;
     assert.ok(cookieHeader.includes("siaga_session="));
     assert.ok(cookieHeader.includes("siaga_refresh="));
 
-    const user = await getSessionUser(new Request("http://localhost:3004/api/auth/me", { headers: { cookie: cookieHeader } }));
+    // Session cookie without gate cookie must fail in Read-Only mode
+    const noGateUser = await getSessionUser(new Request("http://localhost:3004/api/auth/me", { headers: { host: "localhost:3004", cookie: sessionCookies } }));
+    assert.equal(noGateUser, null);
+
+    const user = await getSessionUser(new Request("http://localhost:3004/api/auth/me", { headers: { host: "localhost:3004", cookie: cookieHeader } }));
     assert.ok(user, `getSessionUser failed for ${role}`);
     assert.equal(user!.systemRole, role === "sysadmin" ? "ADMIN" : "USER");
 
@@ -229,10 +304,10 @@ test("Quick Login 9 roles, getSessionUser, refresh RTR, env-status, and logout e
   // Logout all-devices clears/invalidates in-memory session with zero DB calls
   const loginRes = await quickLoginPost(new Request("http://localhost:3004/api/auth/quick-login", {
     method: "POST",
-    headers: { "content-type": "application/json", host: "localhost:3004" },
+    headers: { "content-type": "application/json", host: "localhost:3004", cookie: gateCookie },
     body: JSON.stringify({ role: "bms", branch: "SEMARANG" }),
   }));
-  const cookies = (loginRes.headers.getSetCookie?.() || [loginRes.headers.get("set-cookie") || ""])
+  const cookies = `${gateCookie}; ` + (loginRes.headers.getSetCookie?.() || [loginRes.headers.get("set-cookie") || ""])
     .map((c) => c.split(";")[0]).join("; ");
 
   const loRes = await logoutPost(new Request("http://localhost:3004/api/auth/logout?all=true", {
@@ -240,10 +315,62 @@ test("Quick Login 9 roles, getSessionUser, refresh RTR, env-status, and logout e
     headers: { host: "localhost:3004", cookie: cookies },
   }));
   assert.equal(loRes.status, 200);
-  const afterLogout = await getSessionUser(new Request("http://localhost:3004/api/auth/me", { headers: { cookie: cookies } }));
+  const afterLogout = await getSessionUser(new Request("http://localhost:3004/api/auth/me", { headers: { host: "localhost:3004", cookie: cookies } }));
   assert.equal(afterLogout, null, "Revoked in-memory session must fail after logout?all=true");
 
   assert.ok(calls.every((c) => /^\s*SELECT\b/i.test(c.sql)), `Unexpected non-SELECT query during auth lifecycle: ${JSON.stringify(calls)}`);
+});
+
+test("Development Read-Only blocks public tunnels, proxy forwarding headers, and unauthorized loopback access", async () => {
+  const gateCookie = `${GATE_TOKEN_COOKIE}=${issueGateToken()}`;
+  const tunnelCases: Array<{ label: string; url: string; headers: Record<string, string> }> = [
+    {
+      label: "devtunnels host",
+      url: "https://demo.devtunnels.ms",
+      headers: { host: "demo.devtunnels.ms", cookie: gateCookie },
+    },
+    {
+      label: "localtunnel host",
+      url: "https://demo.loca.lt",
+      headers: { host: "demo.loca.lt", cookie: gateCookie },
+    },
+    {
+      label: "forwarded header on localhost",
+      url: "http://localhost:3004",
+      headers: { host: "localhost:3004", "x-forwarded-for": "127.0.0.1", cookie: gateCookie },
+    },
+    {
+      label: "cloudflare proxy header on localhost",
+      url: "http://localhost:3004",
+      headers: { host: "localhost:3004", "cf-ray": "abc123", cookie: gateCookie },
+    },
+  ];
+
+  for (const tc of tunnelCases) {
+    for (const p of ["/login", "/monitoring", "/api/auth/quick-login", "/api/health/live", "/api/incidents"]) {
+      const pRes = await proxy(new NextRequest(`${tc.url}${p}`, { headers: tc.headers }));
+      assert.equal(pRes.status, 403, `proxy must block ${tc.label} on ${p}`);
+      const pBody = await pRes.json();
+      assert.equal(pBody.code, "READ_ONLY_TUNNEL_FORBIDDEN");
+    }
+
+    const envRes = await envStatusGet(new Request(`${tc.url}/api/auth/env-status`, { headers: tc.headers }));
+    assert.equal(envRes.status, 403, `env-status must block ${tc.label}`);
+    const gateRes = await gateVerifyPost(new Request(`${tc.url}/api/auth/gate-verify`, {
+      method: "POST",
+      headers: { ...tc.headers, "content-type": "application/json" },
+      body: JSON.stringify({ passcode: process.env.DEV_GATE_PASSCODE }),
+    }));
+    assert.equal(gateRes.status, 403, `gate-verify must block ${tc.label}`);
+    const qlRes = await quickLoginPost(new Request(`${tc.url}/api/auth/quick-login`, {
+      method: "POST",
+      headers: { ...tc.headers, "content-type": "application/json" },
+      body: JSON.stringify({ role: "bms", branch: "BANDUNG" }),
+    }));
+    assert.equal(qlRes.status, 403, `quick-login must block ${tc.label}`);
+    const sessionUser = await getSessionUser(new Request(`${tc.url}/api/auth/me`, { headers: tc.headers }));
+    assert.equal(sessionUser, null, `getSessionUser must reject ${tc.label}`);
+  }
 });
 
 test("proxy and service guards block writes, simulation, provisioning, workers, and notifications in read-only mode", async () => {
@@ -266,10 +393,16 @@ test("proxy and service guards block writes, simulation, provisioning, workers, 
     assert.equal(body.code, "READ_ONLY_DEV_MODE");
   }
 
-  // Quick login endpoint stays permitted
-  const qlPass = await proxy(new NextRequest("http://localhost:3004/api/auth/quick-login", {
+  // Quick login endpoint requires verified gate on loopback, then passes
+  const qlBlocked = await proxy(new NextRequest("http://localhost:3004/api/auth/quick-login", {
     method: "POST",
     headers: { host: "localhost:3004" },
+  }));
+  assert.equal(qlBlocked.status, 403);
+
+  const qlPass = await proxy(new NextRequest("http://localhost:3004/api/auth/quick-login", {
+    method: "POST",
+    headers: { host: "localhost:3004", cookie: `${GATE_TOKEN_COOKIE}=${issueGateToken()}` },
   }));
   assert.notEqual(qlPass.status, 403);
 
@@ -387,10 +520,32 @@ test("pnpm dev defaults to isolated runner and invalid env configs never connect
   process.env.DATABASE_URL = "postgresql://writer:pw@prod.db.internal:5432/siaga?sslmode=require";
   assert.throws(() => getProductionReadOnlyDbPool(), /FATAL_DATABASE_SAFETY_VIOLATION/);
 
-  // Explicit valid production environment is permitted
+  // ALLOW_PRODUCTION_TEST_RUN bypass is eliminated: test context never accesses Production pool
   (process.env as Record<string, string | undefined>).NODE_ENV = "production";
   process.env.APP_ENV = "production";
   process.env.SPARTA_ENVIRONMENT = "production";
   process.env.SPARTA_DEV_DATA_MODE = "";
+  process.env.ALLOW_PRODUCTION_TEST_RUN = "true";
+  assert.throws(() => getProductionDbPool(), /FATAL_DATABASE_SAFETY_VIOLATION/);
+
+  // Isolated pool enforces the exact same Aiven target validation as run-dev.ts
+  (process.env as Record<string, string | undefined>).NODE_ENV = "development";
+  for (const invalidIsolated of [
+    "postgresql://user:pw@localhost:5432/sparta_siaga_isolated?sslmode=require",
+    "postgresql://user:pw@host.aivencloud.com:15196/siaga?sslmode=require",
+    "postgresql://user:pw@host.aivencloud.com:15196/sparta_siaga_isolated?sslmode=require&options=evil",
+  ]) {
+    (globalThis as unknown as { isolatedPool?: Pool }).isolatedPool = undefined;
+    process.env.SPARTA_ISOLATED_TEST_DATABASE_URL = invalidIsolated;
+    assert.equal(isIsolatedDatabaseTarget(invalidIsolated), false);
+    assert.throws(() => getIsolatedDbPool(), /FATAL_DATABASE_SAFETY_VIOLATION/);
+  }
+  assert.equal(
+    isIsolatedDatabaseTarget("postgresql://avn:pw@host.aivencloud.com:15196/sparta_siaga_isolated?sslmode=require"),
+    true
+  );
+
+  // Explicit valid production environment policy check is permitted
+  (process.env as Record<string, string | undefined>).NODE_ENV = "production";
   assert.deepEqual(validateProductionDatabaseAccess(), { allowed: true });
 });

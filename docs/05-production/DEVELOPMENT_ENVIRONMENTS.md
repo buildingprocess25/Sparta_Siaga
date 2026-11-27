@@ -8,7 +8,7 @@ SPARTA SIAGA hanya mengenal **dua environment utama**:
 2. **Development** (`APP_ENV=development`, `SPARTA_ENVIRONMENT=development`)
    - Menyediakan **Quick Login 9 Role** dan pemisahan dua mode sumber data tanpa perlu mengubah `DATABASE_URL` secara manual.
 
-_(Environment UAT terpisah telah dihapus. Proteksi `DEV_GATE_PASSCODE` tetap tersedia otomatis untuk akses non-loopback / tunnel di mode Development.)_
+_(Environment UAT terpisah telah dihapus. Proteksi `DEV_GATE_PASSCODE` tersedia untuk tunnel di mode Terisolasi, dan wajib digunakan bahkan pada loopback saat mode Development Read-Only aktif — tunnel publik/LAN diblokir pada mode Read-Only.)_
 
 ---
 
@@ -16,6 +16,7 @@ _(Environment UAT terpisah telah dihapus. Proteksi `DEV_GATE_PASSCODE` tetap ter
 
 | Kebutuhan                               | Command                  | Sumber Data                                                                            | Yang Aktif                                                                                                          | Yang Diblokir                                                                                                         |
 | --------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Development Normal (Terisolasi)**     | `pnpm dev:local`         | Aiven `sparta_siaga_isolated` (`SPARTA_ISOLATED_TEST_DATABASE_URL`)                    | Quick Login 9 Role, CRUD pengujian, simulasi gempa (`SPARTA_ALLOW_TEST_SIMULATION`), `pnpm migrate:isolated`        | DB Production, Portal SSO redirect, worker/email produksi                                                             |
 | **Development Normal (Terisolasi)**     | `pnpm dev` / `pnpm dev:local` | Aiven `sparta_siaga_isolated` (`SPARTA_ISOLATED_TEST_DATABASE_URL`)                    | Quick Login 9 Role, CRUD pengujian, simulasi gempa (`SPARTA_ALLOW_TEST_SIMULATION`), `pnpm migrate:isolated`        | DB Production, Portal SSO redirect, worker/email produksi                                                             |
 | **Development Data Aktual (Read-Only)** | `pnpm dev:prod-readonly` | PostgreSQL Production (`SPARTA_PRODUCTION_READONLY_DATABASE_URL` berhak `SELECT` saja) | Melihat data aktual & uji tampilan memakai Quick Login 9 Role (session disimpan di memori & JWT, 0 penulisan ke DB) | Semua operasi tulis (`INSERT`/`UPDATE`/`DELETE`/DDL/lock), simulasi, provisioning, worker, sinkronisasi, email & push |
 
@@ -35,4 +36,5 @@ _(Environment UAT terpisah telah dihapus. Proteksi `DEV_GATE_PASSCODE` tetap ter
    ```env
    SPARTA_PRODUCTION_READONLY_DATABASE_URL="postgresql://sparta_siaga_readonly:<password>@<host>:5432/siaga?sslmode=require"
    ```
-3. Jalankan `pnpm dev:prod-readonly`. Runner otomatis memeriksa katalog PostgreSQL (`pg_roles`, `information_schema.tables`, `transaction_read_only`) sebelum server Next.js dinyalakan dan menolak berjalan bila role masih memiliki izin tulis/DDL atau memakai kredensial yang sama dengan `DATABASE_URL`.
+3. Pastikan `DEV_GATE_PASSCODE` minimal 12 karakter terisi di `.env.local` (atau `.env.development.local`).
+4. Jalankan `pnpm dev:prod-readonly`. Runner mengikat server hanya ke loopback (`127.0.0.1`), mewajibkan verifikasi Gate Passcode untuk pengguna berwenang, memblokir akses tunnel/reverse-proxy, serta otomatis memeriksa katalog PostgreSQL (`pg_roles`, `information_schema.tables`, `transaction_read_only`) sebelum server Next.js dinyalakan dan menolak berjalan bila role masih memiliki izin tulis/DDL atau memakai kredensial yang sama dengan `DATABASE_URL`.

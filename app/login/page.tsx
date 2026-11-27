@@ -246,7 +246,11 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <form onSubmit={handleGate} className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-4">
         <h1 className="text-xl font-bold text-slate-900">SPARTA SIAGA — Gate Access</h1>
-        <p className="text-sm text-slate-600">Lingkungan Development terproteksi Gate. Hanya penguji berwenang.</p>
+        <p className="text-sm text-slate-600">
+          {isReadOnlyMode
+            ? "Mode Development Read-Only (data aktual Production, khusus akses lokal berwenang)."
+            : "Lingkungan Development terproteksi Gate. Hanya penguji berwenang."}
+        </p>
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
         {!gateEnabled && <p className="text-sm text-amber-800">Gate belum diaktifkan oleh administrator.</p>}
         <label className="block text-sm font-medium text-slate-800">Gate passcode

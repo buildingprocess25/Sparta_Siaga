@@ -18,11 +18,11 @@ console.log("SPARTA SIAGA — Panduan Akses Development (Laptop, LAN & Tunnel)")
 console.log("==================================================================");
 console.log("");
 console.log("1. AKSES LOKAL (Laptop / PC):");
-console.log("   - Mode Isolated (Aiven 1GB):   pnpm dev:local");
-console.log("   - Mode Prod Read-Only:         pnpm dev:prod-readonly");
+console.log("   - Mode Isolated (Aiven 1GB):   pnpm dev  (atau pnpm dev:local)");
+console.log("   - Mode Prod Read-Only:         pnpm dev:prod-readonly  (khusus loopback 127.0.0.1 + wajib DEV_GATE_PASSCODE)");
 console.log("   - URL:                         http://localhost:3004");
 console.log("");
-console.log("2. AKSES JARINGAN WIFI / LAN LOKAL (Wajib DEV_BIND_HOST=0.0.0.0 & Gate):");
+console.log("2. AKSES JARINGAN WIFI / LAN LOKAL (Khusus Mode Isolated; DILARANG pada Prod Read-Only):");
 const ips = getNetworkAddresses();
 if (ips.length > 0) {
   ips.forEach((ip) => {
@@ -32,7 +32,7 @@ if (ips.length > 0) {
   console.log("   URL: http://<IP_LAPTOP>:3004");
 }
 console.log("");
-console.log("3. AKSES HTTPS TUNNEL PUBLIK (Wajib SPARTA_TEST_GATE_ENABLED=true & DEV_GATE_PASSCODE):");
+console.log("3. AKSES HTTPS TUNNEL PUBLIK (Khusus Mode Isolated; DIBLOKIR total pada Mode Prod Read-Only):");
 console.log("   Opsi A (localtunnel):");
 console.log("      pnpm run tunnel:dev");
 console.log("      atau: pnpm dlx localtunnel --port 3004");

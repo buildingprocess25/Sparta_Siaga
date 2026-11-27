@@ -4,6 +4,7 @@ import {
   getDevelopmentDataMode,
   isDevelopmentEnvironment,
   isDevelopmentReadOnlyMode,
+  isReadOnlyLoopbackAllowed,
   isSimulationAllowed,
   isQuickLoginPermitted,
   getSsoPortalUrl,
@@ -39,8 +40,18 @@ export async function GET(req: Request) {
   const isDev = isDevelopmentEnvironment();
   const dataMode = getDevelopmentDataMode();
   const isReadOnlyMode = isDevelopmentReadOnlyMode();
+  if (isReadOnlyMode && !isReadOnlyLoopbackAllowed(req)) {
+    return NextResponse.json(
+      {
+        error: "READ_ONLY_TUNNEL_FORBIDDEN",
+        code: "READ_ONLY_TUNNEL_FORBIDDEN",
+        message: "Mode Development Read-Only hanya diizinkan dari loopback lokal dan melarang ekspos melalui tunnel publik.",
+      },
+      { status: 403, headers: { "Cache-Control": "no-store" } }
+    );
+  }
   const quickLoginCheck = isQuickLoginPermitted(req);
-  const availableBranches = await loadQuickLoginBranches();
+  const availableBranches = quickLoginCheck.allowed ? await loadQuickLoginBranches() : [];
 
   return NextResponse.json({
     environment: env,

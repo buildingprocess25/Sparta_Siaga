@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isTestBrowserEnvironment, isGateEnabled, isGateTransportAllowed, verifyGatePasscode,
-  issueGateToken, GATE_TOKEN_COOKIE, GATE_TOKEN_TTL_SECONDS, isLocalLoopbackRequest } from "@/lib/environment-policy";
+  issueGateToken, GATE_TOKEN_COOKIE, GATE_TOKEN_TTL_SECONDS, isLocalLoopbackRequest,
+  isDevelopmentReadOnlyMode, isReadOnlyLoopbackAllowed } from "@/lib/environment-policy";
 export const runtime = "nodejs";
 // Per-process global failure cap. Public reverse proxy must also enforce a distributed rate limit.
 let failures = 0;
@@ -9,6 +10,9 @@ function reply(error: string, status: number) {
   return NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 }
 export async function POST(req: Request) {
+  if (isDevelopmentReadOnlyMode() && !isReadOnlyLoopbackAllowed(req)) {
+    return reply("READ_ONLY_TUNNEL_FORBIDDEN", 403);
+  }
   if (!isTestBrowserEnvironment()) return reply("GATE_FORBIDDEN", 403);
   if (!isGateEnabled()) return reply("GATE_NOT_CONFIGURED", 503);
   if (!isGateTransportAllowed(req)) return reply("HTTPS_REQUIRED", 403);

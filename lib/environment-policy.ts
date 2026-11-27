@@ -77,14 +77,21 @@ function isValidReadOnlyPostgresUrl(raw: string): boolean {
   }
 }
 
-function isIsolatedDatabaseTarget(value: string): boolean {
+export function isIsolatedDatabaseTarget(value: string | undefined): value is string {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed || isProductionDatabaseTarget(trimmed)) return false;
   try {
-    const url = new URL(value);
-    return (url.protocol === "postgresql:" || url.protocol === "postgres:") &&
+    const url = new URL(trimmed);
+    return (
+      (url.protocol === "postgresql:" || url.protocol === "postgres:") &&
       url.hostname.toLowerCase().endsWith(".aivencloud.com") &&
       decodeURIComponent(url.pathname) === "/sparta_siaga_isolated" &&
-      [...url.searchParams.keys()].every(key => key === "sslmode");
-  } catch { return false; }
+      [...url.searchParams.keys()].every((key) => key === "sslmode")
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function getSpartaEnvironment(): SpartaEnvironment {
@@ -213,15 +220,39 @@ export function isLocalLoopbackRequest(req: Request): boolean {
       (!forwardedFor || forwardedFor.split(",").every(loopbackIp));
   } catch { return false; }
 }
+const READONLY_FORBIDDEN_PROXY_HEADERS = [
+  "forwarded",
+  "x-forwarded-host",
+  "x-forwarded-for",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "x-original-host",
+  "cf-connecting-ip",
+  "cf-ray",
+  "true-client-ip",
+];
+
+export function isReadOnlyLoopbackAllowed(req: Request): boolean {
+  if (!isLocalLoopbackRequest(req)) return false;
+  return READONLY_FORBIDDEN_PROXY_HEADERS.every((header) => !req.headers.get(header)?.trim());
+}
+
 export function isGateRequired(req: Request): boolean {
+  if (isDevelopmentReadOnlyMode()) return true;
   return isDevelopmentEnvironment() &&
     (process.env.SPARTA_FORCE_DEV_GATE === "true" || !isLocalLoopbackRequest(req));
 }
 export function isGateEnabled(): boolean {
+  if (isDevelopmentReadOnlyMode()) {
+    return getConfiguredGatePasscode() !== null;
+  }
   return isTestBrowserEnvironment() && process.env.SPARTA_TEST_GATE_ENABLED === "true" &&
     getConfiguredGatePasscode() !== null;
 }
 export function isGateTransportAllowed(req: Request): boolean {
+  if (isDevelopmentReadOnlyMode()) {
+    return isReadOnlyLoopbackAllowed(req);
+  }
   try {
     return isLocalLoopbackRequest(req) || new URL(req.url).protocol === "https:" ||
       req.headers.get("x-forwarded-proto") === "https";
@@ -235,6 +266,13 @@ export function hasVerifiedGate(req: Request): boolean {
 }
 export function isQuickLoginPermitted(req?: Request): { allowed: boolean; reason?: string } {
   if (!req || !isTestBrowserEnvironment()) return { allowed: false, reason: "Quick Login hanya tersedia di Development terisolasi atau Development Read-Only." };
+  if (isDevelopmentReadOnlyMode()) {
+    if (!isReadOnlyLoopbackAllowed(req)) {
+      return { allowed: false, reason: "Mode Development Read-Only hanya diizinkan dari loopback lokal (tunnel publik diblokir)." };
+    }
+    if (hasVerifiedGate(req)) return { allowed: true };
+    return { allowed: false, reason: "Verifikasi gate diperlukan untuk mengakses mode Development Read-Only." };
+  }
   if (isDevelopmentEnvironment() && isLocalLoopbackRequest(req) && process.env.SPARTA_FORCE_DEV_GATE !== "true") return { allowed: true };
   if (hasVerifiedGate(req)) return { allowed: true };
   return { allowed: false, reason: "Verifikasi gate diperlukan." };

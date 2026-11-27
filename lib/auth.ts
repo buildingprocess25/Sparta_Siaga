@@ -3,7 +3,13 @@ import { UserContext } from "./report-permissions";
 import { Scope, SpartaRole } from "@/types/incident";
 import { dbGetUserById, UserModel } from "./user-db";
 import { verifySession } from "./jwt";
-import { isDevelopmentReadOnlyMode } from "./environment-policy";
+import {
+  GATE_TOKEN_COOKIE,
+  isDevelopmentReadOnlyMode,
+  isGateEnabled,
+  isReadOnlyLoopbackAllowed,
+  verifyGateToken,
+} from "./environment-policy";
 import { canUseSessionIdentity } from "./session-environment";
 import {
   getReadOnlyUserTokenVersion,
@@ -64,8 +70,12 @@ function buildUserContext(dbUser: UserModel): UserContext | null {
 export async function getSessionUser(req?: Request): Promise<UserContext | null> {
   let sessionToken: string | undefined;
   let refreshToken: string | undefined;
+  let gateToken: string | undefined;
 
   if (req) {
+    if (isDevelopmentReadOnlyMode() && !isReadOnlyLoopbackAllowed(req)) {
+      return null;
+    }
     const cookieHeader = req.headers.get("cookie") || "";
     const sessionMatch = cookieHeader.match(/siaga_session=([^;]+)/);
     if (sessionMatch) {
@@ -75,9 +85,13 @@ export async function getSessionUser(req?: Request): Promise<UserContext | null>
     if (refreshMatch) {
       refreshToken = refreshMatch[1];
     }
+    const gateMatch = cookieHeader.match(new RegExp(`(?:^|;\\s*)${GATE_TOKEN_COOKIE}=([^;]+)`));
+    if (gateMatch) {
+      gateToken = gateMatch[1];
+    }
   }
 
-  if (!sessionToken || !refreshToken) {
+  if (!sessionToken || !refreshToken || (isDevelopmentReadOnlyMode() && !gateToken)) {
     try {
       const cookieStore = await cookies();
       if (!sessionToken) {
@@ -86,9 +100,16 @@ export async function getSessionUser(req?: Request): Promise<UserContext | null>
       if (!refreshToken) {
         refreshToken = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
       }
+      if (!gateToken) {
+        gateToken = cookieStore.get(GATE_TOKEN_COOKIE)?.value;
+      }
     } catch {
       // Handled when called outside Next.js requestAsyncStorage
     }
+  }
+
+  if (isDevelopmentReadOnlyMode() && (!isGateEnabled() || !verifyGateToken(gateToken))) {
+    return null;
   }
 
   // 1. First, attempt to verify short-lived access token

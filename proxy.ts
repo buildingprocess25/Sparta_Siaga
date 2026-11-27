@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifySession } from './lib/jwt';
 import { hasCurrentRefreshEnvironment } from './lib/session-environment';
-import { isGateRequired, hasVerifiedGate, isDevelopmentReadOnlyMode } from './lib/environment-policy';
+import { isGateRequired, hasVerifiedGate, isDevelopmentReadOnlyMode, isReadOnlyLoopbackAllowed } from './lib/environment-policy';
 
 const READONLY_ALLOWED_POST_PATHS = new Set([
   '/api/auth/quick-login',
@@ -26,6 +26,17 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isDevelopmentReadOnlyMode()) {
+    if (!isReadOnlyLoopbackAllowed(request)) {
+      return NextResponse.json(
+        {
+          error: 'READ_ONLY_TUNNEL_FORBIDDEN',
+          code: 'READ_ONLY_TUNNEL_FORBIDDEN',
+          message: 'Mode Development Read-Only hanya diizinkan dari loopback lokal dan melarang ekspos melalui tunnel publik.',
+        },
+        { status: 403 }
+      );
+    }
+
     if (isReadOnlyBlockedEndpoint(pathname)) {
       return NextResponse.json(
         {

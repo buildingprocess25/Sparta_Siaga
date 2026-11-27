@@ -4,6 +4,7 @@ import {
   areSameDatabaseCredentials,
   isDevelopmentIsolatedMode,
   isDevelopmentReadOnlyMode,
+  isIsolatedDatabaseTarget,
   isProductionDatabaseTarget,
   validateProductionDatabaseAccess,
 } from "./environment-policy";
@@ -153,7 +154,7 @@ export function getProductionDbPool(): Pool {
 
   // CRITICAL FAIL-CLOSED SAFETY GUARD:
   // Automated test scripts, test runners, or simulations must NEVER connect to production database 'siaga'.
-  if (isTestExecutionContext() && !process.env.ALLOW_PRODUCTION_TEST_RUN) {
+  if (isTestExecutionContext()) {
     throw new Error(
       "FATAL_DATABASE_SAFETY_VIOLATION: Automated test execution context detected attempting to connect to getProductionDbPool(). " +
       "Connecting to production database 'siaga' (103.127.99.241) from test suites is strictly prohibited. " +
@@ -335,9 +336,9 @@ export function getIsolatedDbPool(): Pool {
       );
     }
 
-    if (isProductionDatabaseTarget(rawConnectionString)) {
+    if (!isIsolatedDatabaseTarget(rawConnectionString)) {
       throw new Error(
-        "FATAL_DATABASE_SAFETY_VIOLATION: SPARTA_ISOLATED_TEST_DATABASE_URL points to production database 'siaga' (103.127.99.241). " +
+        "FATAL_DATABASE_SAFETY_VIOLATION: SPARTA_ISOLATED_TEST_DATABASE_URL is not a valid isolated Aiven target (*.aivencloud.com/sparta_siaga_isolated). " +
         "Isolated testing pool must strictly target the isolated Aiven database, never production."
       );
     }

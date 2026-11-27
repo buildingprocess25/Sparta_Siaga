@@ -59,9 +59,14 @@ test("environment policy, gate and session tokens isolate isolated-dev, readonly
   assert.equal(policy.verifyGateToken(devGate), false, "Isolated dev gate token must not validate in readonly-dev");
   assert.equal(await jwt.verifySession(devAccess), null, "Isolated dev JWT must not validate in readonly-dev");
   assert.equal(isolation.hasCurrentRefreshEnvironment(devRefresh), false);
+  assert.equal(policy.isQuickLoginPermitted(local).allowed, false, "Read-only mode must require gate authorization even on loopback");
 
   const roGate = policy.issueGateToken();
   assert.equal(policy.verifyGateToken(roGate), true);
+  const gatedLocal = new Request(local.url, { headers: { host: "localhost:3004", cookie: `siaga_gate_token=${roGate}` } });
+  const gatedRoTunnel = new Request(tunnel.url, { headers: { host: "fixture.devtunnels.ms", cookie: `siaga_gate_token=${roGate}` } });
+  assert.equal(policy.isQuickLoginPermitted(gatedLocal).allowed, true);
+  assert.equal(policy.isQuickLoginPermitted(gatedRoTunnel).allowed, false, "Read-only mode must block public tunnels even with valid gate token");
   const roAccess = await jwt.signSession({ id: "fixture", nik: "DEV_FIXTURE", systemRole: "USER", v: 1 });
   assert.ok(await jwt.verifySession(roAccess));
   assert.equal(policy.getLogoutRedirectUrl(), "/login");

@@ -4,7 +4,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import {
   areSameDatabaseCredentials,
-  isProductionDatabaseTarget,
+  isIsolatedDatabaseTarget,
 } from "../lib/environment-policy";
 import { verifyPostgresReadOnlyPermissions } from "../lib/db";
 
@@ -22,23 +22,6 @@ function loadEnvFile(filename: string): Record<string, string> {
     parsed[match[1]] = val;
   }
   return parsed;
-}
-
-function isIsolatedAivenUrl(value: string | undefined): value is string {
-  if (!value) return false;
-  const trimmed = value.trim();
-  if (isProductionDatabaseTarget(trimmed)) return false;
-  try {
-    const url = new URL(trimmed);
-    return (
-      (url.protocol === "postgresql:" || url.protocol === "postgres:") &&
-      url.hostname.toLowerCase().endsWith(".aivencloud.com") &&
-      decodeURIComponent(url.pathname) === "/sparta_siaga_isolated" &&
-      [...url.searchParams.keys()].every((key) => key === "sslmode")
-    );
-  } catch {
-    return false;
-  }
 }
 
 function isValidPostgresUrl(value: string | undefined): value is string {
@@ -94,6 +77,8 @@ async function run() {
 
   let mergedEnv: NodeJS.ProcessEnv;
 
+  let bindHost = process.env.DEV_BIND_HOST?.trim() || "localhost";
+
   if (dataMode === "isolated") {
     const candidateDbUrl = [
       envDevLocal.DATABASE_URL,
@@ -101,7 +86,7 @@ async function run() {
       process.env.SPARTA_ISOLATED_TEST_DATABASE_URL,
       envLocal.SPARTA_ISOLATED_TEST_DATABASE_URL,
       process.env.DATABASE_URL,
-    ].find((val) => isIsolatedAivenUrl(val));
+    ].find((val) => isIsolatedDatabaseTarget(val));
 
     if (!candidateDbUrl) {
       console.error("==================================================================");
@@ -183,6 +168,31 @@ async function run() {
       process.exit(1);
     }
 
+    const requestedBindHost = (process.env.DEV_BIND_HOST || "").trim().toLowerCase();
+    const allowedLoopbackBinds = new Set(["", "localhost", "127.0.0.1", "::1", "[::1]"]);
+    if (!allowedLoopbackBinds.has(requestedBindHost)) {
+      console.error("==================================================================");
+      console.error(`[SPARTA SIAGA] BLOCKED — DEV_BIND_HOST='${requestedBindHost}' dilarang pada mode Development Read-Only.`);
+      console.error("Mode Development Read-Only hanya diizinkan pada loopback lokal (127.0.0.1 / localhost) dan dilarang diekspos ke LAN atau tunnel publik.");
+      console.error("==================================================================");
+      process.exit(1);
+    }
+    bindHost = "127.0.0.1";
+
+    const gatePasscode = (
+      process.env.DEV_GATE_PASSCODE ||
+      envDevLocal.DEV_GATE_PASSCODE ||
+      envLocal.DEV_GATE_PASSCODE ||
+      ""
+    ).trim();
+    if (gatePasscode.length < 12 || gatePasscode.length > 1024) {
+      console.error("==================================================================");
+      console.error("[SPARTA SIAGA] BLOCKED — DEV_GATE_PASSCODE wajib diisi (12-1024 karakter) untuk mode Development Read-Only.");
+      console.error("Tambahkan DEV_GATE_PASSCODE ke .env.local atau .env.development.local sebelum menjalankan 'pnpm dev:prod-readonly'.");
+      console.error("==================================================================");
+      process.exit(1);
+    }
+
     if (!dryRunEnv) {
       const checkPool = new Pool({
         connectionString: roUrl.replace(/\?sslmode=[^&]+/, ""),
@@ -218,6 +228,9 @@ async function run() {
       SPARTA_PRODUCTION_READONLY_DATABASE_URL: roUrl,
       SPARTA_WRITE_DATABASE_URL_FOR_CHECK: writeDbUrl,
       DATABASE_URL: "postgresql://readonly-guard@127.0.0.1:5432/siaga_write_blocked",
+      SPARTA_TEST_GATE_ENABLED: "true",
+      SPARTA_FORCE_DEV_GATE: "true",
+      DEV_GATE_PASSCODE: gatePasscode,
       SPARTA_AUTONOMOUS_WORKER_ENABLED: "false",
       SPARTA_AUTONOMOUS_WEATHER_ALERTS: "false",
       SPARTA_ALLOW_TEST_SIMULATION: "false",
@@ -253,12 +266,12 @@ async function run() {
       devDataMode: mergedEnv.SPARTA_DEV_DATA_MODE,
       workerEnabled: mergedEnv.SPARTA_AUTONOMOUS_WORKER_ENABLED,
       emailEnabled: mergedEnv.EMAIL_NOTIFICATIONS_ENABLED,
+      bindHost,
     }));
     return;
   }
 
   const nextBin = path.resolve(process.cwd(), "node_modules/next/dist/bin/next");
-  const bindHost = process.env.DEV_BIND_HOST?.trim() || "localhost";
   const child = spawn(
     process.execPath,
     ["--max-old-space-size=4096", nextBin, "dev", "-p", "3004", "-H", bindHost, "--webpack"],

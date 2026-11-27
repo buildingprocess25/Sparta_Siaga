@@ -9,6 +9,7 @@
     "pnpm": ">=11 <12"
   },
   "scripts": {
+    "dev": "node --max-old-space-size=4096 ./node_modules/next/dist/bin/next dev -p 3004 --webpack",
     "dev": "tsx scripts/run-dev.ts isolated",
     "dev:local": "tsx scripts/run-dev.ts isolated",
     "dev:isolated": "tsx scripts/run-dev.ts isolated",
